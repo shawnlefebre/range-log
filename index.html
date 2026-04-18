@@ -600,6 +600,10 @@
       <label>Clean reminder (rounds since last clean)</label>
       <input type="number" id="gun-threshold" placeholder="e.g. 300" min="50" step="50">
     </div>
+    <div class="form-group">
+      <label>Last cleaned date (leave blank if never cleaned)</label>
+      <input type="date" id="gun-last-cleaned">
+    </div>
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="closeModal('modal-gun')">Cancel</button>
       <button class="btn btn-primary" onclick="saveGun()">Save</button>
@@ -704,11 +708,29 @@ function fmtDate(d) {
 function totalRoundsAll() { return data.firearms.reduce((s,g) => s + (g.totalRounds||0), 0); }
 function totalSessions() { return data.sessions.length; }
 
+// Rounds since clean = sum of session rounds for this gun where session.date > gun.lastCleaned
+// Same-day sessions don't count (assumes you cleaned after shooting)
+function computeRoundsSinceClean(gun) {
+  if (!gun.lastCleaned) {
+    // Never cleaned — count all rounds
+    return data.sessions.reduce((sum, s) => {
+      const r = s.rounds && typeof s.rounds === 'object' ? s.rounds[gun.id] || 0 : 0;
+      return sum + r;
+    }, 0);
+  }
+  return data.sessions.reduce((sum, s) => {
+    if (s.date <= gun.lastCleaned) return sum;
+    const r = s.rounds && typeof s.rounds === 'object' ? s.rounds[gun.id] || 0 : 0;
+    return sum + r;
+  }, 0);
+}
+
 function cleanStatus(gun) {
-  const pct = gun.cleanThreshold > 0 ? gun.roundsSinceClean / gun.cleanThreshold : 0;
-  if (pct >= 1) return { label: 'CLEAN NOW', cls: 'due', barColor: '#c0392b', pct: 1 };
-  if (pct >= 0.75) return { label: `${gun.roundsSinceClean} / ${gun.cleanThreshold}`, cls: 'warn', barColor: '#e67e22', pct };
-  return { label: `${gun.roundsSinceClean} / ${gun.cleanThreshold}`, cls: 'ok', barColor: '#27ae60', pct };
+  const rsc = computeRoundsSinceClean(gun);
+  const pct = gun.cleanThreshold > 0 ? rsc / gun.cleanThreshold : 0;
+  if (pct >= 1) return { label: 'CLEAN NOW', cls: 'due', barColor: '#c0392b', pct: 1, rsc };
+  if (pct >= 0.75) return { label: `${rsc} / ${gun.cleanThreshold}`, cls: 'warn', barColor: '#e67e22', pct, rsc };
+  return { label: `${rsc} / ${gun.cleanThreshold}`, cls: 'ok', barColor: '#27ae60', pct, rsc };
 }
 
 // ── RENDER DASHBOARD ──────────────────────────────────────────────
@@ -804,11 +826,10 @@ function saveSession() {
 
   data.sessions.unshift(session);
 
-  // Update firearm totals and since-clean counters
+  // Update firearm totals only — roundsSinceClean is now computed from session history
   data.firearms.forEach(gun => {
     const r = rounds[gun.id] || 0;
     gun.totalRounds = (gun.totalRounds || 0) + r;
-    gun.roundsSinceClean = (gun.roundsSinceClean || 0) + r;
   });
 
   save(data);
@@ -887,6 +908,7 @@ function openAddGun() {
   document.getElementById('gun-name').value = '';
   document.getElementById('gun-caliber').value = '';
   document.getElementById('gun-threshold').value = '';
+  document.getElementById('gun-last-cleaned').value = '';
   openModal('modal-gun');
 }
 function openEditGun(id) {
@@ -897,6 +919,7 @@ function openEditGun(id) {
   document.getElementById('gun-name').value = gun.name;
   document.getElementById('gun-caliber').value = gun.caliber;
   document.getElementById('gun-threshold').value = gun.cleanThreshold;
+  document.getElementById('gun-last-cleaned').value = gun.lastCleaned || '';
   openModal('modal-gun');
 }
 function saveGun() {
@@ -904,12 +927,13 @@ function saveGun() {
   const name = document.getElementById('gun-name').value.trim();
   const caliber = document.getElementById('gun-caliber').value.trim();
   const threshold = parseInt(document.getElementById('gun-threshold').value, 10);
-  if (!name || !caliber || !threshold) { alert('Please fill in all fields.'); return; }
+  const lastCleaned = document.getElementById('gun-last-cleaned').value || null;
+  if (!name || !caliber || !threshold) { alert('Please fill in name, caliber, and clean threshold.'); return; }
   if (id) {
     const gun = data.firearms.find(g => g.id === id);
-    if (gun) { gun.name = name; gun.caliber = caliber; gun.cleanThreshold = threshold; }
+    if (gun) { gun.name = name; gun.caliber = caliber; gun.cleanThreshold = threshold; gun.lastCleaned = lastCleaned; }
   } else {
-    data.firearms.push({ id: uid(), name, caliber, cleanThreshold: threshold, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null });
+    data.firearms.push({ id: uid(), name, caliber, cleanThreshold: threshold, totalRounds: 0, lastCleaned });
   }
   save(data);
   closeModal('modal-gun');
@@ -924,7 +948,6 @@ function deleteGun(id) {
 function markCleaned(id) {
   const gun = data.firearms.find(g => g.id === id);
   if (!gun) return;
-  gun.roundsSinceClean = 0;
   gun.lastCleaned = today();
   save(data);
   renderDashboard();
@@ -978,13 +1001,13 @@ function saveEditSession() {
   if (total === 0) { alert('Enter at least one round count.'); return; }
 
   // Reverse old round counts from firearm totals, apply new ones
+  // roundsSinceClean is computed, so no need to track it manually
   const oldRounds = s.rounds && typeof s.rounds === 'object' ? s.rounds : {};
   data.firearms.forEach(gun => {
     const oldR = oldRounds[gun.id] || 0;
     const newR = newRounds[gun.id] || 0;
     const diff = newR - oldR;
     gun.totalRounds = Math.max(0, (gun.totalRounds || 0) + diff);
-    gun.roundsSinceClean = Math.max(0, (gun.roundsSinceClean || 0) + diff);
   });
 
   s.date = date;
@@ -1004,12 +1027,11 @@ function deleteSession(id) {
   if (!s) return;
   if (!confirm('Delete this session? Firearm round counts will be adjusted.')) return;
 
-  // Reverse round counts
+  // Reverse round counts (only totalRounds; roundsSinceClean is computed)
   const delRounds = s.rounds && typeof s.rounds === 'object' ? s.rounds : {};
   data.firearms.forEach(gun => {
     const r = delRounds[gun.id] || 0;
     gun.totalRounds = Math.max(0, (gun.totalRounds || 0) - r);
-    gun.roundsSinceClean = Math.max(0, (gun.roundsSinceClean || 0) - r);
   });
 
   data.sessions = data.sessions.filter(s => s.id !== id);
