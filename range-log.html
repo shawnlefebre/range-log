@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Range Log">
+<title>Range Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e0e0e;
+    --surface: #1a1a1a;
+    --surface2: #242424;
+    --surface3: #2e2e2e;
+    --border: #333;
+    --accent: #c8a84b;
+    --accent-dim: #8a7030;
+    --danger: #c0392b;
+    --warn: #e67e22;
+    --ok: #27ae60;
+    --text: #e8e8e8;
+    --text-muted: #888;
+    --text-dim: #555;
+    --radius: 6px;
+    --font-display: 'Bebas Neue', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --font-body: 'IBM Plex Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* LAYOUT */
+  #app { max-width: 720px; margin: 0 auto; padding: 0 0 80px; }
+
+  header {
+    background: var(--surface);
+    border-bottom: 2px solid var(--accent);
+    padding: 16px 20px 12px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  header h1 {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    color: var(--accent);
+    letter-spacing: 2px;
+    line-height: 1;
+  }
+  header span {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* NAV TABS */
+  nav {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 57px;
+    z-index: 99;
+  }
+  nav button {
+    flex: 1;
+    padding: 12px 8px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  nav button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  nav button:hover:not(.active) { color: var(--text); }
+
+  /* SECTIONS */
+  section { display: none; padding: 20px; }
+  section.active { display: block; }
+
+  /* CARDS */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .card-title {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+
+  /* FIREARM CARDS */
+  .gun-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 16px;
+    align-items: center;
+  }
+  .gun-card.warn-clean { border-left: 3px solid var(--warn); }
+  .gun-card.needs-clean { border-left: 3px solid var(--danger); }
+  .gun-card.clean { border-left: 3px solid var(--ok); }
+
+  .gun-name {
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .gun-caliber {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+  .gun-stats {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .gun-stats span { color: var(--text); }
+  .clean-status {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    text-align: right;
+  }
+  .clean-status.ok { color: var(--ok); }
+  .clean-status.warn { color: var(--warn); }
+  .clean-status.due { color: var(--danger); }
+
+  .gun-total {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    color: var(--accent);
+    line-height: 1;
+    text-align: right;
+  }
+  .gun-total-label {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    text-align: right;
+    letter-spacing: 1px;
+  }
+
+  .btn-clean {
+    grid-column: 1 / -1;
+    margin-top: 8px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+    width: 100%;
+  }
+  .btn-clean:hover { border-color: var(--ok); color: var(--ok); }
+
+  /* SESSIONS */
+  .session-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+  }
+  .session-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .session-date {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .session-location {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+  }
+  .session-total {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    color: var(--text);
+  }
+  .session-rounds {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .session-gun-pill {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-muted);
+  }
+  .session-gun-pill span { color: var(--text); }
+  .session-notes {
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-style: italic;
+    border-top: 1px solid var(--border);
+    padding-top: 6px;
+  }
+
+  /* FORMS */
+  .form-group { margin-bottom: 14px; }
+  label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  input, select, textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  textarea { min-height: 70px; resize: vertical; }
+
+  /* GUN ROUND INPUTS IN SESSION */
+  .gun-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .gun-row label {
+    flex: 1;
+    margin: 0;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.85rem;
+    color: var(--text);
+  }
+  .gun-row .caliber-tag {
+    font-size: 0.65rem;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+  .gun-row input[type=number] {
+    width: 80px;
+    text-align: right;
+    padding: 6px 10px;
+    font-family: var(--font-mono);
+    font-size: 1rem;
+  }
+
+  /* BUTTONS */
+  .btn {
+    display: inline-block;
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #0e0e0e;
+    font-weight: 600;
+    width: 100%;
+    text-align: center;
+  }
+  .btn-primary:hover { background: #d4b55a; }
+  .btn-secondary {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+  .btn-secondary:hover { border-color: var(--text-muted); color: var(--text); }
+  .btn-danger {
+    background: none;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+  }
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .btn-row .btn { flex: 1; text-align: center; }
+
+  /* SETTINGS LISTS */
+  .list-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+  }
+  .list-item-text { flex: 1; }
+  .list-item-name { font-size: 0.9rem; font-weight: 500; }
+  .list-item-sub { font-family: var(--font-mono); font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; }
+  .btn-icon {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 1.1rem;
+    border-radius: var(--radius);
+    transition: color 0.15s;
+  }
+  .btn-icon:hover { color: var(--danger); }
+
+  /* SECTION HEADERS */
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    color: var(--text);
+    letter-spacing: 1px;
+  }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 20px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal-title {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    color: var(--accent);
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+  }
+
+  /* PROGRESS BAR */
+  .clean-bar {
+    height: 3px;
+    background: var(--surface3);
+    border-radius: 2px;
+    margin-top: 6px;
+    overflow: hidden;
+  }
+  .clean-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s;
+  }
+
+  /* SUMMARY STATS */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .stat-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    text-align: center;
+  }
+  .stat-number {
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+    color: var(--accent);
+    line-height: 1;
+  }
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+  }
+
+  /* Data schema version badge */
+  .schema-badge {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-align: center;
+    padding: 12px;
+  }
+
+  @media (max-width: 480px) {
+    .stats-row { grid-template-columns: repeat(3, 1fr); }
+    .stat-number { font-size: 1.4rem; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>RANGE LOG</h1>
+    <span>v1.0</span>
+  </header>
+  <nav>
+    <button class="active" onclick="showTab('dashboard')">Dashboard</button>
+    <button onclick="showTab('log')">Log Session</button>
+    <button onclick="showTab('sessions')">Sessions</button>
+    <button onclick="showTab('settings')">Settings</button>
+  </nav>
+
+  <!-- DASHBOARD -->
+  <section id="tab-dashboard" class="active">
+    <div class="stats-row" id="summary-stats"></div>
+    <div class="card-title" style="padding:0 0 8px;">Firearms — Round Count & Clean Status</div>
+    <div id="gun-cards"></div>
+  </section>
+
+  <!-- LOG SESSION -->
+  <section id="tab-log">
+    <div class="section-header">
+      <div class="section-title">Log Session</div>
+    </div>
+    <div class="card">
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="session-date">
+      </div>
+      <div class="form-group">
+        <label>Location</label>
+        <select id="session-location">
+          <option value="">— Select location —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Rounds fired per firearm</label>
+        <div id="gun-inputs"></div>
+      </div>
+      <div class="form-group">
+        <label>Notes (optional)</label>
+        <textarea id="session-notes" placeholder="Anything worth remembering..."></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="saveSession()">Save Session</button>
+    </div>
+  </section>
+
+  <!-- SESSIONS -->
+  <section id="tab-sessions">
+    <div class="section-header">
+      <div class="section-title">All Sessions</div>
+    </div>
+    <div id="sessions-list"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="tab-settings">
+    <div class="section-header">
+      <div class="section-title">Firearms</div>
+      <button class="btn btn-secondary" onclick="openAddGun()">+ Add</button>
+    </div>
+    <div id="guns-settings-list"></div>
+
+    <div class="section-header" style="margin-top:24px;">
+      <div class="section-title">Locations</div>
+      <button class="btn btn-secondary" onclick="openAddLocation()">+ Add</button>
+    </div>
+    <div id="locations-settings-list"></div>
+
+    <div class="section-header" style="margin-top:24px;">
+      <div class="section-title">Data</div>
+    </div>
+    <div class="card">
+      <div class="form-group">
+        <label>Export</label>
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="exportJSON()">Export JSON (backup)</button>
+          <button class="btn btn-secondary" onclick="exportCSV()">Export CSV</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Import JSON backup</label>
+        <input type="file" id="import-file" accept=".json" onchange="importJSON(this)" style="color:var(--text-muted); font-size:0.8rem;">
+      </div>
+    </div>
+    <div class="schema-badge">Data schema v1 · Range Log</div>
+  </section>
+</div>
+
+<!-- MODALS -->
+<div class="modal-overlay" id="modal-gun">
+  <div class="modal">
+    <div class="modal-title" id="modal-gun-title">Add Firearm</div>
+    <input type="hidden" id="gun-edit-id">
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" id="gun-name" placeholder="e.g. Ruger Mark II">
+    </div>
+    <div class="form-group">
+      <label>Caliber</label>
+      <input type="text" id="gun-caliber" placeholder="e.g. .22 LR">
+    </div>
+    <div class="form-group">
+      <label>Clean reminder (rounds since last clean)</label>
+      <input type="number" id="gun-threshold" placeholder="e.g. 300" min="50" step="50">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-gun')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveGun()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-session">
+  <div class="modal">
+    <div class="modal-title">Edit Session</div>
+    <input type="hidden" id="session-edit-id">
+    <div class="form-group">
+      <label>Date</label>
+      <input type="date" id="session-edit-date">
+    </div>
+    <div class="form-group">
+      <label>Location</label>
+      <select id="session-edit-location"></select>
+    </div>
+    <div class="form-group">
+      <label>Rounds per firearm</label>
+      <div id="session-edit-gun-inputs"></div>
+    </div>
+    <div class="form-group">
+      <label>Notes (optional)</label>
+      <textarea id="session-edit-notes" placeholder="Anything worth remembering..."></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-session')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditSession()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-location">
+  <div class="modal">
+    <div class="modal-title">Add Location</div>
+    <input type="hidden" id="loc-edit-id">
+    <div class="form-group">
+      <label>Location name</label>
+      <input type="text" id="loc-name" placeholder="e.g. Pelham Rod and Gun Club">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-location')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveLocation()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── DATA SCHEMA v1 ──────────────────────────────────────────────
+const SCHEMA_VERSION = 1;
+
+const DEFAULT_DATA = {
+  schemaVersion: SCHEMA_VERSION,
+  firearms: [
+    { id: 'g1', name: 'Ruger Mark II', caliber: '.22 LR', cleanThreshold: 300, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null },
+    { id: 'g2', name: 'Taurus PT99', caliber: '9mm', cleanThreshold: 500, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null },
+    { id: 'g3', name: '1911', caliber: '.45 ACP', cleanThreshold: 500, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null },
+    { id: 'g4', name: 'S&W .357 Magnum', caliber: '.357 Mag', cleanThreshold: 300, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null },
+    { id: 'g5', name: 'Ruger 10/22', caliber: '.22 LR', cleanThreshold: 300, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null },
+    { id: 'g6', name: 'S&W Bodyguard 2', caliber: '.380 ACP', cleanThreshold: 300, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null },
+  ],
+  locations: [
+    { id: 'l1', name: 'Pelham Rod and Gun Club' },
+    { id: 'l2', name: 'Granite State Indoor Range' },
+  ],
+  sessions: []
+};
+
+// ── STORAGE ──────────────────────────────────────────────────────
+function load() {
+  const raw = localStorage.getItem('rangeLogData');
+  if (!raw) return JSON.parse(JSON.stringify(DEFAULT_DATA));
+  try {
+    const d = JSON.parse(raw);
+    return migrateData(d);
+  } catch { return JSON.parse(JSON.stringify(DEFAULT_DATA)); }
+}
+
+function migrateData(d) {
+  // Future migrations go here, keyed on d.schemaVersion
+  if (!d.schemaVersion) d.schemaVersion = 1;
+  return d;
+}
+
+function save(d) {
+  localStorage.setItem('rangeLogData', JSON.stringify(d));
+}
+
+let data = load();
+
+// ── UTILS ─────────────────────────────────────────────────────────
+function uid() { return 'id_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+function today() { return new Date().toISOString().slice(0,10); }
+function fmtDate(d) {
+  if (!d) return '';
+  const [y,m,day] = d.split('-');
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[+m-1]} ${+day}, ${y}`;
+}
+function totalRoundsAll() { return data.firearms.reduce((s,g) => s + (g.totalRounds||0), 0); }
+function totalSessions() { return data.sessions.length; }
+
+function cleanStatus(gun) {
+  const pct = gun.cleanThreshold > 0 ? gun.roundsSinceClean / gun.cleanThreshold : 0;
+  if (pct >= 1) return { label: 'CLEAN NOW', cls: 'due', barColor: '#c0392b', pct: 1 };
+  if (pct >= 0.75) return { label: `${gun.roundsSinceClean} / ${gun.cleanThreshold}`, cls: 'warn', barColor: '#e67e22', pct };
+  return { label: `${gun.roundsSinceClean} / ${gun.cleanThreshold}`, cls: 'ok', barColor: '#27ae60', pct };
+}
+
+// ── RENDER DASHBOARD ──────────────────────────────────────────────
+function renderDashboard() {
+  const stats = document.getElementById('summary-stats');
+  stats.innerHTML = `
+    <div class="stat-box">
+      <div class="stat-number">${totalRoundsAll().toLocaleString()}</div>
+      <div class="stat-label">Total Rounds</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-number">${totalSessions()}</div>
+      <div class="stat-label">Sessions</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-number">${data.firearms.length}</div>
+      <div class="stat-label">Firearms</div>
+    </div>
+  `;
+
+  const cards = document.getElementById('gun-cards');
+  if (!data.firearms.length) {
+    cards.innerHTML = '<div class="empty-state">No firearms added yet.</div>';
+    return;
+  }
+  cards.innerHTML = data.firearms.map(gun => {
+    const cs = cleanStatus(gun);
+    const cardCls = cs.pct >= 1 ? 'needs-clean' : cs.pct >= 0.75 ? 'warn-clean' : 'clean';
+    const lastCleaned = gun.lastCleaned ? `Last cleaned ${fmtDate(gun.lastCleaned)}` : 'Never cleaned';
+    return `
+      <div class="gun-card ${cardCls}">
+        <div>
+          <div class="gun-name">${gun.name}</div>
+          <div class="gun-caliber">${gun.caliber}</div>
+          <div class="gun-stats">All-time <span>${(gun.totalRounds||0).toLocaleString()} rds</span> &nbsp;·&nbsp; ${lastCleaned}</div>
+          <div class="clean-bar"><div class="clean-bar-fill" style="width:${Math.min(cs.pct*100,100)}%;background:${cs.barColor}"></div></div>
+        </div>
+        <div>
+          <div class="gun-total">${(gun.totalRounds||0).toLocaleString()}</div>
+          <div class="gun-total-label">rounds</div>
+          <div class="clean-status ${cs.cls}" style="margin-top:8px;">${cs.label}</div>
+        </div>
+        <button class="btn-clean" onclick="markCleaned('${gun.id}')">✓ Mark as Cleaned</button>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── RENDER LOG SESSION ────────────────────────────────────────────
+function renderLogForm() {
+  document.getElementById('session-date').value = today();
+
+  const locSel = document.getElementById('session-location');
+  locSel.innerHTML = '<option value="">— Select location —</option>' +
+    data.locations.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+
+  const gunInputs = document.getElementById('gun-inputs');
+  gunInputs.innerHTML = data.firearms.map(gun => `
+    <div class="gun-row">
+      <div>
+        <label>${gun.name}</label>
+        <div class="caliber-tag">${gun.caliber}</div>
+      </div>
+      <input type="number" id="rounds-${gun.id}" min="0" placeholder="0" value="">
+    </div>
+  `).join('');
+}
+
+function saveSession() {
+  const date = document.getElementById('session-date').value;
+  const locId = document.getElementById('session-location').value;
+  const notes = document.getElementById('session-notes').value.trim();
+
+  const rounds = {};
+  let total = 0;
+  data.firearms.forEach(gun => {
+    const val = parseInt(document.getElementById('rounds-' + gun.id)?.value || '0', 10) || 0;
+    if (val > 0) { rounds[gun.id] = val; total += val; }
+  });
+
+  if (!date) { alert('Please select a date.'); return; }
+  if (total === 0) { alert('Enter at least one round count.'); return; }
+
+  const session = {
+    id: uid(),
+    date,
+    locationId: locId || null,
+    rounds,
+    notes,
+    totalRounds: total,
+    createdAt: new Date().toISOString()
+  };
+
+  data.sessions.unshift(session);
+
+  // Update firearm totals and since-clean counters
+  data.firearms.forEach(gun => {
+    const r = rounds[gun.id] || 0;
+    gun.totalRounds = (gun.totalRounds || 0) + r;
+    gun.roundsSinceClean = (gun.roundsSinceClean || 0) + r;
+  });
+
+  save(data);
+  document.getElementById('session-notes').value = '';
+  data.firearms.forEach(gun => {
+    const el = document.getElementById('rounds-' + gun.id);
+    if (el) el.value = '';
+  });
+
+  alert('Session saved!');
+  showTab('dashboard');
+}
+
+// ── RENDER SESSIONS ───────────────────────────────────────────────
+function renderSessions() {
+  const el = document.getElementById('sessions-list');
+  if (!data.sessions.length) {
+    el.innerHTML = '<div class="empty-state">No sessions logged yet.</div>';
+    return;
+  }
+  const sorted = [...data.sessions].sort((a,b) => b.date.localeCompare(a.date));
+  el.innerHTML = sorted.map(s => {
+    const loc = data.locations.find(l => l.id === s.locationId);
+    const rounds = s.rounds && typeof s.rounds === 'object' ? s.rounds : {};
+    const pills = Object.entries(rounds).map(([gid, r]) => {
+      const gun = data.firearms.find(g => g.id === gid);
+      return `<div class="session-gun-pill">${gun ? gun.name : 'Unknown'} <span>${r}</span></div>`;
+    }).join('');
+    return `
+      <div class="session-card">
+        <div class="session-header">
+          <div class="session-date">${fmtDate(s.date)}</div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="session-total">${s.totalRounds} rds</div>
+            <button class="btn-icon" onclick="openEditSession('${s.id}')" title="Edit">✏️</button>
+            <button class="btn-icon" onclick="deleteSession('${s.id}')" title="Delete">🗑</button>
+          </div>
+        </div>
+        ${loc ? `<div class="session-location">${loc.name}</div>` : ''}
+        <div class="session-rounds">${pills}</div>
+        ${s.notes ? `<div class="session-notes">${s.notes}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+// ── SETTINGS ──────────────────────────────────────────────────────
+function renderSettings() {
+  const gl = document.getElementById('guns-settings-list');
+  gl.innerHTML = data.firearms.map(gun => `
+    <div class="list-item">
+      <div class="list-item-text">
+        <div class="list-item-name">${gun.name}</div>
+        <div class="list-item-sub">${gun.caliber} · Clean every ${gun.cleanThreshold} rds</div>
+      </div>
+      <button class="btn-icon" onclick="openEditGun('${gun.id}')" title="Edit">✏️</button>
+      <button class="btn-icon" onclick="deleteGun('${gun.id}')" title="Delete">🗑</button>
+    </div>
+  `).join('') || '<div class="empty-state">No firearms.</div>';
+
+  const ll = document.getElementById('locations-settings-list');
+  ll.innerHTML = data.locations.map(loc => `
+    <div class="list-item">
+      <div class="list-item-text">
+        <div class="list-item-name">${loc.name}</div>
+      </div>
+      <button class="btn-icon" onclick="deleteLocation('${loc.id}')" title="Delete">🗑</button>
+    </div>
+  `).join('') || '<div class="empty-state">No locations.</div>';
+}
+
+// ── GUN CRUD ──────────────────────────────────────────────────────
+function openAddGun() {
+  document.getElementById('modal-gun-title').textContent = 'Add Firearm';
+  document.getElementById('gun-edit-id').value = '';
+  document.getElementById('gun-name').value = '';
+  document.getElementById('gun-caliber').value = '';
+  document.getElementById('gun-threshold').value = '';
+  openModal('modal-gun');
+}
+function openEditGun(id) {
+  const gun = data.firearms.find(g => g.id === id);
+  if (!gun) return;
+  document.getElementById('modal-gun-title').textContent = 'Edit Firearm';
+  document.getElementById('gun-edit-id').value = id;
+  document.getElementById('gun-name').value = gun.name;
+  document.getElementById('gun-caliber').value = gun.caliber;
+  document.getElementById('gun-threshold').value = gun.cleanThreshold;
+  openModal('modal-gun');
+}
+function saveGun() {
+  const id = document.getElementById('gun-edit-id').value;
+  const name = document.getElementById('gun-name').value.trim();
+  const caliber = document.getElementById('gun-caliber').value.trim();
+  const threshold = parseInt(document.getElementById('gun-threshold').value, 10);
+  if (!name || !caliber || !threshold) { alert('Please fill in all fields.'); return; }
+  if (id) {
+    const gun = data.firearms.find(g => g.id === id);
+    if (gun) { gun.name = name; gun.caliber = caliber; gun.cleanThreshold = threshold; }
+  } else {
+    data.firearms.push({ id: uid(), name, caliber, cleanThreshold: threshold, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null });
+  }
+  save(data);
+  closeModal('modal-gun');
+  renderAll();
+}
+function deleteGun(id) {
+  if (!confirm('Delete this firearm? Round history in sessions will remain.')) return;
+  data.firearms = data.firearms.filter(g => g.id !== id);
+  save(data);
+  renderAll();
+}
+function markCleaned(id) {
+  const gun = data.firearms.find(g => g.id === id);
+  if (!gun) return;
+  gun.roundsSinceClean = 0;
+  gun.lastCleaned = today();
+  save(data);
+  renderDashboard();
+}
+
+// ── SESSION EDIT / DELETE ─────────────────────────────────────────
+function openEditSession(id) {
+  const s = data.sessions.find(s => s.id === id);
+  if (!s) return;
+
+  document.getElementById('session-edit-id').value = id;
+  document.getElementById('session-edit-date').value = s.date;
+  document.getElementById('session-edit-notes').value = s.notes || '';
+
+  const locSel = document.getElementById('session-edit-location');
+  locSel.innerHTML = '<option value="">— Select location —</option>' +
+    data.locations.map(l => `<option value="${l.id}" ${l.id === s.locationId ? 'selected' : ''}>${l.name}</option>`).join('');
+
+  const sessionRounds = s.rounds && typeof s.rounds === 'object' ? s.rounds : {};
+  const gunInputs = document.getElementById('session-edit-gun-inputs');
+  gunInputs.innerHTML = data.firearms.map(gun => `
+    <div class="gun-row">
+      <div>
+        <label>${gun.name}</label>
+        <div class="caliber-tag">${gun.caliber}</div>
+      </div>
+      <input type="number" id="edit-rounds-${gun.id}" min="0" placeholder="0" value="${sessionRounds[gun.id] || ''}">
+    </div>
+  `).join('');
+
+  openModal('modal-session');
+}
+
+function saveEditSession() {
+  const id = document.getElementById('session-edit-id').value;
+  const s = data.sessions.find(s => s.id === id);
+  if (!s) return;
+
+  const date = document.getElementById('session-edit-date').value;
+  const locId = document.getElementById('session-edit-location').value;
+  const notes = document.getElementById('session-edit-notes').value.trim();
+
+  const newRounds = {};
+  let total = 0;
+  data.firearms.forEach(gun => {
+    const val = parseInt(document.getElementById('edit-rounds-' + gun.id)?.value || '0', 10) || 0;
+    if (val > 0) { newRounds[gun.id] = val; total += val; }
+  });
+
+  if (!date) { alert('Please select a date.'); return; }
+  if (total === 0) { alert('Enter at least one round count.'); return; }
+
+  // Reverse old round counts from firearm totals, apply new ones
+  const oldRounds = s.rounds && typeof s.rounds === 'object' ? s.rounds : {};
+  data.firearms.forEach(gun => {
+    const oldR = oldRounds[gun.id] || 0;
+    const newR = newRounds[gun.id] || 0;
+    const diff = newR - oldR;
+    gun.totalRounds = Math.max(0, (gun.totalRounds || 0) + diff);
+    gun.roundsSinceClean = Math.max(0, (gun.roundsSinceClean || 0) + diff);
+  });
+
+  s.date = date;
+  s.locationId = locId || null;
+  s.notes = notes;
+  s.rounds = newRounds;
+  s.totalRounds = total;
+
+  save(data);
+  closeModal('modal-session');
+  renderSessions();
+  renderDashboard();
+}
+
+function deleteSession(id) {
+  const s = data.sessions.find(s => s.id === id);
+  if (!s) return;
+  if (!confirm('Delete this session? Firearm round counts will be adjusted.')) return;
+
+  // Reverse round counts
+  const delRounds = s.rounds && typeof s.rounds === 'object' ? s.rounds : {};
+  data.firearms.forEach(gun => {
+    const r = delRounds[gun.id] || 0;
+    gun.totalRounds = Math.max(0, (gun.totalRounds || 0) - r);
+    gun.roundsSinceClean = Math.max(0, (gun.roundsSinceClean || 0) - r);
+  });
+
+  data.sessions = data.sessions.filter(s => s.id !== id);
+  save(data);
+  renderSessions();
+  renderDashboard();
+}
+
+// ── LOCATION CRUD ─────────────────────────────────────────────────
+function openAddLocation() {
+  document.getElementById('loc-edit-id').value = '';
+  document.getElementById('loc-name').value = '';
+  openModal('modal-location');
+}
+function saveLocation() {
+  const name = document.getElementById('loc-name').value.trim();
+  if (!name) { alert('Enter a location name.'); return; }
+  data.locations.push({ id: uid(), name });
+  save(data);
+  closeModal('modal-location');
+  renderSettings();
+}
+function deleteLocation(id) {
+  if (!confirm('Remove this location?')) return;
+  data.locations = data.locations.filter(l => l.id !== id);
+  save(data);
+  renderSettings();
+}
+
+// ── MODALS ────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+});
+
+// ── TABS ──────────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  const tabs = ['dashboard','log','sessions','settings'];
+  document.querySelectorAll('nav button')[tabs.indexOf(name)]?.classList.add('active');
+  if (name === 'dashboard') renderDashboard();
+  if (name === 'log') renderLogForm();
+  if (name === 'sessions') renderSessions();
+  if (name === 'settings') renderSettings();
+}
+
+// ── EXPORT / IMPORT ───────────────────────────────────────────────
+function exportJSON() {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `range-log-backup-${today()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportCSV() {
+  const rows = [['Date','Location','Firearm','Caliber','Rounds','Notes']];
+  const sorted = [...data.sessions].sort((a,b) => a.date.localeCompare(b.date));
+  sorted.forEach(s => {
+    const loc = data.locations.find(l => l.id === s.locationId);
+    Object.entries(s.rounds).forEach(([gid, r]) => {
+      const gun = data.firearms.find(g => g.id === gid);
+      rows.push([
+        s.date,
+        loc ? loc.name : '',
+        gun ? gun.name : gid,
+        gun ? gun.caliber : '',
+        r,
+        (s.notes || '').replace(/,/g,'')
+      ]);
+    });
+  });
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `range-log-${today()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importJSON(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if (!imported.schemaVersion || !imported.firearms || !imported.sessions) {
+        alert('Invalid backup file.'); return;
+      }
+      if (!confirm('This will replace all current data with the imported backup. Continue?')) return;
+      data = migrateData(imported);
+      save(data);
+      renderAll();
+      alert('Import successful!');
+    } catch { alert('Could not read file. Make sure it is a valid Range Log JSON backup.'); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// ── INIT ──────────────────────────────────────────────────────────
+function renderAll() {
+  renderDashboard();
+  renderLogForm();
+  renderSessions();
+  renderSettings();
+}
+
+renderDashboard();
+renderLogForm();
+</script>
+</body>
+</html>
