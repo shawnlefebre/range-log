@@ -181,9 +181,14 @@
     letter-spacing: 1px;
   }
 
-  .btn-clean {
+  .gun-card-actions {
     grid-column: 1 / -1;
     margin-top: 8px;
+    display: flex;
+    gap: 8px;
+  }
+  .btn-clean {
+    flex: 1;
     background: none;
     border: 1px solid var(--border);
     color: var(--text-muted);
@@ -195,9 +200,39 @@
     text-transform: uppercase;
     cursor: pointer;
     transition: all 0.15s;
-    width: 100%;
   }
   .btn-clean:hover { border-color: var(--ok); color: var(--ok); }
+
+  /* CLEANING HISTORY */
+  .cleaning-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 6px;
+  }
+  .cleaning-type-badge {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 3px;
+    background: var(--surface3);
+  }
+  .cleaning-type-badge.quick { background: #2c3e50; color: #5dade2; }
+  .cleaning-type-badge.deep { background: #1e3a1e; color: #5fbf5f; }
+  .cleaning-type-badge.detail { background: #3a1e1e; color: #d4a8a8; }
+  .cleaning-meta {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+  }
+  .cleaning-meta-date { color: var(--text); }
+  .cleaning-meta-notes { color: var(--text-muted); font-size: 0.7rem; margin-top: 2px; }
 
   /* SESSIONS */
   .session-card {
@@ -579,7 +614,7 @@
         <input type="file" id="import-file" accept=".json" onchange="importJSON(this)" style="color:var(--text-muted); font-size:0.8rem;">
       </div>
     </div>
-    <div class="schema-badge">Data schema v1 · Range Log</div>
+    <div class="schema-badge">Data schema v2 · Range Log</div>
   </section>
 </div>
 
@@ -597,12 +632,8 @@
       <input type="text" id="gun-caliber" placeholder="e.g. .22 LR">
     </div>
     <div class="form-group">
-      <label>Clean reminder (rounds since last clean)</label>
+      <label>Clean reminder (rounds since last deep clean)</label>
       <input type="number" id="gun-threshold" placeholder="e.g. 300" min="50" step="50">
-    </div>
-    <div class="form-group">
-      <label>Last cleaned date (leave blank if never cleaned)</label>
-      <input type="date" id="gun-last-cleaned">
     </div>
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="closeModal('modal-gun')">Cancel</button>
@@ -653,23 +684,67 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-cleaning">
+  <div class="modal">
+    <div class="modal-title" id="cleaning-modal-title">Log Cleaning</div>
+    <input type="hidden" id="cleaning-gun-id">
+    <input type="hidden" id="cleaning-edit-id">
+    <div class="form-group">
+      <label>Date</label>
+      <input type="date" id="cleaning-date">
+    </div>
+    <div class="form-group">
+      <label>Cleaning type</label>
+      <select id="cleaning-type">
+        <option value="quick">Quick</option>
+        <option value="deep" selected>Deep</option>
+        <option value="detail">Detail strip</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Notes (optional)</label>
+      <textarea id="cleaning-notes" placeholder="e.g. swapped buffer spring, replaced grip..."></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-cleaning')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCleaning()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-history">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title" id="history-title">Cleaning History</div>
+    <div id="history-stats" style="margin-bottom:14px;"></div>
+    <div id="history-list" style="margin-bottom:14px;"></div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-history')">Close</button>
+      <button class="btn btn-primary" onclick="openLogCleaning(currentHistoryGunId)">+ Log New Cleaning</button>
+    </div>
+  </div>
+</div>
+
 <script>
-// ── DATA SCHEMA v1 ──────────────────────────────────────────────
-const SCHEMA_VERSION = 1;
+// ── DATA SCHEMA v2 ──────────────────────────────────────────────
+// v1: lastCleaned (single date) per gun
+// v2: cleanings array per gun, each {id, date, type, notes}
+//     type: 'quick' | 'deep' | 'detail'
+//     deep & detail reset the deep-clean counter; quick does not
+const SCHEMA_VERSION = 2;
+
+const CLEANING_TYPES = {
+  quick: { label: 'Quick', resetsDeep: false },
+  deep: { label: 'Deep', resetsDeep: true },
+  detail: { label: 'Detail strip', resetsDeep: true },
+};
 
 const DEFAULT_DATA = {
   schemaVersion: SCHEMA_VERSION,
   firearms: [
-    { id: 'g1', name: 'Ruger Mark II', caliber: '.22 LR', cleanThreshold: 300, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null },
-    { id: 'g2', name: 'Taurus PT99', caliber: '9mm', cleanThreshold: 500, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null },
-    { id: 'g3', name: '1911', caliber: '.45 ACP', cleanThreshold: 500, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null },
-    { id: 'g4', name: 'S&W .357 Magnum', caliber: '.357 Mag', cleanThreshold: 300, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null },
-    { id: 'g5', name: 'Ruger 10/22', caliber: '.22 LR', cleanThreshold: 300, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null },
-    { id: 'g6', name: 'S&W Bodyguard 2', caliber: '.380 ACP', cleanThreshold: 300, roundsSinceClean: 0, totalRounds: 0, lastCleaned: null },
+    { id: 'g1', name: 'Example Pistol', caliber: '9mm', cleanThreshold: 500, totalRounds: 0, cleanings: [] },
   ],
   locations: [
-    { id: 'l1', name: 'Pelham Rod and Gun Club' },
-    { id: 'l2', name: 'Granite State Indoor Range' },
+    { id: 'l1', name: 'Example Range' },
   ],
   sessions: []
 };
@@ -685,8 +760,33 @@ function load() {
 }
 
 function migrateData(d) {
-  // Future migrations go here, keyed on d.schemaVersion
   if (!d.schemaVersion) d.schemaVersion = 1;
+
+  // v1 -> v2: convert lastCleaned date to a 'deep' cleaning entry
+  if (d.schemaVersion === 1) {
+    d.firearms.forEach(gun => {
+      if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
+      if (gun.lastCleaned) {
+        // Migrate the single lastCleaned date as a Deep cleaning
+        gun.cleanings.push({
+          id: uid(),
+          date: gun.lastCleaned,
+          type: 'deep',
+          notes: ''
+        });
+      }
+      // Drop now-obsolete fields
+      delete gun.lastCleaned;
+      delete gun.roundsSinceClean;
+    });
+    d.schemaVersion = 2;
+  }
+
+  // Defensive: ensure every gun has cleanings array
+  d.firearms.forEach(gun => {
+    if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
+  });
+
   return d;
 }
 
@@ -708,18 +808,26 @@ function fmtDate(d) {
 function totalRoundsAll() { return data.firearms.reduce((s,g) => s + (g.totalRounds||0), 0); }
 function totalSessions() { return data.sessions.length; }
 
-// Rounds since clean = sum of session rounds for this gun where session.date > gun.lastCleaned
+// Last deep clean = most recent cleaning whose type resets deep counter (deep or detail)
+function lastDeepCleanDate(gun) {
+  const resets = (gun.cleanings || []).filter(c => CLEANING_TYPES[c.type]?.resetsDeep);
+  if (!resets.length) return null;
+  return resets.reduce((latest, c) => c.date > latest ? c.date : latest, resets[0].date);
+}
+
+// Rounds since clean = sum of session rounds for this gun where session.date > lastDeepCleanDate
 // Same-day sessions don't count (assumes you cleaned after shooting)
 function computeRoundsSinceClean(gun) {
-  if (!gun.lastCleaned) {
-    // Never cleaned — count all rounds
+  const lastClean = lastDeepCleanDate(gun);
+  if (!lastClean) {
+    // Never deep cleaned — count all rounds
     return data.sessions.reduce((sum, s) => {
       const r = s.rounds && typeof s.rounds === 'object' ? s.rounds[gun.id] || 0 : 0;
       return sum + r;
     }, 0);
   }
   return data.sessions.reduce((sum, s) => {
-    if (s.date <= gun.lastCleaned) return sum;
+    if (s.date <= lastClean) return sum;
     const r = s.rounds && typeof s.rounds === 'object' ? s.rounds[gun.id] || 0 : 0;
     return sum + r;
   }, 0);
@@ -759,13 +867,14 @@ function renderDashboard() {
   cards.innerHTML = data.firearms.map(gun => {
     const cs = cleanStatus(gun);
     const cardCls = cs.pct >= 1 ? 'needs-clean' : cs.pct >= 0.75 ? 'warn-clean' : 'clean';
-    const lastCleaned = gun.lastCleaned ? `Last cleaned ${fmtDate(gun.lastCleaned)}` : 'Never cleaned';
+    const lastDeep = lastDeepCleanDate(gun);
+    const lastCleanedStr = lastDeep ? `Last deep clean ${fmtDate(lastDeep)}` : 'No deep clean logged';
     return `
       <div class="gun-card ${cardCls}">
         <div>
           <div class="gun-name">${gun.name}</div>
           <div class="gun-caliber">${gun.caliber}</div>
-          <div class="gun-stats">All-time <span>${(gun.totalRounds||0).toLocaleString()} rds</span> &nbsp;·&nbsp; ${lastCleaned}</div>
+          <div class="gun-stats">All-time <span>${(gun.totalRounds||0).toLocaleString()} rds</span> &nbsp;·&nbsp; ${lastCleanedStr}</div>
           <div class="clean-bar"><div class="clean-bar-fill" style="width:${Math.min(cs.pct*100,100)}%;background:${cs.barColor}"></div></div>
         </div>
         <div>
@@ -773,7 +882,10 @@ function renderDashboard() {
           <div class="gun-total-label">rounds</div>
           <div class="clean-status ${cs.cls}" style="margin-top:8px;">${cs.label}</div>
         </div>
-        <button class="btn-clean" onclick="markCleaned('${gun.id}')">✓ Mark as Cleaned</button>
+        <div class="gun-card-actions">
+          <button class="btn-clean" onclick="openLogCleaning('${gun.id}')">+ Log Cleaning</button>
+          <button class="btn-clean" onclick="openGunHistory('${gun.id}')">View History</button>
+        </div>
       </div>
     `;
   }).join('');
@@ -908,7 +1020,6 @@ function openAddGun() {
   document.getElementById('gun-name').value = '';
   document.getElementById('gun-caliber').value = '';
   document.getElementById('gun-threshold').value = '';
-  document.getElementById('gun-last-cleaned').value = '';
   openModal('modal-gun');
 }
 function openEditGun(id) {
@@ -919,7 +1030,6 @@ function openEditGun(id) {
   document.getElementById('gun-name').value = gun.name;
   document.getElementById('gun-caliber').value = gun.caliber;
   document.getElementById('gun-threshold').value = gun.cleanThreshold;
-  document.getElementById('gun-last-cleaned').value = gun.lastCleaned || '';
   openModal('modal-gun');
 }
 function saveGun() {
@@ -927,13 +1037,12 @@ function saveGun() {
   const name = document.getElementById('gun-name').value.trim();
   const caliber = document.getElementById('gun-caliber').value.trim();
   const threshold = parseInt(document.getElementById('gun-threshold').value, 10);
-  const lastCleaned = document.getElementById('gun-last-cleaned').value || null;
   if (!name || !caliber || !threshold) { alert('Please fill in name, caliber, and clean threshold.'); return; }
   if (id) {
     const gun = data.firearms.find(g => g.id === id);
-    if (gun) { gun.name = name; gun.caliber = caliber; gun.cleanThreshold = threshold; gun.lastCleaned = lastCleaned; }
+    if (gun) { gun.name = name; gun.caliber = caliber; gun.cleanThreshold = threshold; }
   } else {
-    data.firearms.push({ id: uid(), name, caliber, cleanThreshold: threshold, totalRounds: 0, lastCleaned });
+    data.firearms.push({ id: uid(), name, caliber, cleanThreshold: threshold, totalRounds: 0, cleanings: [] });
   }
   save(data);
   closeModal('modal-gun');
@@ -945,12 +1054,109 @@ function deleteGun(id) {
   save(data);
   renderAll();
 }
-function markCleaned(id) {
-  const gun = data.firearms.find(g => g.id === id);
+// ── CLEANING CRUD ─────────────────────────────────────────────────
+function openLogCleaning(gunId, cleaningId) {
+  const gun = data.firearms.find(g => g.id === gunId);
   if (!gun) return;
-  gun.lastCleaned = today();
+  document.getElementById('cleaning-gun-id').value = gunId;
+  document.getElementById('cleaning-edit-id').value = cleaningId || '';
+  document.getElementById('cleaning-modal-title').textContent =
+    (cleaningId ? 'Edit Cleaning · ' : 'Log Cleaning · ') + gun.name;
+
+  if (cleaningId) {
+    const c = (gun.cleanings || []).find(c => c.id === cleaningId);
+    if (c) {
+      document.getElementById('cleaning-date').value = c.date;
+      document.getElementById('cleaning-type').value = c.type;
+      document.getElementById('cleaning-notes').value = c.notes || '';
+    }
+  } else {
+    document.getElementById('cleaning-date').value = today();
+    document.getElementById('cleaning-type').value = 'deep';
+    document.getElementById('cleaning-notes').value = '';
+  }
+  openModal('modal-cleaning');
+}
+
+function saveCleaning() {
+  const gunId = document.getElementById('cleaning-gun-id').value;
+  const editId = document.getElementById('cleaning-edit-id').value;
+  const date = document.getElementById('cleaning-date').value;
+  const type = document.getElementById('cleaning-type').value;
+  const notes = document.getElementById('cleaning-notes').value.trim();
+  if (!date || !type) { alert('Please select a date and cleaning type.'); return; }
+
+  const gun = data.firearms.find(g => g.id === gunId);
+  if (!gun) return;
+  if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
+
+  if (editId) {
+    const c = gun.cleanings.find(c => c.id === editId);
+    if (c) { c.date = date; c.type = type; c.notes = notes; }
+  } else {
+    gun.cleanings.push({ id: uid(), date, type, notes });
+  }
   save(data);
+  closeModal('modal-cleaning');
+  // If history modal is currently open for this gun, refresh it
+  if (currentHistoryGunId === gunId) renderGunHistory(gunId);
   renderDashboard();
+}
+
+function deleteCleaning(gunId, cleaningId) {
+  if (!confirm('Delete this cleaning entry?')) return;
+  const gun = data.firearms.find(g => g.id === gunId);
+  if (!gun) return;
+  gun.cleanings = (gun.cleanings || []).filter(c => c.id !== cleaningId);
+  save(data);
+  if (currentHistoryGunId === gunId) renderGunHistory(gunId);
+  renderDashboard();
+}
+
+let currentHistoryGunId = null;
+function openGunHistory(gunId) {
+  currentHistoryGunId = gunId;
+  renderGunHistory(gunId);
+  openModal('modal-history');
+}
+
+function renderGunHistory(gunId) {
+  const gun = data.firearms.find(g => g.id === gunId);
+  if (!gun) return;
+  document.getElementById('history-title').textContent = gun.name + ' · Cleaning History';
+
+  const rsc = computeRoundsSinceClean(gun);
+  const lastDeep = lastDeepCleanDate(gun);
+  document.getElementById('history-stats').innerHTML = `
+    <div class="cleaning-meta">
+      All-time: <span style="color:var(--text)">${(gun.totalRounds||0).toLocaleString()} rds</span>
+      &nbsp;·&nbsp; Since last deep clean: <span style="color:var(--text)">${rsc} rds</span>
+      ${lastDeep ? `&nbsp;·&nbsp; Last deep ${fmtDate(lastDeep)}` : ''}
+    </div>
+  `;
+
+  const cleanings = [...(gun.cleanings || [])].sort((a,b) => b.date.localeCompare(a.date));
+  const list = document.getElementById('history-list');
+  if (!cleanings.length) {
+    list.innerHTML = '<div class="empty-state">No cleanings logged yet.</div>';
+  } else {
+    list.innerHTML = cleanings.map(c => {
+      const typeLabel = CLEANING_TYPES[c.type]?.label || c.type;
+      return `
+        <div class="cleaning-row">
+          <div class="cleaning-type-badge ${c.type}">${typeLabel}</div>
+          <div>
+            <div class="cleaning-meta-date">${fmtDate(c.date)}</div>
+            ${c.notes ? `<div class="cleaning-meta-notes">${c.notes}</div>` : ''}
+          </div>
+          <div style="display:flex;gap:4px;">
+            <button class="btn-icon" onclick="openLogCleaning('${gunId}','${c.id}')" title="Edit">✏️</button>
+            <button class="btn-icon" onclick="deleteCleaning('${gunId}','${c.id}')" title="Delete">🗑</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
 }
 
 // ── SESSION EDIT / DELETE ─────────────────────────────────────────
