@@ -227,12 +227,39 @@
   .cleaning-type-badge.quick { background: #2c3e50; color: #5dade2; }
   .cleaning-type-badge.deep { background: #1e3a1e; color: #5fbf5f; }
   .cleaning-type-badge.detail { background: #3a1e1e; color: #d4a8a8; }
+  .cleaning-type-badge.zero { background: #3a2e1e; color: #d4b86a; }
   .cleaning-meta {
     font-family: var(--font-mono);
     font-size: 0.75rem;
   }
   .cleaning-meta-date { color: var(--text); }
   .cleaning-meta-notes { color: var(--text-muted); font-size: 0.7rem; margin-top: 2px; }
+  .history-subsection {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 16px 0 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .btn-mini {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 3px 10px;
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .btn-mini:hover { border-color: var(--accent); color: var(--accent); }
 
   /* SESSIONS */
   .session-card {
@@ -532,7 +559,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span>v1.1</span>
+    <span id="app-version">v3.0</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Dashboard</button>
@@ -614,7 +641,7 @@
         <input type="file" id="import-file" accept=".json" onchange="importJSON(this)" style="color:var(--text-muted); font-size:0.8rem;">
       </div>
     </div>
-    <div class="schema-badge">Data schema v2 · Range Log</div>
+    <div class="schema-badge">Data schema v3 · Range Log</div>
   </section>
 </div>
 
@@ -714,23 +741,73 @@
 
 <div class="modal-overlay" id="modal-history">
   <div class="modal" style="max-width:560px;">
-    <div class="modal-title" id="history-title">Cleaning History</div>
-    <div id="history-stats" style="margin-bottom:14px;"></div>
-    <div id="history-list" style="margin-bottom:14px;"></div>
+    <div class="modal-title" id="history-title">Firearm Details</div>
+    <div id="history-stats" style="margin-bottom:8px;"></div>
+
+    <div class="history-subsection">
+      <span>Cleaning History</span>
+      <button class="btn-mini" onclick="openLogCleaning(currentHistoryGunId)">+ Log Cleaning</button>
+    </div>
+    <div id="history-cleanings-list" style="margin-bottom:8px;"></div>
+
+    <div class="history-subsection">
+      <span>Zeros</span>
+      <button class="btn-mini" onclick="openLogZero(currentHistoryGunId)">+ Add Zero</button>
+    </div>
+    <div id="history-zeros-list" style="margin-bottom:14px;"></div>
+
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="closeModal('modal-history')">Close</button>
-      <button class="btn btn-primary" onclick="openLogCleaning(currentHistoryGunId)">+ Log New Cleaning</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-zero">
+  <div class="modal">
+    <div class="modal-title" id="zero-modal-title">Add Zero</div>
+    <input type="hidden" id="zero-gun-id">
+    <input type="hidden" id="zero-edit-id">
+    <div class="form-group">
+      <label>Date zeroed</label>
+      <input type="date" id="zero-date">
+    </div>
+    <div class="form-group">
+      <label>Distance</label>
+      <div style="display:flex;gap:8px;">
+        <input type="number" id="zero-distance" placeholder="e.g. 50" min="0" style="flex:1;">
+        <select id="zero-distance-unit" style="width:90px;">
+          <option value="yd" selected>yards</option>
+          <option value="m">meters</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Ammo</label>
+      <input type="text" id="zero-ammo" placeholder="e.g. Wolf Gold 55gr">
+    </div>
+    <div class="form-group">
+      <label>Optic / sight</label>
+      <input type="text" id="zero-optic" placeholder="e.g. Vortex Viper PST Gen II 1-6x, iron sights">
+    </div>
+    <div class="form-group">
+      <label>Notes (optional)</label>
+      <textarea id="zero-notes" placeholder="Holdovers, dope, conditions..."></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-zero')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveZero()">Save</button>
     </div>
   </div>
 </div>
 
 <script>
-// ── DATA SCHEMA v2 ──────────────────────────────────────────────
+// ── DATA SCHEMA v3 ──────────────────────────────────────────────
 // v1: lastCleaned (single date) per gun
 // v2: cleanings array per gun, each {id, date, type, notes}
 //     type: 'quick' | 'deep' | 'detail'
 //     deep & detail reset the deep-clean counter; quick does not
-const SCHEMA_VERSION = 2;
+// v3: zeros array per gun, each {id, date, distance, distanceUnit, ammo, optic, notes}
+const SCHEMA_VERSION = 3;
 
 const CLEANING_TYPES = {
   quick: { label: 'Quick', resetsDeep: false },
@@ -741,7 +818,7 @@ const CLEANING_TYPES = {
 const DEFAULT_DATA = {
   schemaVersion: SCHEMA_VERSION,
   firearms: [
-    { id: 'g1', name: 'Example Pistol', caliber: '9mm', cleanThreshold: 500, totalRounds: 0, cleanings: [] },
+    { id: 'g1', name: 'Example Pistol', caliber: '9mm', cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [] },
   ],
   locations: [
     { id: 'l1', name: 'Example Range' },
@@ -782,9 +859,18 @@ function migrateData(d) {
     d.schemaVersion = 2;
   }
 
-  // Defensive: ensure every gun has cleanings array
+  // v2 -> v3: add zeros array to each firearm
+  if (d.schemaVersion === 2) {
+    d.firearms.forEach(gun => {
+      if (!Array.isArray(gun.zeros)) gun.zeros = [];
+    });
+    d.schemaVersion = 3;
+  }
+
+  // Defensive: ensure every gun has cleanings + zeros arrays
   d.firearms.forEach(gun => {
     if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
+    if (!Array.isArray(gun.zeros)) gun.zeros = [];
   });
 
   return d;
@@ -884,7 +970,7 @@ function renderDashboard() {
         </div>
         <div class="gun-card-actions">
           <button class="btn-clean" onclick="openLogCleaning('${gun.id}')">+ Log Cleaning</button>
-          <button class="btn-clean" onclick="openGunHistory('${gun.id}')">View History</button>
+          <button class="btn-clean" onclick="openGunHistory('${gun.id}')">View Details</button>
         </div>
       </div>
     `;
@@ -1042,7 +1128,7 @@ function saveGun() {
     const gun = data.firearms.find(g => g.id === id);
     if (gun) { gun.name = name; gun.caliber = caliber; gun.cleanThreshold = threshold; }
   } else {
-    data.firearms.push({ id: uid(), name, caliber, cleanThreshold: threshold, totalRounds: 0, cleanings: [] });
+    data.firearms.push({ id: uid(), name, caliber, cleanThreshold: threshold, totalRounds: 0, cleanings: [], zeros: [] });
   }
   save(data);
   closeModal('modal-gun');
@@ -1123,7 +1209,7 @@ function openGunHistory(gunId) {
 function renderGunHistory(gunId) {
   const gun = data.firearms.find(g => g.id === gunId);
   if (!gun) return;
-  document.getElementById('history-title').textContent = gun.name + ' · Cleaning History';
+  document.getElementById('history-title').textContent = gun.name + ' · Details';
 
   const rsc = computeRoundsSinceClean(gun);
   const lastDeep = lastDeepCleanDate(gun);
@@ -1135,12 +1221,13 @@ function renderGunHistory(gunId) {
     </div>
   `;
 
+  // Cleanings list
   const cleanings = [...(gun.cleanings || [])].sort((a,b) => b.date.localeCompare(a.date));
-  const list = document.getElementById('history-list');
+  const cList = document.getElementById('history-cleanings-list');
   if (!cleanings.length) {
-    list.innerHTML = '<div class="empty-state">No cleanings logged yet.</div>';
+    cList.innerHTML = '<div class="empty-state" style="padding:16px;">No cleanings logged yet.</div>';
   } else {
-    list.innerHTML = cleanings.map(c => {
+    cList.innerHTML = cleanings.map(c => {
       const typeLabel = CLEANING_TYPES[c.type]?.label || c.type;
       return `
         <div class="cleaning-row">
@@ -1157,6 +1244,99 @@ function renderGunHistory(gunId) {
       `;
     }).join('');
   }
+
+  // Zeros list
+  const zeros = [...(gun.zeros || [])].sort((a,b) => b.date.localeCompare(a.date));
+  const zList = document.getElementById('history-zeros-list');
+  if (!zeros.length) {
+    zList.innerHTML = '<div class="empty-state" style="padding:16px;">No zeros recorded yet.</div>';
+  } else {
+    zList.innerHTML = zeros.map(z => {
+      const distLabel = z.distance ? `${z.distance} ${z.distanceUnit || 'yd'}` : '—';
+      const subParts = [];
+      if (z.ammo) subParts.push(z.ammo);
+      if (z.optic) subParts.push(z.optic);
+      return `
+        <div class="cleaning-row">
+          <div class="cleaning-type-badge zero">${distLabel}</div>
+          <div>
+            <div class="cleaning-meta-date">${fmtDate(z.date)}${subParts.length ? ' · ' : ''}<span style="color:var(--text-muted);font-weight:normal;">${subParts.join(' · ')}</span></div>
+            ${z.notes ? `<div class="cleaning-meta-notes">${z.notes}</div>` : ''}
+          </div>
+          <div style="display:flex;gap:4px;">
+            <button class="btn-icon" onclick="openLogZero('${gunId}','${z.id}')" title="Edit">✏️</button>
+            <button class="btn-icon" onclick="deleteZero('${gunId}','${z.id}')" title="Delete">🗑</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+}
+
+// ── ZERO CRUD ─────────────────────────────────────────────────────
+function openLogZero(gunId, zeroId) {
+  const gun = data.firearms.find(g => g.id === gunId);
+  if (!gun) return;
+  document.getElementById('zero-gun-id').value = gunId;
+  document.getElementById('zero-edit-id').value = zeroId || '';
+  document.getElementById('zero-modal-title').textContent =
+    (zeroId ? 'Edit Zero · ' : 'Add Zero · ') + gun.name;
+
+  if (zeroId) {
+    const z = (gun.zeros || []).find(x => x.id === zeroId);
+    if (z) {
+      document.getElementById('zero-date').value = z.date;
+      document.getElementById('zero-distance').value = z.distance || '';
+      document.getElementById('zero-distance-unit').value = z.distanceUnit || 'yd';
+      document.getElementById('zero-ammo').value = z.ammo || '';
+      document.getElementById('zero-optic').value = z.optic || '';
+      document.getElementById('zero-notes').value = z.notes || '';
+    }
+  } else {
+    document.getElementById('zero-date').value = today();
+    document.getElementById('zero-distance').value = '';
+    document.getElementById('zero-distance-unit').value = 'yd';
+    document.getElementById('zero-ammo').value = '';
+    document.getElementById('zero-optic').value = '';
+    document.getElementById('zero-notes').value = '';
+  }
+  openModal('modal-zero');
+}
+
+function saveZero() {
+  const gunId = document.getElementById('zero-gun-id').value;
+  const editId = document.getElementById('zero-edit-id').value;
+  const date = document.getElementById('zero-date').value;
+  const distance = parseFloat(document.getElementById('zero-distance').value) || null;
+  const distanceUnit = document.getElementById('zero-distance-unit').value;
+  const ammo = document.getElementById('zero-ammo').value.trim();
+  const optic = document.getElementById('zero-optic').value.trim();
+  const notes = document.getElementById('zero-notes').value.trim();
+  if (!date) { alert('Please select a date.'); return; }
+  if (!distance) { alert('Please enter a distance.'); return; }
+
+  const gun = data.firearms.find(g => g.id === gunId);
+  if (!gun) return;
+  if (!Array.isArray(gun.zeros)) gun.zeros = [];
+
+  if (editId) {
+    const z = gun.zeros.find(x => x.id === editId);
+    if (z) { z.date = date; z.distance = distance; z.distanceUnit = distanceUnit; z.ammo = ammo; z.optic = optic; z.notes = notes; }
+  } else {
+    gun.zeros.push({ id: uid(), date, distance, distanceUnit, ammo, optic, notes });
+  }
+  save(data);
+  closeModal('modal-zero');
+  if (currentHistoryGunId === gunId) renderGunHistory(gunId);
+}
+
+function deleteZero(gunId, zeroId) {
+  if (!confirm('Delete this zero entry?')) return;
+  const gun = data.firearms.find(g => g.id === gunId);
+  if (!gun) return;
+  gun.zeros = (gun.zeros || []).filter(z => z.id !== zeroId);
+  save(data);
+  if (currentHistoryGunId === gunId) renderGunHistory(gunId);
 }
 
 // ── SESSION EDIT / DELETE ─────────────────────────────────────────
