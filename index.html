@@ -442,6 +442,21 @@
   }
   .btn-icon:hover { color: var(--danger); }
 
+  .reorder-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-right: 4px;
+  }
+  .reorder-btn {
+    padding: 2px 6px;
+    font-size: 0.7rem;
+    line-height: 1;
+    color: var(--text-muted);
+  }
+  .reorder-btn:hover:not(:disabled) { color: var(--accent); }
+  .reorder-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+
   /* SECTION HEADERS */
   .section-header {
     display: flex;
@@ -559,7 +574,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v3.0</span>
+    <span id="app-version">v3.1</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Dashboard</button>
@@ -1077,8 +1092,15 @@ function renderSessions() {
 // ── SETTINGS ──────────────────────────────────────────────────────
 function renderSettings() {
   const gl = document.getElementById('guns-settings-list');
-  gl.innerHTML = data.firearms.map(gun => `
+  gl.innerHTML = data.firearms.map((gun, idx) => {
+    const isFirst = idx === 0;
+    const isLast = idx === data.firearms.length - 1;
+    return `
     <div class="list-item">
+      <div class="reorder-controls">
+        <button class="btn-icon reorder-btn" onclick="moveGun('${gun.id}', -1)" title="Move up" ${isFirst ? 'disabled' : ''}>▲</button>
+        <button class="btn-icon reorder-btn" onclick="moveGun('${gun.id}', 1)" title="Move down" ${isLast ? 'disabled' : ''}>▼</button>
+      </div>
       <div class="list-item-text">
         <div class="list-item-name">${gun.name}</div>
         <div class="list-item-sub">${gun.caliber} · Clean every ${gun.cleanThreshold} rds</div>
@@ -1086,7 +1108,8 @@ function renderSettings() {
       <button class="btn-icon" onclick="openEditGun('${gun.id}')" title="Edit">✏️</button>
       <button class="btn-icon" onclick="deleteGun('${gun.id}')" title="Delete">🗑</button>
     </div>
-  `).join('') || '<div class="empty-state">No firearms.</div>';
+    `;
+  }).join('') || '<div class="empty-state">No firearms.</div>';
 
   const ll = document.getElementById('locations-settings-list');
   ll.innerHTML = data.locations.map(loc => `
@@ -1139,6 +1162,17 @@ function deleteGun(id) {
   data.firearms = data.firearms.filter(g => g.id !== id);
   save(data);
   renderAll();
+}
+function moveGun(id, direction) {
+  const idx = data.firearms.findIndex(g => g.id === id);
+  if (idx < 0) return;
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= data.firearms.length) return;
+  const [moved] = data.firearms.splice(idx, 1);
+  data.firearms.splice(newIdx, 0, moved);
+  save(data);
+  renderSettings();
+  renderDashboard();
 }
 // ── CLEANING CRUD ─────────────────────────────────────────────────
 function openLogCleaning(gunId, cleaningId) {
