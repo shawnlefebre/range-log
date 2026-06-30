@@ -457,6 +457,135 @@
   .reorder-btn:hover:not(:disabled) { color: var(--accent); }
   .reorder-btn:disabled { opacity: 0.25; cursor: not-allowed; }
 
+  /* AMMO */
+  .ammo-filters {
+    display: flex;
+    gap: 10px;
+    margin: 14px 0 12px;
+  }
+  .ammo-filter-group { flex: 1; }
+  .filter-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .ammo-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+  .ammo-card.used-up { opacity: 0.5; }
+  .ammo-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .ammo-caliber-badge {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .ammo-name {
+    font-size: 0.92rem;
+    font-weight: 500;
+    color: var(--text);
+    margin-top: 2px;
+  }
+  .ammo-cpr {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    color: var(--accent);
+    line-height: 1;
+    text-align: right;
+  }
+  .ammo-cpr-label {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-align: right;
+    text-transform: uppercase;
+  }
+  .ammo-meta {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    margin-top: 6px;
+  }
+  .ammo-meta span { color: var(--text); }
+  .ammo-status-pill {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: #1e3a1e;
+    color: #5fbf5f;
+  }
+  .ammo-status-pill.usedup {
+    background: #3a2e2e;
+    color: #a99393;
+  }
+  .ammo-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .ammo-actions button { flex: 1; }
+  .ammo-notes {
+    margin-top: 6px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-style: italic;
+  }
+  .ammo-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  @media (min-width: 480px) {
+    .ammo-stat-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+  .ammo-stat-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px;
+    text-align: center;
+  }
+  .ammo-stat-num {
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    color: var(--accent);
+    line-height: 1;
+  }
+  .ammo-stat-label {
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
   /* SECTION HEADERS */
   .section-header {
     display: flex;
@@ -574,12 +703,13 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v3.1</span>
+    <span id="app-version">v4.0</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Dashboard</button>
     <button onclick="showTab('log')">Log Session</button>
     <button onclick="showTab('sessions')">Sessions</button>
+    <button onclick="showTab('ammo')">Ammo</button>
     <button onclick="showTab('settings')">Settings</button>
   </nav>
 
@@ -626,6 +756,31 @@
     <div id="sessions-list"></div>
   </section>
 
+  <!-- AMMO -->
+  <section id="tab-ammo">
+    <div class="section-header">
+      <div class="section-title">Ammo Log</div>
+      <button class="btn btn-secondary" onclick="openAddAmmo()">+ Log Purchase</button>
+    </div>
+    <div id="ammo-stats"></div>
+    <div class="ammo-filters">
+      <div class="ammo-filter-group">
+        <label class="filter-label">Caliber</label>
+        <select id="ammo-filter-caliber" onchange="renderAmmo()">
+          <option value="">All calibers</option>
+        </select>
+      </div>
+      <div class="ammo-filter-group">
+        <label class="filter-label">Stock</label>
+        <select id="ammo-filter-stock" onchange="renderAmmo()">
+          <option value="instock" selected>In stock only</option>
+          <option value="all">All (incl. used up)</option>
+        </select>
+      </div>
+    </div>
+    <div id="ammo-list"></div>
+  </section>
+
   <!-- SETTINGS -->
   <section id="tab-settings">
     <div class="section-header">
@@ -656,7 +811,7 @@
         <input type="file" id="import-file" accept=".json" onchange="importJSON(this)" style="color:var(--text-muted); font-size:0.8rem;">
       </div>
     </div>
-    <div class="schema-badge">Data schema v3 · Range Log</div>
+    <div class="schema-badge">Data schema v4 · Range Log</div>
   </section>
 </div>
 
@@ -722,6 +877,52 @@
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="closeModal('modal-location')">Cancel</button>
       <button class="btn btn-primary" onclick="saveLocation()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-ammo">
+  <div class="modal">
+    <div class="modal-title" id="ammo-modal-title">Log Ammo Purchase</div>
+    <input type="hidden" id="ammo-edit-id">
+    <div class="form-group">
+      <label>Date purchased</label>
+      <input type="date" id="ammo-date">
+    </div>
+    <div class="form-group">
+      <label>Caliber</label>
+      <input type="text" id="ammo-caliber" placeholder="e.g. 9mm, .22 LR, .223 Rem">
+    </div>
+    <div class="form-group">
+      <label>Manufacturer</label>
+      <input type="text" id="ammo-manufacturer" placeholder="e.g. Federal, CCI">
+    </div>
+    <div class="form-group">
+      <label>Model</label>
+      <input type="text" id="ammo-model" placeholder="e.g. American Eagle 115gr FMJ">
+    </div>
+    <div class="form-group">
+      <label>Quantity (rounds)</label>
+      <input type="number" id="ammo-quantity" min="1" placeholder="e.g. 500">
+    </div>
+    <div class="form-group">
+      <label>Total price ($)</label>
+      <input type="number" id="ammo-price" min="0" step="0.01" placeholder="e.g. 124.99">
+    </div>
+    <div class="form-group">
+      <label>Status</label>
+      <select id="ammo-status">
+        <option value="instock" selected>In stock</option>
+        <option value="usedup">Used up</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Notes (optional)</label>
+      <textarea id="ammo-notes" placeholder="e.g. estimate, GovX discount, Ammoseek deal..."></textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-ammo')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAmmo()">Save</button>
     </div>
   </div>
 </div>
@@ -816,13 +1017,14 @@
 </div>
 
 <script>
-// ── DATA SCHEMA v3 ──────────────────────────────────────────────
+// ── DATA SCHEMA v4 ──────────────────────────────────────────────
 // v1: lastCleaned (single date) per gun
 // v2: cleanings array per gun, each {id, date, type, notes}
 //     type: 'quick' | 'deep' | 'detail'
 //     deep & detail reset the deep-clean counter; quick does not
 // v3: zeros array per gun, each {id, date, distance, distanceUnit, ammo, optic, notes}
-const SCHEMA_VERSION = 3;
+// v4: top-level ammo array, each {id, date, caliber, manufacturer, model, quantity, totalPrice, notes}
+const SCHEMA_VERSION = 4;
 
 const CLEANING_TYPES = {
   quick: { label: 'Quick', resetsDeep: false },
@@ -838,7 +1040,8 @@ const DEFAULT_DATA = {
   locations: [
     { id: 'l1', name: 'Example Range' },
   ],
-  sessions: []
+  sessions: [],
+  ammo: []
 };
 
 // ── STORAGE ──────────────────────────────────────────────────────
@@ -882,11 +1085,18 @@ function migrateData(d) {
     d.schemaVersion = 3;
   }
 
-  // Defensive: ensure every gun has cleanings + zeros arrays
+  // v3 -> v4: add top-level ammo array
+  if (d.schemaVersion === 3) {
+    if (!Array.isArray(d.ammo)) d.ammo = [];
+    d.schemaVersion = 4;
+  }
+
+  // Defensive: ensure every gun has cleanings + zeros arrays, and ammo exists
   d.firearms.forEach(gun => {
     if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
     if (!Array.isArray(gun.zeros)) gun.zeros = [];
   });
+  if (!Array.isArray(d.ammo)) d.ammo = [];
 
   return d;
 }
@@ -1481,6 +1691,162 @@ function deleteLocation(id) {
   renderSettings();
 }
 
+// ── AMMO CRUD ─────────────────────────────────────────────────────
+function openAddAmmo() {
+  document.getElementById('ammo-modal-title').textContent = 'Log Ammo Purchase';
+  document.getElementById('ammo-edit-id').value = '';
+  document.getElementById('ammo-date').value = today();
+  document.getElementById('ammo-caliber').value = '';
+  document.getElementById('ammo-manufacturer').value = '';
+  document.getElementById('ammo-model').value = '';
+  document.getElementById('ammo-quantity').value = '';
+  document.getElementById('ammo-price').value = '';
+  document.getElementById('ammo-status').value = 'instock';
+  document.getElementById('ammo-notes').value = '';
+  openModal('modal-ammo');
+}
+
+function openEditAmmo(id) {
+  const a = (data.ammo || []).find(x => x.id === id);
+  if (!a) return;
+  document.getElementById('ammo-modal-title').textContent = 'Edit Ammo Purchase';
+  document.getElementById('ammo-edit-id').value = id;
+  document.getElementById('ammo-date').value = a.date || '';
+  document.getElementById('ammo-caliber').value = a.caliber || '';
+  document.getElementById('ammo-manufacturer').value = a.manufacturer || '';
+  document.getElementById('ammo-model').value = a.model || '';
+  document.getElementById('ammo-quantity').value = a.quantity || '';
+  document.getElementById('ammo-price').value = a.totalPrice || '';
+  document.getElementById('ammo-status').value = a.status || 'instock';
+  document.getElementById('ammo-notes').value = a.notes || '';
+  openModal('modal-ammo');
+}
+
+function saveAmmo() {
+  const id = document.getElementById('ammo-edit-id').value;
+  const date = document.getElementById('ammo-date').value;
+  const caliber = document.getElementById('ammo-caliber').value.trim();
+  const manufacturer = document.getElementById('ammo-manufacturer').value.trim();
+  const model = document.getElementById('ammo-model').value.trim();
+  const quantity = parseInt(document.getElementById('ammo-quantity').value, 10);
+  const totalPrice = parseFloat(document.getElementById('ammo-price').value);
+  const status = document.getElementById('ammo-status').value;
+  const notes = document.getElementById('ammo-notes').value.trim();
+
+  if (!date) { alert('Please select a date.'); return; }
+  if (!caliber) { alert('Please enter a caliber.'); return; }
+  if (!quantity || quantity <= 0) { alert('Please enter a valid quantity.'); return; }
+  if (isNaN(totalPrice) || totalPrice < 0) { alert('Please enter a valid total price.'); return; }
+
+  if (!Array.isArray(data.ammo)) data.ammo = [];
+  if (id) {
+    const a = data.ammo.find(x => x.id === id);
+    if (a) Object.assign(a, { date, caliber, manufacturer, model, quantity, totalPrice, status, notes });
+  } else {
+    data.ammo.push({ id: uid(), date, caliber, manufacturer, model, quantity, totalPrice, status, notes });
+  }
+  save(data);
+  closeModal('modal-ammo');
+  renderAmmo();
+}
+
+function deleteAmmo(id) {
+  if (!confirm('Delete this ammo purchase?')) return;
+  data.ammo = (data.ammo || []).filter(a => a.id !== id);
+  save(data);
+  renderAmmo();
+}
+
+function toggleAmmoStatus(id) {
+  const a = (data.ammo || []).find(x => x.id === id);
+  if (!a) return;
+  a.status = a.status === 'usedup' ? 'instock' : 'usedup';
+  save(data);
+  renderAmmo();
+}
+
+// ── AMMO RENDER ───────────────────────────────────────────────────
+function renderAmmo() {
+  const ammo = data.ammo || [];
+
+  // Populate caliber filter dropdown (preserve current selection)
+  const calSel = document.getElementById('ammo-filter-caliber');
+  const currentCal = calSel.value;
+  const calibers = [...new Set(ammo.map(a => a.caliber).filter(Boolean))].sort();
+  calSel.innerHTML = '<option value="">All calibers</option>' +
+    calibers.map(c => `<option value="${c}"${c === currentCal ? ' selected' : ''}>${c}</option>`).join('');
+
+  const filterCal = calSel.value;
+  const filterStock = document.getElementById('ammo-filter-stock').value;
+
+  // Apply filters
+  let filtered = ammo;
+  if (filterCal) filtered = filtered.filter(a => a.caliber === filterCal);
+  if (filterStock === 'instock') filtered = filtered.filter(a => (a.status || 'instock') === 'instock');
+
+  // Stats
+  const statsEl = document.getElementById('ammo-stats');
+  if (!filtered.length) {
+    statsEl.innerHTML = '';
+  } else {
+    const totalRounds = filtered.reduce((s, a) => s + (a.quantity || 0), 0);
+    const totalSpend = filtered.reduce((s, a) => s + (a.totalPrice || 0), 0);
+    const cprs = filtered.filter(a => a.quantity > 0).map(a => a.totalPrice / a.quantity);
+    const avgCPR = cprs.length ? (cprs.reduce((s, c) => s + c, 0) / cprs.length) : 0;
+    const minCPR = cprs.length ? Math.min(...cprs) : 0;
+    const maxCPR = cprs.length ? Math.max(...cprs) : 0;
+    const rangeStr = cprs.length ? `$${minCPR.toFixed(2)} – $${maxCPR.toFixed(2)}` : '—';
+    statsEl.innerHTML = `
+      <div class="ammo-stat-grid">
+        <div class="ammo-stat-box"><div class="ammo-stat-num">${totalRounds.toLocaleString()}</div><div class="ammo-stat-label">Rounds</div></div>
+        <div class="ammo-stat-box"><div class="ammo-stat-num">$${totalSpend.toFixed(2)}</div><div class="ammo-stat-label">Spend</div></div>
+        <div class="ammo-stat-box"><div class="ammo-stat-num">$${avgCPR.toFixed(3)}</div><div class="ammo-stat-label">Avg CPR</div></div>
+        <div class="ammo-stat-box"><div class="ammo-stat-num" style="font-size:0.85rem;font-family:var(--font-mono);">${rangeStr}</div><div class="ammo-stat-label">CPR Range</div></div>
+      </div>
+    `;
+  }
+
+  // List
+  const listEl = document.getElementById('ammo-list');
+  if (!filtered.length) {
+    listEl.innerHTML = '<div class="empty-state">' + (ammo.length ? 'No purchases match the current filter.' : 'No ammo purchases logged yet.') + '</div>';
+    return;
+  }
+
+  const sorted = [...filtered].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  listEl.innerHTML = sorted.map(a => {
+    const cpr = a.quantity > 0 ? a.totalPrice / a.quantity : 0;
+    const isUsedUp = (a.status || 'instock') === 'usedup';
+    const name = [a.manufacturer, a.model].filter(Boolean).join(' ') || '(unnamed)';
+    return `
+      <div class="ammo-card ${isUsedUp ? 'used-up' : ''}">
+        <div class="ammo-card-header">
+          <div style="flex:1;min-width:0;">
+            <div class="ammo-caliber-badge">${a.caliber}</div>
+            <div class="ammo-name">${name}</div>
+          </div>
+          <div>
+            <div class="ammo-cpr">$${cpr.toFixed(3)}</div>
+            <div class="ammo-cpr-label">per round</div>
+          </div>
+        </div>
+        <div class="ammo-meta">
+          <span>${(a.quantity || 0).toLocaleString()}</span> rds &nbsp;·&nbsp;
+          <span>$${(a.totalPrice || 0).toFixed(2)}</span> &nbsp;·&nbsp;
+          ${fmtDate(a.date)} &nbsp;·&nbsp;
+          <span class="ammo-status-pill ${isUsedUp ? 'usedup' : ''}">${isUsedUp ? 'Used up' : 'In stock'}</span>
+        </div>
+        ${a.notes ? `<div class="ammo-notes">${a.notes}</div>` : ''}
+        <div class="ammo-actions">
+          <button class="btn-mini" onclick="toggleAmmoStatus('${a.id}')">${isUsedUp ? 'Mark in stock' : 'Mark used up'}</button>
+          <button class="btn-mini" onclick="openEditAmmo('${a.id}')">Edit</button>
+          <button class="btn-mini" onclick="deleteAmmo('${a.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 // ── MODALS ────────────────────────────────────────────────────────
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
@@ -1493,11 +1859,12 @@ function showTab(name) {
   document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  const tabs = ['dashboard','log','sessions','settings'];
+  const tabs = ['dashboard','log','sessions','ammo','settings'];
   document.querySelectorAll('nav button')[tabs.indexOf(name)]?.classList.add('active');
   if (name === 'dashboard') renderDashboard();
   if (name === 'log') renderLogForm();
   if (name === 'sessions') renderSessions();
+  if (name === 'ammo') renderAmmo();
   if (name === 'settings') renderSettings();
 }
 
@@ -1565,6 +1932,7 @@ function renderAll() {
   renderDashboard();
   renderLogForm();
   renderSessions();
+  renderAmmo();
   renderSettings();
 }
 
