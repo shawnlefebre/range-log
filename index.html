@@ -703,7 +703,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v4.0</span>
+    <span id="app-version">v4.1</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Dashboard</button>
@@ -796,6 +796,12 @@
     <div id="locations-settings-list"></div>
 
     <div class="section-header" style="margin-top:24px;">
+      <div class="section-title">Sellers</div>
+      <button class="btn btn-secondary" onclick="openAddSeller()">+ Add</button>
+    </div>
+    <div id="sellers-settings-list"></div>
+
+    <div class="section-header" style="margin-top:24px;">
       <div class="section-title">Data</div>
     </div>
     <div class="card">
@@ -881,6 +887,21 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-seller">
+  <div class="modal">
+    <div class="modal-title">Add Seller</div>
+    <input type="hidden" id="seller-edit-id">
+    <div class="form-group">
+      <label>Seller / store name</label>
+      <input type="text" id="seller-name" placeholder="e.g. Cabela's, Local Gun Shop, Online Retailer">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-seller')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSeller()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-ammo">
   <div class="modal">
     <div class="modal-title" id="ammo-modal-title">Log Ammo Purchase</div>
@@ -908,6 +929,12 @@
     <div class="form-group">
       <label>Total price ($)</label>
       <input type="number" id="ammo-price" min="0" step="0.01" placeholder="e.g. 124.99">
+    </div>
+    <div class="form-group">
+      <label>Seller / store</label>
+      <select id="ammo-seller">
+        <option value="">— Not specified —</option>
+      </select>
     </div>
     <div class="form-group">
       <label>Status</label>
@@ -1040,6 +1067,9 @@ const DEFAULT_DATA = {
   locations: [
     { id: 'l1', name: 'Example Range' },
   ],
+  sellers: [
+    { id: 's1', name: 'Example Store' },
+  ],
   sessions: [],
   ammo: []
 };
@@ -1091,12 +1121,13 @@ function migrateData(d) {
     d.schemaVersion = 4;
   }
 
-  // Defensive: ensure every gun has cleanings + zeros arrays, and ammo exists
+  // Defensive: ensure every gun has cleanings + zeros arrays, and ammo + sellers exist
   d.firearms.forEach(gun => {
     if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
     if (!Array.isArray(gun.zeros)) gun.zeros = [];
   });
   if (!Array.isArray(d.ammo)) d.ammo = [];
+  if (!Array.isArray(d.sellers)) d.sellers = [];
 
   return d;
 }
@@ -1330,6 +1361,17 @@ function renderSettings() {
       <button class="btn-icon" onclick="deleteLocation('${loc.id}')" title="Delete">🗑</button>
     </div>
   `).join('') || '<div class="empty-state">No locations.</div>';
+
+  const sl = document.getElementById('sellers-settings-list');
+  const sellers = data.sellers || [];
+  sl.innerHTML = sellers.map(seller => `
+    <div class="list-item">
+      <div class="list-item-text">
+        <div class="list-item-name">${seller.name}</div>
+      </div>
+      <button class="btn-icon" onclick="deleteSeller('${seller.id}')" title="Delete">🗑</button>
+    </div>
+  `).join('') || '<div class="empty-state">No sellers.</div>';
 }
 
 // ── GUN CRUD ──────────────────────────────────────────────────────
@@ -1691,7 +1733,36 @@ function deleteLocation(id) {
   renderSettings();
 }
 
+// ── SELLER CRUD ───────────────────────────────────────────────────
+function openAddSeller() {
+  document.getElementById('seller-edit-id').value = '';
+  document.getElementById('seller-name').value = '';
+  openModal('modal-seller');
+}
+function saveSeller() {
+  const name = document.getElementById('seller-name').value.trim();
+  if (!name) { alert('Enter a seller name.'); return; }
+  if (!Array.isArray(data.sellers)) data.sellers = [];
+  data.sellers.push({ id: uid(), name });
+  save(data);
+  closeModal('modal-seller');
+  renderSettings();
+}
+function deleteSeller(id) {
+  if (!confirm('Remove this seller? Past purchases will retain a reference but show as Unknown.')) return;
+  data.sellers = (data.sellers || []).filter(s => s.id !== id);
+  save(data);
+  renderSettings();
+}
+
 // ── AMMO CRUD ─────────────────────────────────────────────────────
+function populateAmmoSellerDropdown(selectedId) {
+  const sel = document.getElementById('ammo-seller');
+  const sellers = data.sellers || [];
+  sel.innerHTML = '<option value="">— Not specified —</option>' +
+    sellers.map(s => `<option value="${s.id}"${s.id === selectedId ? ' selected' : ''}>${s.name}</option>`).join('');
+}
+
 function openAddAmmo() {
   document.getElementById('ammo-modal-title').textContent = 'Log Ammo Purchase';
   document.getElementById('ammo-edit-id').value = '';
@@ -1703,6 +1774,7 @@ function openAddAmmo() {
   document.getElementById('ammo-price').value = '';
   document.getElementById('ammo-status').value = 'instock';
   document.getElementById('ammo-notes').value = '';
+  populateAmmoSellerDropdown('');
   openModal('modal-ammo');
 }
 
@@ -1719,6 +1791,7 @@ function openEditAmmo(id) {
   document.getElementById('ammo-price').value = a.totalPrice || '';
   document.getElementById('ammo-status').value = a.status || 'instock';
   document.getElementById('ammo-notes').value = a.notes || '';
+  populateAmmoSellerDropdown(a.sellerId || '');
   openModal('modal-ammo');
 }
 
@@ -1730,6 +1803,7 @@ function saveAmmo() {
   const model = document.getElementById('ammo-model').value.trim();
   const quantity = parseInt(document.getElementById('ammo-quantity').value, 10);
   const totalPrice = parseFloat(document.getElementById('ammo-price').value);
+  const sellerId = document.getElementById('ammo-seller').value || null;
   const status = document.getElementById('ammo-status').value;
   const notes = document.getElementById('ammo-notes').value.trim();
 
@@ -1741,9 +1815,9 @@ function saveAmmo() {
   if (!Array.isArray(data.ammo)) data.ammo = [];
   if (id) {
     const a = data.ammo.find(x => x.id === id);
-    if (a) Object.assign(a, { date, caliber, manufacturer, model, quantity, totalPrice, status, notes });
+    if (a) Object.assign(a, { date, caliber, manufacturer, model, quantity, totalPrice, sellerId, status, notes });
   } else {
-    data.ammo.push({ id: uid(), date, caliber, manufacturer, model, quantity, totalPrice, status, notes });
+    data.ammo.push({ id: uid(), date, caliber, manufacturer, model, quantity, totalPrice, sellerId, status, notes });
   }
   save(data);
   closeModal('modal-ammo');
@@ -1818,6 +1892,8 @@ function renderAmmo() {
     const cpr = a.quantity > 0 ? a.totalPrice / a.quantity : 0;
     const isUsedUp = (a.status || 'instock') === 'usedup';
     const name = [a.manufacturer, a.model].filter(Boolean).join(' ') || '(unnamed)';
+    const seller = a.sellerId ? (data.sellers || []).find(s => s.id === a.sellerId) : null;
+    const sellerLabel = seller ? seller.name : (a.sellerId ? 'Unknown seller' : '');
     return `
       <div class="ammo-card ${isUsedUp ? 'used-up' : ''}">
         <div class="ammo-card-header">
@@ -1833,7 +1909,7 @@ function renderAmmo() {
         <div class="ammo-meta">
           <span>${(a.quantity || 0).toLocaleString()}</span> rds &nbsp;·&nbsp;
           <span>$${(a.totalPrice || 0).toFixed(2)}</span> &nbsp;·&nbsp;
-          ${fmtDate(a.date)} &nbsp;·&nbsp;
+          ${fmtDate(a.date)}${sellerLabel ? ` &nbsp;·&nbsp; <span>${sellerLabel}</span>` : ''} &nbsp;·&nbsp;
           <span class="ammo-status-pill ${isUsedUp ? 'usedup' : ''}">${isUsedUp ? 'Used up' : 'In stock'}</span>
         </div>
         ${a.notes ? `<div class="ammo-notes">${a.notes}</div>` : ''}
