@@ -732,7 +732,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v4.2</span>
+    <span id="app-version">v4.3</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Dashboard</button>
@@ -941,7 +941,10 @@
     </div>
     <div class="form-group">
       <label>Caliber</label>
-      <input type="text" id="ammo-caliber" placeholder="e.g. 9mm, .22 LR, .223 Rem">
+      <select id="ammo-caliber-select" onchange="handleCaliberSelectChange()">
+        <option value="">— Select caliber —</option>
+      </select>
+      <input type="text" id="ammo-caliber-custom" placeholder="e.g. 9mm, .22 LR, .223 Rem" style="margin-top:6px;display:none;">
     </div>
     <div class="form-group">
       <label>Manufacturer</label>
@@ -1792,11 +1795,60 @@ function populateAmmoSellerDropdown(selectedId) {
     sellers.map(s => `<option value="${s.id}"${s.id === selectedId ? ' selected' : ''}>${s.name}</option>`).join('');
 }
 
+function allKnownCalibers() {
+  // Gather unique calibers from firearms and ammo history
+  const set = new Set();
+  (data.firearms || []).forEach(g => { if (g.caliber) set.add(g.caliber.trim()); });
+  (data.ammo || []).forEach(a => { if (a.caliber) set.add(a.caliber.trim()); });
+  return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+function populateAmmoCaliberDropdown(selectedCaliber) {
+  const sel = document.getElementById('ammo-caliber-select');
+  const custom = document.getElementById('ammo-caliber-custom');
+  const known = allKnownCalibers();
+  const isKnown = selectedCaliber && known.includes(selectedCaliber);
+
+  sel.innerHTML =
+    '<option value="">— Select caliber —</option>' +
+    known.map(c => `<option value="${c}"${c === selectedCaliber ? ' selected' : ''}>${c}</option>`).join('') +
+    '<option value="__new__">+ New caliber...</option>';
+
+  if (selectedCaliber && !isKnown) {
+    // Editing an entry with a caliber not in the current list — treat as custom
+    sel.value = '__new__';
+    custom.value = selectedCaliber;
+    custom.style.display = 'block';
+  } else {
+    custom.value = '';
+    custom.style.display = 'none';
+  }
+}
+
+function handleCaliberSelectChange() {
+  const sel = document.getElementById('ammo-caliber-select');
+  const custom = document.getElementById('ammo-caliber-custom');
+  if (sel.value === '__new__') {
+    custom.style.display = 'block';
+    custom.focus();
+  } else {
+    custom.style.display = 'none';
+    custom.value = '';
+  }
+}
+
+function getSelectedCaliber() {
+  const sel = document.getElementById('ammo-caliber-select');
+  if (sel.value === '__new__') {
+    return document.getElementById('ammo-caliber-custom').value.trim();
+  }
+  return sel.value.trim();
+}
+
 function openAddAmmo() {
   document.getElementById('ammo-modal-title').textContent = 'Log Ammo Purchase';
   document.getElementById('ammo-edit-id').value = '';
   document.getElementById('ammo-date').value = today();
-  document.getElementById('ammo-caliber').value = '';
   document.getElementById('ammo-manufacturer').value = '';
   document.getElementById('ammo-model').value = '';
   document.getElementById('ammo-quantity').value = '';
@@ -1804,6 +1856,7 @@ function openAddAmmo() {
   document.getElementById('ammo-status').value = 'instock';
   document.getElementById('ammo-notes').value = '';
   populateAmmoSellerDropdown('');
+  populateAmmoCaliberDropdown('');
   openModal('modal-ammo');
 }
 
@@ -1813,7 +1866,6 @@ function openEditAmmo(id) {
   document.getElementById('ammo-modal-title').textContent = 'Edit Ammo Purchase';
   document.getElementById('ammo-edit-id').value = id;
   document.getElementById('ammo-date').value = a.date || '';
-  document.getElementById('ammo-caliber').value = a.caliber || '';
   document.getElementById('ammo-manufacturer').value = a.manufacturer || '';
   document.getElementById('ammo-model').value = a.model || '';
   document.getElementById('ammo-quantity').value = a.quantity || '';
@@ -1821,13 +1873,14 @@ function openEditAmmo(id) {
   document.getElementById('ammo-status').value = a.status || 'instock';
   document.getElementById('ammo-notes').value = a.notes || '';
   populateAmmoSellerDropdown(a.sellerId || '');
+  populateAmmoCaliberDropdown(a.caliber || '');
   openModal('modal-ammo');
 }
 
 function saveAmmo() {
   const id = document.getElementById('ammo-edit-id').value;
   const date = document.getElementById('ammo-date').value;
-  const caliber = document.getElementById('ammo-caliber').value.trim();
+  const caliber = getSelectedCaliber();
   const manufacturer = document.getElementById('ammo-manufacturer').value.trim();
   const model = document.getElementById('ammo-model').value.trim();
   const quantity = parseInt(document.getElementById('ammo-quantity').value, 10);
@@ -1837,7 +1890,7 @@ function saveAmmo() {
   const notes = document.getElementById('ammo-notes').value.trim();
 
   if (!date) { alert('Please select a date.'); return; }
-  if (!caliber) { alert('Please enter a caliber.'); return; }
+  if (!caliber) { alert('Please select or enter a caliber.'); return; }
   if (!quantity || quantity <= 0) { alert('Please enter a valid quantity.'); return; }
   if (isNaN(totalPrice) || totalPrice < 0) { alert('Please enter a valid total price.'); return; }
 
@@ -2045,7 +2098,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '4.2';
+const APP_VERSION = '4.3';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

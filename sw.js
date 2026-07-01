@@ -1,7 +1,7 @@
 // Range Log service worker
 // Strategy: network-first for HTML so app updates propagate quickly.
 // Bump APP_VERSION whenever the HTML changes to force a new SW install.
-const APP_VERSION = '4.2';
+const APP_VERSION = '4.3';
 const CACHE_NAME = `range-log-${APP_VERSION}`;
 
 self.addEventListener('install', event => {
