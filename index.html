@@ -586,6 +586,35 @@
     margin-top: 4px;
   }
 
+  /* UPDATE BANNER */
+  #update-banner {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent);
+    color: #0e0e0e;
+    padding: 10px 16px;
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    z-index: 500;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    font-weight: 600;
+    display: none;
+    align-items: center;
+    gap: 10px;
+  }
+  #update-banner.open { display: flex; }
+  #update-banner .close-x {
+    opacity: 0.6;
+    font-size: 1rem;
+    padding: 0 4px;
+  }
+
   /* SECTION HEADERS */
   .section-header {
     display: flex;
@@ -703,7 +732,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v4.1</span>
+    <span id="app-version">v4.2</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Dashboard</button>
@@ -2014,6 +2043,70 @@ function renderAll() {
 
 renderDashboard();
 renderLogForm();
+
+// ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
+const APP_VERSION = '4.2';
+
+function showUpdateBanner() {
+  const banner = document.getElementById('update-banner');
+  if (banner) banner.classList.add('open');
+}
+
+function applyUpdate() {
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    // Ask waiting SW to skip waiting, then reload once controller changes
+    navigator.serviceWorker.getRegistration().then(reg => {
+      if (reg && reg.waiting) {
+        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      } else {
+        window.location.reload();
+      }
+    });
+  } else {
+    window.location.reload();
+  }
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+      .then(reg => {
+        // Check for updates immediately and every 30 minutes while open
+        reg.update();
+        setInterval(() => reg.update(), 30 * 60 * 1000);
+
+        // A new SW has been found and is installing
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New version ready and waiting — show banner
+              showUpdateBanner();
+            }
+          });
+        });
+
+        // On page load, if a SW is already waiting, show banner
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          showUpdateBanner();
+        }
+      })
+      .catch(err => console.log('SW registration failed:', err));
+
+    // Reload once the new SW takes control
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
+  });
+}
 </script>
+<div id="update-banner" onclick="applyUpdate()">
+  <span>⟳ New version available — tap to update</span>
+  <span class="close-x" onclick="event.stopPropagation(); document.getElementById('update-banner').classList.remove('open');">×</span>
+</div>
 </body>
 </html>
