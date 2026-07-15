@@ -457,6 +457,46 @@
   .reorder-btn:hover:not(:disabled) { color: var(--accent); }
   .reorder-btn:disabled { opacity: 0.25; cursor: not-allowed; }
 
+  /* CHIPS (multi-select display) */
+  .chips-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 34px;
+    padding: 6px 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    align-items: center;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 3px 6px 3px 10px;
+    border-radius: 20px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+  }
+  .chip .remove-x {
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 0 4px;
+    font-size: 0.85rem;
+    line-height: 1;
+  }
+  .chip .remove-x:hover { color: var(--danger); }
+  .chips-empty {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    padding: 2px 4px;
+  }
+
   /* AMMO */
   .ammo-filters {
     display: flex;
@@ -732,7 +772,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v4.3</span>
+    <span id="app-version">v4.4</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Dashboard</button>
@@ -846,7 +886,7 @@
         <input type="file" id="import-file" accept=".json" onchange="importJSON(this)" style="color:var(--text-muted); font-size:0.8rem;">
       </div>
     </div>
-    <div class="schema-badge">Data schema v4 · Range Log</div>
+    <div class="schema-badge">Data schema v5 · Range Log</div>
   </section>
 </div>
 
@@ -860,8 +900,15 @@
       <input type="text" id="gun-name" placeholder="e.g. Ruger Mark II">
     </div>
     <div class="form-group">
-      <label>Caliber</label>
-      <input type="text" id="gun-caliber" placeholder="e.g. .22 LR">
+      <label>Calibers (one or more)</label>
+      <div id="gun-calibers-chips" class="chips-container"></div>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <select id="gun-caliber-add-select" style="flex:1;">
+          <option value="">— Add caliber —</option>
+        </select>
+        <button type="button" class="btn btn-secondary" style="padding:8px 12px;font-size:0.7rem;" onclick="addGunCaliberFromSelect()">Add</button>
+      </div>
+      <input type="text" id="gun-caliber-custom" placeholder="Type new caliber, e.g. .22 LR" style="margin-top:6px;display:none;">
     </div>
     <div class="form-group">
       <label>Clean reminder (rounds since last deep clean)</label>
@@ -1058,11 +1105,17 @@
     </div>
     <div class="form-group">
       <label>Ammo</label>
-      <input type="text" id="zero-ammo" placeholder="e.g. Wolf Gold 55gr">
+      <select id="zero-ammo-select" onchange="handleZeroAmmoSelectChange()">
+        <option value="">— Select ammo —</option>
+      </select>
+      <input type="text" id="zero-ammo-custom" placeholder="Type custom ammo, e.g. Wolf Gold 55gr" style="margin-top:6px;display:none;">
     </div>
     <div class="form-group">
       <label>Optic / sight</label>
-      <input type="text" id="zero-optic" placeholder="e.g. Vortex Viper PST Gen II 1-6x, iron sights">
+      <select id="zero-optic-select" onchange="handleZeroOpticSelectChange()">
+        <option value="">— Select optic —</option>
+      </select>
+      <input type="text" id="zero-optic-custom" placeholder="Type custom, e.g. Vortex Venom, iron sights" style="margin-top:6px;display:none;">
     </div>
     <div class="form-group">
       <label>Notes (optional)</label>
@@ -1076,14 +1129,15 @@
 </div>
 
 <script>
-// ── DATA SCHEMA v4 ──────────────────────────────────────────────
+// ── DATA SCHEMA v5 ──────────────────────────────────────────────
 // v1: lastCleaned (single date) per gun
 // v2: cleanings array per gun, each {id, date, type, notes}
 //     type: 'quick' | 'deep' | 'detail'
 //     deep & detail reset the deep-clean counter; quick does not
 // v3: zeros array per gun, each {id, date, distance, distanceUnit, ammo, optic, notes}
 // v4: top-level ammo array, each {id, date, caliber, manufacturer, model, quantity, totalPrice, notes}
-const SCHEMA_VERSION = 4;
+// v5: gun.caliber becomes calibers array (multi-select); primary caliber = first entry
+const SCHEMA_VERSION = 5;
 
 const CLEANING_TYPES = {
   quick: { label: 'Quick', resetsDeep: false },
@@ -1094,7 +1148,7 @@ const CLEANING_TYPES = {
 const DEFAULT_DATA = {
   schemaVersion: SCHEMA_VERSION,
   firearms: [
-    { id: 'g1', name: 'Example Pistol', caliber: '9mm', cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [] },
+    { id: 'g1', name: 'Example Pistol', calibers: ['9mm'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [] },
   ],
   locations: [
     { id: 'l1', name: 'Example Range' },
@@ -1153,10 +1207,22 @@ function migrateData(d) {
     d.schemaVersion = 4;
   }
 
-  // Defensive: ensure every gun has cleanings + zeros arrays, and ammo + sellers exist
+  // v4 -> v5: convert gun.caliber (string) to gun.calibers (array)
+  if (d.schemaVersion === 4) {
+    d.firearms.forEach(gun => {
+      if (!Array.isArray(gun.calibers)) {
+        gun.calibers = gun.caliber ? [gun.caliber] : [];
+      }
+      delete gun.caliber;
+    });
+    d.schemaVersion = 5;
+  }
+
+  // Defensive: ensure every gun has cleanings + zeros + calibers arrays, and ammo + sellers exist
   d.firearms.forEach(gun => {
     if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
     if (!Array.isArray(gun.zeros)) gun.zeros = [];
+    if (!Array.isArray(gun.calibers)) gun.calibers = gun.caliber ? [gun.caliber] : [];
   });
   if (!Array.isArray(d.ammo)) d.ammo = [];
   if (!Array.isArray(d.sellers)) d.sellers = [];
@@ -1173,6 +1239,22 @@ let data = load();
 // ── UTILS ─────────────────────────────────────────────────────────
 function uid() { return 'id_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
 function today() { return new Date().toISOString().slice(0,10); }
+
+// Backwards-compatible caliber accessors: prefer calibers[] but fall back to legacy caliber field
+function gunCalibers(gun) {
+  if (Array.isArray(gun.calibers) && gun.calibers.length) return gun.calibers;
+  if (gun.caliber) return [gun.caliber];
+  return [];
+}
+function gunCaliberLabel(gun) {
+  const cals = gunCalibers(gun);
+  return cals.length ? cals.join(' / ') : '(no caliber)';
+}
+function gunAcceptsCaliber(gun, cal) {
+  if (!cal) return false;
+  const norm = String(cal).trim().toLowerCase();
+  return gunCalibers(gun).some(c => c.trim().toLowerCase() === norm);
+}
 function fmtDate(d) {
   if (!d) return '';
   const [y,m,day] = d.split('-');
@@ -1247,7 +1329,7 @@ function renderDashboard() {
       <div class="gun-card ${cardCls}">
         <div>
           <div class="gun-name">${gun.name}</div>
-          <div class="gun-caliber">${gun.caliber}</div>
+          <div class="gun-caliber">${gunCaliberLabel(gun)}</div>
           <div class="gun-stats">All-time <span>${(gun.totalRounds||0).toLocaleString()} rds</span> &nbsp;·&nbsp; ${lastCleanedStr}</div>
           <div class="clean-bar"><div class="clean-bar-fill" style="width:${Math.min(cs.pct*100,100)}%;background:${cs.barColor}"></div></div>
         </div>
@@ -1278,7 +1360,7 @@ function renderLogForm() {
     <div class="gun-row">
       <div>
         <label>${gun.name}</label>
-        <div class="caliber-tag">${gun.caliber}</div>
+        <div class="caliber-tag">${gunCaliberLabel(gun)}</div>
       </div>
       <input type="number" id="rounds-${gun.id}" min="0" placeholder="0" value="">
     </div>
@@ -1376,7 +1458,7 @@ function renderSettings() {
       </div>
       <div class="list-item-text">
         <div class="list-item-name">${gun.name}</div>
-        <div class="list-item-sub">${gun.caliber} · Clean every ${gun.cleanThreshold} rds</div>
+        <div class="list-item-sub">${gunCaliberLabel(gun)} · Clean every ${gun.cleanThreshold} rds</div>
       </div>
       <button class="btn-icon" onclick="openEditGun('${gun.id}')" title="Edit">✏️</button>
       <button class="btn-icon" onclick="deleteGun('${gun.id}')" title="Delete">🗑</button>
@@ -1407,12 +1489,69 @@ function renderSettings() {
 }
 
 // ── GUN CRUD ──────────────────────────────────────────────────────
+let gunModalCalibers = []; // working set while modal is open
+
+function renderGunCalibersChips() {
+  const container = document.getElementById('gun-calibers-chips');
+  if (!gunModalCalibers.length) {
+    container.innerHTML = '<div class="chips-empty">NO CALIBERS SELECTED</div>';
+  } else {
+    container.innerHTML = gunModalCalibers.map((c, i) =>
+      `<span class="chip">${c}<span class="remove-x" onclick="removeGunCaliber(${i})">×</span></span>`
+    ).join('');
+  }
+  // Repopulate the add-select excluding already-added
+  const sel = document.getElementById('gun-caliber-add-select');
+  const known = allKnownCalibers().filter(c => !gunModalCalibers.some(x => x.trim().toLowerCase() === c.trim().toLowerCase()));
+  sel.innerHTML =
+    '<option value="">— Add caliber —</option>' +
+    known.map(c => `<option value="${c}">${c}</option>`).join('') +
+    '<option value="__new__">+ New caliber...</option>';
+  // Reset custom input
+  document.getElementById('gun-caliber-custom').style.display = 'none';
+  document.getElementById('gun-caliber-custom').value = '';
+}
+
+function removeGunCaliber(idx) {
+  gunModalCalibers.splice(idx, 1);
+  renderGunCalibersChips();
+}
+
+function addGunCaliberFromSelect() {
+  const sel = document.getElementById('gun-caliber-add-select');
+  const custom = document.getElementById('gun-caliber-custom');
+  let val = sel.value;
+  if (val === '__new__') {
+    val = custom.value.trim();
+    if (!val) { custom.style.display = 'block'; custom.focus(); return; }
+  }
+  if (!val) return;
+  if (gunModalCalibers.some(c => c.trim().toLowerCase() === val.trim().toLowerCase())) return;
+  gunModalCalibers.push(val);
+  renderGunCalibersChips();
+}
+
+// Show custom input when "+ New caliber..." picked
+document.addEventListener('change', e => {
+  if (e.target && e.target.id === 'gun-caliber-add-select') {
+    const custom = document.getElementById('gun-caliber-custom');
+    if (e.target.value === '__new__') {
+      custom.style.display = 'block';
+      custom.focus();
+    } else {
+      custom.style.display = 'none';
+      custom.value = '';
+    }
+  }
+});
+
 function openAddGun() {
   document.getElementById('modal-gun-title').textContent = 'Add Firearm';
   document.getElementById('gun-edit-id').value = '';
   document.getElementById('gun-name').value = '';
-  document.getElementById('gun-caliber').value = '';
   document.getElementById('gun-threshold').value = '';
+  gunModalCalibers = [];
+  renderGunCalibersChips();
   openModal('modal-gun');
 }
 function openEditGun(id) {
@@ -1421,21 +1560,24 @@ function openEditGun(id) {
   document.getElementById('modal-gun-title').textContent = 'Edit Firearm';
   document.getElementById('gun-edit-id').value = id;
   document.getElementById('gun-name').value = gun.name;
-  document.getElementById('gun-caliber').value = gun.caliber;
   document.getElementById('gun-threshold').value = gun.cleanThreshold;
+  gunModalCalibers = [...gunCalibers(gun)];
+  renderGunCalibersChips();
   openModal('modal-gun');
 }
 function saveGun() {
   const id = document.getElementById('gun-edit-id').value;
   const name = document.getElementById('gun-name').value.trim();
-  const caliber = document.getElementById('gun-caliber').value.trim();
   const threshold = parseInt(document.getElementById('gun-threshold').value, 10);
-  if (!name || !caliber || !threshold) { alert('Please fill in name, caliber, and clean threshold.'); return; }
+  const calibers = [...gunModalCalibers];
+  if (!name) { alert('Please enter a name.'); return; }
+  if (!calibers.length) { alert('Please add at least one caliber.'); return; }
+  if (!threshold) { alert('Please set a clean threshold.'); return; }
   if (id) {
     const gun = data.firearms.find(g => g.id === id);
-    if (gun) { gun.name = name; gun.caliber = caliber; gun.cleanThreshold = threshold; }
+    if (gun) { gun.name = name; gun.calibers = calibers; gun.cleanThreshold = threshold; delete gun.caliber; }
   } else {
-    data.firearms.push({ id: uid(), name, caliber, cleanThreshold: threshold, totalRounds: 0, cleanings: [], zeros: [] });
+    data.firearms.push({ id: uid(), name, calibers, cleanThreshold: threshold, totalRounds: 0, cleanings: [], zeros: [] });
   }
   save(data);
   closeModal('modal-gun');
@@ -1592,6 +1734,132 @@ function renderGunHistory(gunId) {
 }
 
 // ── ZERO CRUD ─────────────────────────────────────────────────────
+// Build the ammo label from a purchase entry
+function ammoDisplayLabel(a) {
+  return [a.manufacturer, a.model].filter(Boolean).join(' ') || '(unnamed)';
+}
+
+// Populate the ammo dropdown for the zero modal, based on the gun's calibers
+function populateZeroAmmoDropdown(gun, selectedAmmoText) {
+  const sel = document.getElementById('zero-ammo-select');
+  const custom = document.getElementById('zero-ammo-custom');
+  const calibers = gunCalibers(gun).map(c => c.trim().toLowerCase());
+  const ammoAll = (data.ammo || []).filter(a => calibers.includes((a.caliber || '').trim().toLowerCase()));
+
+  const inStock = ammoAll
+    .filter(a => (a.status || 'instock') === 'instock')
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const usedUp = ammoAll
+    .filter(a => (a.status || 'instock') === 'usedup')
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  // Collect text-only entries from any zero on any firearm whose text doesn't match a purchase's label
+  const purchaseLabels = new Set((data.ammo || []).map(a => ammoDisplayLabel(a)));
+  const textOnlySet = new Set();
+  (data.firearms || []).forEach(g => (g.zeros || []).forEach(z => {
+    if (z.ammo && !purchaseLabels.has(z.ammo)) textOnlySet.add(z.ammo);
+  }));
+  const textOnly = [...textOnlySet].sort();
+
+  let html = '<option value="">— Select ammo —</option>';
+  if (inStock.length) {
+    html += '<optgroup label="In stock">';
+    inStock.forEach(a => {
+      const label = ammoDisplayLabel(a);
+      const sel = label === selectedAmmoText ? ' selected' : '';
+      html += `<option value="${label.replace(/"/g, '&quot;')}"${sel}>${label}</option>`;
+    });
+    html += '</optgroup>';
+  }
+  if (usedUp.length) {
+    html += '<optgroup label="Used up">';
+    usedUp.forEach(a => {
+      const label = ammoDisplayLabel(a);
+      const sel = label === selectedAmmoText ? ' selected' : '';
+      html += `<option value="${label.replace(/"/g, '&quot;')}"${sel}>${label}</option>`;
+    });
+    html += '</optgroup>';
+  }
+  if (textOnly.length) {
+    html += '<optgroup label="◇ Text-only (from past zeros)">';
+    textOnly.forEach(t => {
+      const sel = t === selectedAmmoText ? ' selected' : '';
+      html += `<option value="${t.replace(/"/g, '&quot;')}"${sel}>${t}</option>`;
+    });
+    html += '</optgroup>';
+  }
+  html += '<option value="__custom__">+ Custom...</option>';
+  sel.innerHTML = html;
+
+  // If selected value doesn't match any option, use custom
+  if (selectedAmmoText && sel.value !== selectedAmmoText) {
+    sel.value = '__custom__';
+    custom.value = selectedAmmoText;
+    custom.style.display = 'block';
+  } else {
+    custom.value = '';
+    custom.style.display = 'none';
+  }
+}
+
+function handleZeroAmmoSelectChange() {
+  const sel = document.getElementById('zero-ammo-select');
+  const custom = document.getElementById('zero-ammo-custom');
+  if (sel.value === '__custom__') {
+    custom.style.display = 'block';
+    custom.focus();
+  } else {
+    custom.style.display = 'none';
+    custom.value = '';
+  }
+}
+
+function getSelectedZeroAmmo() {
+  const sel = document.getElementById('zero-ammo-select');
+  if (sel.value === '__custom__') return document.getElementById('zero-ammo-custom').value.trim();
+  return sel.value.trim();
+}
+
+// Populate optic dropdown from that gun's past zero optics
+function populateZeroOpticDropdown(gun, selectedOptic) {
+  const sel = document.getElementById('zero-optic-select');
+  const custom = document.getElementById('zero-optic-custom');
+  const optics = [...new Set((gun.zeros || []).map(z => z.optic).filter(Boolean))].sort();
+  let html = '<option value="">— Select optic —</option>';
+  optics.forEach(o => {
+    const s = o === selectedOptic ? ' selected' : '';
+    html += `<option value="${o.replace(/"/g, '&quot;')}"${s}>${o}</option>`;
+  });
+  html += '<option value="__custom__">+ Custom...</option>';
+  sel.innerHTML = html;
+  if (selectedOptic && sel.value !== selectedOptic) {
+    sel.value = '__custom__';
+    custom.value = selectedOptic;
+    custom.style.display = 'block';
+  } else {
+    custom.value = '';
+    custom.style.display = 'none';
+  }
+}
+
+function handleZeroOpticSelectChange() {
+  const sel = document.getElementById('zero-optic-select');
+  const custom = document.getElementById('zero-optic-custom');
+  if (sel.value === '__custom__') {
+    custom.style.display = 'block';
+    custom.focus();
+  } else {
+    custom.style.display = 'none';
+    custom.value = '';
+  }
+}
+
+function getSelectedZeroOptic() {
+  const sel = document.getElementById('zero-optic-select');
+  if (sel.value === '__custom__') return document.getElementById('zero-optic-custom').value.trim();
+  return sel.value.trim();
+}
+
 function openLogZero(gunId, zeroId) {
   const gun = data.firearms.find(g => g.id === gunId);
   if (!gun) return;
@@ -1600,24 +1868,26 @@ function openLogZero(gunId, zeroId) {
   document.getElementById('zero-modal-title').textContent =
     (zeroId ? 'Edit Zero · ' : 'Add Zero · ') + gun.name;
 
+  let existingAmmo = '';
+  let existingOptic = '';
   if (zeroId) {
     const z = (gun.zeros || []).find(x => x.id === zeroId);
     if (z) {
       document.getElementById('zero-date').value = z.date;
       document.getElementById('zero-distance').value = z.distance || '';
       document.getElementById('zero-distance-unit').value = z.distanceUnit || 'yd';
-      document.getElementById('zero-ammo').value = z.ammo || '';
-      document.getElementById('zero-optic').value = z.optic || '';
       document.getElementById('zero-notes').value = z.notes || '';
+      existingAmmo = z.ammo || '';
+      existingOptic = z.optic || '';
     }
   } else {
     document.getElementById('zero-date').value = today();
     document.getElementById('zero-distance').value = '';
     document.getElementById('zero-distance-unit').value = 'yd';
-    document.getElementById('zero-ammo').value = '';
-    document.getElementById('zero-optic').value = '';
     document.getElementById('zero-notes').value = '';
   }
+  populateZeroAmmoDropdown(gun, existingAmmo);
+  populateZeroOpticDropdown(gun, existingOptic);
   openModal('modal-zero');
 }
 
@@ -1627,8 +1897,8 @@ function saveZero() {
   const date = document.getElementById('zero-date').value;
   const distance = parseFloat(document.getElementById('zero-distance').value) || null;
   const distanceUnit = document.getElementById('zero-distance-unit').value;
-  const ammo = document.getElementById('zero-ammo').value.trim();
-  const optic = document.getElementById('zero-optic').value.trim();
+  const ammo = getSelectedZeroAmmo();
+  const optic = getSelectedZeroOptic();
   const notes = document.getElementById('zero-notes').value.trim();
   if (!date) { alert('Please select a date.'); return; }
   if (!distance) { alert('Please enter a distance.'); return; }
@@ -1676,7 +1946,7 @@ function openEditSession(id) {
     <div class="gun-row">
       <div>
         <label>${gun.name}</label>
-        <div class="caliber-tag">${gun.caliber}</div>
+        <div class="caliber-tag">${gunCaliberLabel(gun)}</div>
       </div>
       <input type="number" id="edit-rounds-${gun.id}" min="0" placeholder="0" value="${sessionRounds[gun.id] || ''}">
     </div>
@@ -1798,7 +2068,7 @@ function populateAmmoSellerDropdown(selectedId) {
 function allKnownCalibers() {
   // Gather unique calibers from firearms and ammo history
   const set = new Set();
-  (data.firearms || []).forEach(g => { if (g.caliber) set.add(g.caliber.trim()); });
+  (data.firearms || []).forEach(g => gunCalibers(g).forEach(c => { if (c) set.add(c.trim()); }));
   (data.ammo || []).forEach(a => { if (a.caliber) set.add(a.caliber.trim()); });
   return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
@@ -2048,7 +2318,7 @@ function exportCSV() {
         s.date,
         loc ? loc.name : '',
         gun ? gun.name : gid,
-        gun ? gun.caliber : '',
+        gun ? gunCaliberLabel(gun) : '',
         r,
         (s.notes || '').replace(/,/g,'')
       ]);
@@ -2098,7 +2368,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '4.3';
+const APP_VERSION = '4.4';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
