@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 6,
+  "firearms": [
+    {
+      "id": "g1",
+      "name": "Example Pistol",
+      "type": "pistol",
+      "calibers": [
+        "9mm"
+      ],
+      "cleanThreshold": 500,
+      "totalRounds": 65,
+      "cleanings": [],
+      "zeros": []
+    },
+    {
+      "id": "id_1785673079565_9xe6q",
+      "name": "Example Rifle",
+      "type": "rifle",
+      "calibers": [
+        "5.56"
+      ],
+      "cleanThreshold": 300,
+      "totalRounds": 145,
+      "cleanings": [],
+      "zeros": []
+    }
+  ],
+  "locations": [
+    {
+      "id": "l1",
+      "name": "Example Range"
+    }
+  ],
+  "sellers": [
+    {
+      "id": "s1",
+      "name": "Example Store"
+    }
+  ],
+  "sessions": [
+    {
+      "id": "id_1785673117480_8fkgb",
+      "date": "2026-07-27",
+      "locationId": "l1",
+      "rounds": {
+        "g1": 15,
+        "id_1785673079565_9xe6q": 45
+      },
+      "notes": "",
+      "totalRounds": 60,
+      "createdAt": "2026-08-02T12:18:37.480Z"
+    },
+    {
+      "id": "id_1785673094053_t8ctd",
+      "date": "2026-08-02",
+      "locationId": "l1",
+      "rounds": {
+        "g1": 50,
+        "id_1785673079565_9xe6q": 100
+      },
+      "notes": "",
+      "totalRounds": 150,
+      "createdAt": "2026-08-02T12:18:14.053Z"
+    }
+  ],
+  "ammo": [
+    {
+      "id": "id_1785673176467_xtkft",
+      "date": "2026-07-27",
+      "caliber": "9mm",
+      "manufacturer": "Federal",
+      "model": "115 gr FMJ",
+      "quantity": 500,
+      "totalPrice": 134.99,
+      "sellerId": "s1",
+      "status": "instock",
+      "notes": ""
+    },
+    {
+      "id": "id_1785673224318_13n4j",
+      "date": "2026-07-26",
+      "caliber": "5.56",
+      "manufacturer": "PMC",
+      "model": "55 gr",
+      "quantity": 500,
+      "totalPrice": 239.99,
+      "sellerId": "s1",
+      "status": "instock",
+      "notes": ""
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+
+
 # Range Log
 A simple, private tracker for your range sessions — built as a lightweight web app you can install on your phone like a native app, with no account, no ads, and no data ever leaving your device.
 
@@ -9,6 +11,12 @@ A simple, private tracker for your range sessions — built as a lightweight web
 - 💵 Ammo purchases — cost per round, seller, stock status, with running averages
 
 All data is stored locally in your browser (nothing is sent to a server), and can be exported/imported as JSON for backup or moving between devices.
+
+## Screenshots
+
+![Dashboard](images/dashboard.png)
+![Sessions](images/sessions.png)
+![Ammo](images/ammo.png)
 
 ## Access via Web
 https://shawnlefebre.github.io/range-log/
