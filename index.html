@@ -788,7 +788,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v4.5</span>
+    <span id="app-version">v4.6</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Dashboard</button>
@@ -1333,22 +1333,33 @@ function lastDeepCleanDate(gun) {
   return resets.reduce((latest, c) => c.date > latest ? c.date : latest, resets[0].date);
 }
 
-// Rounds since clean = sum of session rounds for this gun where session.date > lastDeepCleanDate
-// Same-day sessions don't count (assumes you cleaned after shooting)
-function computeRoundsSinceClean(gun) {
-  const lastClean = lastDeepCleanDate(gun);
-  if (!lastClean) {
-    // Never deep cleaned — count all rounds
-    return data.sessions.reduce((sum, s) => {
-      const r = s.rounds && typeof s.rounds === 'object' ? s.rounds[gun.id] || 0 : 0;
-      return sum + r;
-    }, 0);
-  }
+// Last cleaning of ANY kind (quick, deep, or detail) — a deep/detail clean also
+// satisfies "at least a quick clean was done," so this is just the most recent entry overall.
+function lastAnyCleanDate(gun) {
+  const all = gun.cleanings || [];
+  if (!all.length) return null;
+  return all.reduce((latest, c) => c.date > latest ? c.date : latest, all[0].date);
+}
+
+// Shared: sum session rounds for this gun dated strictly after `sinceDate`.
+// Same-day sessions don't count (assumes you cleaned after shooting). null sinceDate = count all.
+function roundsSinceDate(gun, sinceDate) {
   return data.sessions.reduce((sum, s) => {
-    if (s.date <= lastClean) return sum;
+    if (sinceDate && s.date <= sinceDate) return sum;
     const r = s.rounds && typeof s.rounds === 'object' ? s.rounds[gun.id] || 0 : 0;
     return sum + r;
   }, 0);
+}
+
+// Rounds since clean = sum of session rounds for this gun where session.date > lastDeepCleanDate
+// Same-day sessions don't count (assumes you cleaned after shooting)
+function computeRoundsSinceClean(gun) {
+  return roundsSinceDate(gun, lastDeepCleanDate(gun));
+}
+
+// Rounds since the last cleaning of any kind (quick, deep, or detail)
+function computeRoundsSinceQuickClean(gun) {
+  return roundsSinceDate(gun, lastAnyCleanDate(gun));
 }
 
 function cleanStatus(gun) {
@@ -1742,11 +1753,15 @@ function renderGunHistory(gunId) {
 
   const rsc = computeRoundsSinceClean(gun);
   const lastDeep = lastDeepCleanDate(gun);
+  const rsq = computeRoundsSinceQuickClean(gun);
+  const lastQuick = lastAnyCleanDate(gun);
   document.getElementById('history-stats').innerHTML = `
-    <div class="cleaning-meta">
-      All-time: <span style="color:var(--text)">${(gun.totalRounds||0).toLocaleString()} rds</span>
-      &nbsp;·&nbsp; Since last deep clean: <span style="color:var(--text)">${rsc} rds</span>
-      ${lastDeep ? `&nbsp;·&nbsp; Last deep ${fmtDate(lastDeep)}` : ''}
+    <div class="cleaning-meta">All-time: <span style="color:var(--text)">${(gun.totalRounds||0).toLocaleString()} rds</span></div>
+    <div class="cleaning-meta" style="margin-top:4px;">
+      Since deep clean: <span style="color:var(--text)">${rsc} rds</span>${lastDeep ? ` <span style="color:var(--text-dim)">(${fmtDate(lastDeep)})</span>` : ''}
+    </div>
+    <div class="cleaning-meta" style="margin-top:4px;">
+      Since quick clean: <span style="color:var(--text)">${rsq} rds</span>${lastQuick ? ` <span style="color:var(--text-dim)">(${fmtDate(lastQuick)})</span>` : ''}
     </div>
   `;
 
@@ -2437,7 +2452,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '4.5';
+const APP_VERSION = '4.6';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
