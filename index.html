@@ -1149,6 +1149,8 @@
     </div>
     <div id="stats-as-stats"></div>
     <div id="stats-as-chart"></div>
+    <div id="stats-as-breakdown"></div>
+    <div id="stats-as-rounds-breakdown"></div>
   </section>
 
   <!-- SETTINGS -->
@@ -3325,6 +3327,67 @@ function renderAmmoSpendStats() {
       ${buildStatsBarChart(buckets, v => '$' + Math.round(v))}
     </div>
   `;
+
+  const spendBreakdownEl = document.getElementById('stats-as-breakdown');
+  const roundsBreakdownEl = document.getElementById('stats-as-rounds-breakdown');
+  if (caliber) {
+    // Already filtered to one caliber — a breakdown of a single item is redundant.
+    spendBreakdownEl.innerHTML = '';
+    roundsBreakdownEl.innerHTML = '';
+  } else {
+    const perCaliber = {};
+    purchases.forEach(a => {
+      const key = a.caliber || '(unspecified)';
+      if (!perCaliber[key]) perCaliber[key] = { spend: 0, rounds: 0 };
+      perCaliber[key].spend += (a.totalPrice || 0);
+      perCaliber[key].rounds += (a.quantity || 0);
+    });
+    const entries = Object.entries(perCaliber).map(([cal, v]) => ({ cal, spend: v.spend, rounds: v.rounds }));
+
+    // Spend breakdown — sorted by spend
+    const spendRows = [...entries].sort((a, b) => b.spend - a.spend);
+    const maxSpend = spendRows.length ? spendRows[0].spend : 1;
+    const spendRowsHtml = spendRows.map(x => {
+      const pct = totalSpend > 0 ? Math.round((x.spend / totalSpend) * 100) : 0;
+      const barPct = Math.round((x.spend / maxSpend) * 100);
+      return `
+        <div class="breakdown-row">
+          <div class="breakdown-top"><span class="breakdown-name">${x.cal}</span><span class="breakdown-val">$${x.spend.toFixed(2)}</span></div>
+          <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${barPct}%"></div></div>
+          <div class="breakdown-pct">${pct}% of total spend</div>
+        </div>
+      `;
+    }).join('');
+    spendBreakdownEl.innerHTML = spendRows.length ? `
+      <div class="stats-chart-card">
+        <div class="stats-chart-title">Per-Caliber Spend Breakdown</div>
+        ${spendRowsHtml}
+      </div>
+    ` : '<div class="stats-empty">No purchases logged for this range.</div>';
+
+    // Rounds breakdown — sorted independently by rounds, since CPR varies by caliber
+    // this ranking can genuinely differ from the spend ranking above.
+    const totalRoundsBought = entries.reduce((sum, x) => sum + x.rounds, 0);
+    const roundsRows = [...entries].sort((a, b) => b.rounds - a.rounds);
+    const maxRounds = roundsRows.length ? roundsRows[0].rounds : 1;
+    const roundsRowsHtml = roundsRows.map(x => {
+      const pct = totalRoundsBought > 0 ? Math.round((x.rounds / totalRoundsBought) * 100) : 0;
+      const barPct = Math.round((x.rounds / maxRounds) * 100);
+      return `
+        <div class="breakdown-row">
+          <div class="breakdown-top"><span class="breakdown-name">${x.cal}</span><span class="breakdown-val" style="color:#7a92a3;">${x.rounds.toLocaleString()} rds</span></div>
+          <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${barPct}%;background:#7a92a3;"></div></div>
+          <div class="breakdown-pct">${pct}% of total rounds</div>
+        </div>
+      `;
+    }).join('');
+    roundsBreakdownEl.innerHTML = roundsRows.length ? `
+      <div class="stats-chart-card">
+        <div class="stats-chart-title">Per-Caliber Rounds Purchased</div>
+        ${roundsRowsHtml}
+      </div>
+    ` : '';
+  }
 }
 
 // ── MODALS ────────────────────────────────────────────────────────
