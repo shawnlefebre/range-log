@@ -723,6 +723,12 @@
     justify-content: flex-end;
     height: 100%;
   }
+  .stats-bar-track {
+    width: 100%;
+    height: calc(100% - 32px);
+    display: flex;
+    align-items: flex-end;
+  }
   .stats-bar {
     width: 100%;
     background: var(--accent);
@@ -732,6 +738,8 @@
   .stats-bar-val {
     font-family: var(--font-mono);
     font-size: 0.55rem;
+    line-height: 11px;
+    height: 11px;
     color: var(--text-muted);
     margin-bottom: 3px;
     white-space: nowrap;
@@ -970,7 +978,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v5.0</span>
+    <span id="app-version">v5.1</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -3099,7 +3107,7 @@ function buildStatsBarChart(buckets, formatVal) {
     return `
       <div class="stats-bar-col">
         <div class="stats-bar-val">${formatVal(b.value)}</div>
-        <div class="stats-bar" style="height:${pct}%"></div>
+        <div class="stats-bar-track"><div class="stats-bar" style="height:${pct}%"></div></div>
         <div class="${labelClass}">${b.label}</div>
       </div>
     `;
@@ -3485,7 +3493,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '5.0';
+const APP_VERSION = '5.1';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
