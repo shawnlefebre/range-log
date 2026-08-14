@@ -52,12 +52,13 @@ describe('schema migration', () => {
       locations: [], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v1)));
-    assert.strictEqual(migrated.schemaVersion, 7);
+    assert.strictEqual(migrated.schemaVersion, 8);
     assert.strictEqual(migrated.isDemo, false, 'migrated real data must never be flagged as demo');
     assert.deepStrictEqual([...migrated.firearms[0].calibers], ['.22 LR']);
     assert.strictEqual(migrated.firearms[0].cleanings.length, 1);
     assert.strictEqual(migrated.firearms[0].cleanings[0].type, 'deep');
     assert.strictEqual(migrated.firearms[0].type, null, 'type should default to unset, not crash');
+    assert.strictEqual(migrated.firearms[0].notes, '', 'notes should default to empty string, not crash');
   });
 
   test('v6 data (pre-isDemo) migrates and stays non-demo', () => {
@@ -67,15 +68,31 @@ describe('schema migration', () => {
       locations: [{ id: 'l1', name: 'Real Range' }], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v6)));
-    assert.strictEqual(migrated.schemaVersion, 7);
+    assert.strictEqual(migrated.schemaVersion, 8);
     assert.strictEqual(migrated.isDemo, false);
     assert.strictEqual(migrated.firearms[0].name, 'Real Gun', 'existing data must survive migration untouched');
+  });
+
+  test('v7 data (pre-notes) migrates and preserves existing notes untouched', () => {
+    const v7 = {
+      schemaVersion: 7,
+      isDemo: false,
+      firearms: [
+        { id: 'g1', name: 'No Notes Gun', type: 'rifle', calibers: ['.223 Rem'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [] },
+        { id: 'g2', name: 'Has Notes Gun', type: 'pistol', calibers: ['9mm'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], notes: 'Torque: 20 in-lbs' },
+      ],
+      locations: [], sellers: [], sessions: [], ammo: [],
+    };
+    const migrated = win.migrateData(JSON.parse(JSON.stringify(v7)));
+    assert.strictEqual(migrated.schemaVersion, 8);
+    assert.strictEqual(migrated.firearms[0].notes, '', 'missing notes should default to empty string');
+    assert.strictEqual(migrated.firearms[1].notes, 'Torque: 20 in-lbs', 'existing notes must survive migration untouched');
   });
 
   test('already-current data passes through without modification', () => {
     const current = win.buildDefaultData();
     const migrated = win.migrateData(JSON.parse(JSON.stringify(current)));
-    assert.strictEqual(migrated.schemaVersion, 7);
+    assert.strictEqual(migrated.schemaVersion, 8);
     assert.strictEqual(migrated.firearms.length, current.firearms.length);
   });
 });
@@ -118,8 +135,8 @@ describe('caliber merge and disclaimer', () => {
     // Inject a firearm sharing .223/5.56 with Example Rifle but also carrying a unique third caliber.
     let html = fs.readFileSync(APP_PATH, 'utf8');
     html = html.replace(
-      "{ id: g2, name: 'Example Pistol', type: 'pistol', calibers: ['9mm'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [] },",
-      "{ id: g2, name: 'Example Pistol', type: 'pistol', calibers: ['.223 Rem', '5.56 NATO', '.300 BLK'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [] },"
+      "{ id: g2, name: 'Example Pistol', type: 'pistol', calibers: ['9mm'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], notes: '' },",
+      "{ id: g2, name: 'Example Pistol', type: 'pistol', calibers: ['.223 Rem', '5.56 NATO', '.300 BLK'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], notes: '' },"
     );
     const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://example.com/', pretendToBeVisual: true });
     dom.window.alert = () => {};

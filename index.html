@@ -246,6 +246,16 @@
   }
   .cleaning-meta-date { color: var(--text); }
   .cleaning-meta-notes { color: var(--text-muted); font-size: 0.7rem; margin-top: 2px; }
+  .gun-notes-block {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: pre-wrap;
+    background: var(--surface2);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
   .history-subsection {
     display: flex;
     justify-content: space-between;
@@ -978,7 +988,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v5.1</span>
+    <span id="app-version">v5.2</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -1210,7 +1220,7 @@
         <button class="btn btn-danger" style="width:100%;" onclick="openDeleteAllModal()">Delete All Data</button>
       </div>
     </div>
-    <div class="schema-badge">Data schema v7 · Range Log</div>
+    <div class="schema-badge">Data schema v8 · Range Log</div>
   </section>
 </div>
 
@@ -1247,6 +1257,10 @@
     <div class="form-group">
       <label>Clean reminder (rounds since last deep clean)</label>
       <input type="number" id="gun-threshold" placeholder="e.g. 300" min="50" step="50">
+    </div>
+    <div class="form-group">
+      <label>Notes (optional)</label>
+      <textarea id="gun-notes" placeholder="Torque specs, maintenance reminders..."></textarea>
     </div>
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="closeModal('modal-gun')">Cancel</button>
@@ -1416,6 +1430,7 @@
   <div class="modal" style="max-width:560px;">
     <div class="modal-title" id="history-title">Firearm Details</div>
     <div id="history-stats" style="margin-bottom:8px;"></div>
+    <div id="history-notes"></div>
 
     <div class="history-subsection">
       <span>Cleaning History</span>
@@ -1490,7 +1505,8 @@
 // v5: gun.caliber becomes calibers array (multi-select); primary caliber = first entry
 // v6: gun.type added — 'rifle' | 'pistol' | 'revolver' | 'shotgun' | null (unset)
 // v7: top-level isDemo flag added — true only for freshly-generated sample data
-const SCHEMA_VERSION = 7;
+// v8: gun.notes added — free-text notes per firearm (torque specs, maintenance reminders, etc.)
+const SCHEMA_VERSION = 8;
 
 const CLEANING_TYPES = {
   quick: { label: 'Quick', resetsDeep: false },
@@ -1513,10 +1529,10 @@ function generateDemoData() {
   const s1 = 'ds1', s2 = 'ds2';
 
   const firearms = [
-    { id: g1, name: 'Example Rifle', type: 'rifle', calibers: ['.223 Rem', '5.56 NATO'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [] },
-    { id: g2, name: 'Example Pistol', type: 'pistol', calibers: ['9mm'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [] },
-    { id: g3, name: 'Example Revolver', type: 'revolver', calibers: ['.357 Mag', '.38 Special'], cleanThreshold: 300, totalRounds: 0, cleanings: [], zeros: [] },
-    { id: g4, name: 'Example Shotgun', type: 'shotgun', calibers: ['12 Gauge'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [] },
+    { id: g1, name: 'Example Rifle', type: 'rifle', calibers: ['.223 Rem', '5.56 NATO'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], notes: 'Action screws: 65 in-lbs, front then rear.' },
+    { id: g2, name: 'Example Pistol', type: 'pistol', calibers: ['9mm'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], notes: '' },
+    { id: g3, name: 'Example Revolver', type: 'revolver', calibers: ['.357 Mag', '.38 Special'], cleanThreshold: 300, totalRounds: 0, cleanings: [], zeros: [], notes: '' },
+    { id: g4, name: 'Example Shotgun', type: 'shotgun', calibers: ['12 Gauge'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], notes: '' },
   ];
   const locations = [
     { id: l1, name: 'Example Range North' },
@@ -1730,12 +1746,21 @@ function migrateData(d) {
     d.schemaVersion = 7;
   }
 
+  // v7 -> v8: add notes field to each firearm
+  if (d.schemaVersion === 7) {
+    d.firearms.forEach(gun => {
+      if (gun.notes === undefined) gun.notes = '';
+    });
+    d.schemaVersion = 8;
+  }
+
   // Defensive: ensure every gun has cleanings + zeros + calibers arrays, and ammo + sellers exist
   d.firearms.forEach(gun => {
     if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
     if (!Array.isArray(gun.zeros)) gun.zeros = [];
     if (!Array.isArray(gun.calibers)) gun.calibers = gun.caliber ? [gun.caliber] : [];
     if (gun.type === undefined) gun.type = null;
+    if (gun.notes === undefined) gun.notes = '';
   });
   if (!Array.isArray(d.ammo)) d.ammo = [];
   if (!Array.isArray(d.sellers)) d.sellers = [];
@@ -2173,6 +2198,7 @@ function openAddGun() {
   document.getElementById('gun-name').value = '';
   document.getElementById('gun-type').value = '';
   document.getElementById('gun-threshold').value = '';
+  document.getElementById('gun-notes').value = '';
   gunModalCalibers = [];
   renderGunCalibersChips();
   openModal('modal-gun');
@@ -2185,6 +2211,7 @@ function openEditGun(id) {
   document.getElementById('gun-name').value = gun.name;
   document.getElementById('gun-type').value = gun.type || '';
   document.getElementById('gun-threshold').value = gun.cleanThreshold;
+  document.getElementById('gun-notes').value = gun.notes || '';
   gunModalCalibers = [...gunCalibers(gun)];
   renderGunCalibersChips();
   openModal('modal-gun');
@@ -2194,15 +2221,16 @@ function saveGun() {
   const name = document.getElementById('gun-name').value.trim();
   const type = document.getElementById('gun-type').value || null;
   const threshold = parseInt(document.getElementById('gun-threshold').value, 10);
+  const notes = document.getElementById('gun-notes').value.trim();
   const calibers = [...gunModalCalibers];
   if (!name) { alert('Please enter a name.'); return; }
   if (!calibers.length) { alert('Please add at least one caliber.'); return; }
   if (!threshold) { alert('Please set a clean threshold.'); return; }
   if (id) {
     const gun = data.firearms.find(g => g.id === id);
-    if (gun) { gun.name = name; gun.type = type; gun.calibers = calibers; gun.cleanThreshold = threshold; delete gun.caliber; }
+    if (gun) { gun.name = name; gun.type = type; gun.calibers = calibers; gun.cleanThreshold = threshold; gun.notes = notes; delete gun.caliber; }
   } else {
-    data.firearms.push({ id: uid(), name, type, calibers, cleanThreshold: threshold, totalRounds: 0, cleanings: [], zeros: [] });
+    data.firearms.push({ id: uid(), name, type, calibers, cleanThreshold: threshold, notes, totalRounds: 0, cleanings: [], zeros: [] });
   }
   save(data);
   closeModal('modal-gun');
@@ -2309,6 +2337,10 @@ function renderGunHistory(gunId) {
       Since quick clean: <span style="color:var(--text)">${rsq} rds</span>${lastQuick ? ` <span style="color:var(--text-dim)">(${fmtDate(lastQuick)})</span>` : ''}
     </div>
   `;
+
+  document.getElementById('history-notes').innerHTML = gun.notes
+    ? `<div class="gun-notes-block">${gun.notes}</div>`
+    : '';
 
   // Cleanings list
   const cleanings = [...(gun.cleanings || [])].sort((a,b) => b.date.localeCompare(a.date));
@@ -3493,7 +3525,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '5.1';
+const APP_VERSION = '5.2';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
