@@ -988,7 +988,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v5.2</span>
+    <span id="app-version">v5.3</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -2274,6 +2274,10 @@ function openLogCleaning(gunId, cleaningId) {
     document.getElementById('cleaning-type').value = 'deep';
     document.getElementById('cleaning-notes').value = '';
   }
+  if (document.getElementById('modal-history').classList.contains('open')) {
+    restoreHistoryGunId = gunId;
+    closeModal('modal-history');
+  }
   openModal('modal-cleaning');
 }
 
@@ -2297,8 +2301,6 @@ function saveCleaning() {
   }
   save(data);
   closeModal('modal-cleaning');
-  // If history modal is currently open for this gun, refresh it
-  if (currentHistoryGunId === gunId) renderGunHistory(gunId);
   renderDashboard();
 }
 
@@ -2549,6 +2551,10 @@ function openLogZero(gunId, zeroId) {
   }
   populateZeroAmmoDropdown(gun, existingAmmo);
   populateZeroOpticDropdown(gun, existingOptic);
+  if (document.getElementById('modal-history').classList.contains('open')) {
+    restoreHistoryGunId = gunId;
+    closeModal('modal-history');
+  }
   openModal('modal-zero');
 }
 
@@ -2576,7 +2582,6 @@ function saveZero() {
   }
   save(data);
   closeModal('modal-zero');
-  if (currentHistoryGunId === gunId) renderGunHistory(gunId);
 }
 
 function deleteZero(gunId, zeroId) {
@@ -3432,9 +3437,20 @@ function renderAmmoSpendStats() {
 
 // ── MODALS ────────────────────────────────────────────────────────
 function openModal(id) { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+// iOS Safari doesn't reliably repaint stacked position:fixed overlays, so we never keep
+// two modals open at once. If closing this modal was standing in for the Details view
+// (see openLogCleaning/openLogZero), reopen Details — refreshed — right after.
+let restoreHistoryGunId = null;
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  if (restoreHistoryGunId && id !== 'modal-history') {
+    const gunId = restoreHistoryGunId;
+    restoreHistoryGunId = null;
+    openGunHistory(gunId);
+  }
+}
 document.querySelectorAll('.modal-overlay').forEach(m => {
-  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+  m.addEventListener('click', e => { if (e.target === m) closeModal(m.id); });
 });
 
 // ── TABS ──────────────────────────────────────────────────────────
@@ -3525,7 +3541,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '5.2';
+const APP_VERSION = '5.3';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

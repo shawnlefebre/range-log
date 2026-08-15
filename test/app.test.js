@@ -332,6 +332,56 @@ describe('deleted reference display', () => {
   });
 });
 
+// ── MODAL STACKING (regression: iOS Safari doesn't repaint stacked ──
+// position:fixed overlays, so Details must close before Cleaning/Zero
+// opens, and reopen — refreshed — once that sub-modal closes) ───────
+
+describe('Details modal never stays open behind Cleaning/Zero modals', () => {
+  test('opening Log Cleaning from Details closes Details, and Save reopens it', async () => {
+    const win = await ready(loadApp());
+    win.openGunHistory('dg1');
+    assert.ok(win.document.getElementById('modal-history').classList.contains('open'));
+
+    win.openLogCleaning('dg1');
+    assert.ok(!win.document.getElementById('modal-history').classList.contains('open'), 'Details must close before Cleaning opens');
+    assert.ok(win.document.getElementById('modal-cleaning').classList.contains('open'));
+
+    win.saveCleaning();
+    assert.ok(!win.document.getElementById('modal-cleaning').classList.contains('open'));
+    assert.ok(win.document.getElementById('modal-history').classList.contains('open'), 'Details should reopen after saving');
+  });
+
+  test('opening Add Zero from Details closes Details, and Save reopens it', async () => {
+    const win = await ready(loadApp());
+    win.openGunHistory('dg1');
+    win.openLogZero('dg1');
+    assert.ok(!win.document.getElementById('modal-history').classList.contains('open'), 'Details must close before Zero opens');
+    assert.ok(win.document.getElementById('modal-zero').classList.contains('open'));
+
+    win.document.getElementById('zero-distance').value = '50';
+    win.saveZero();
+    assert.ok(!win.document.getElementById('modal-zero').classList.contains('open'));
+    assert.ok(win.document.getElementById('modal-history').classList.contains('open'), 'Details should reopen after saving');
+  });
+
+  test('cancelling Log Cleaning (closeModal) also reopens Details', async () => {
+    const win = await ready(loadApp());
+    win.openGunHistory('dg1');
+    win.openLogCleaning('dg1');
+    win.closeModal('modal-cleaning');
+    assert.ok(!win.document.getElementById('modal-cleaning').classList.contains('open'));
+    assert.ok(win.document.getElementById('modal-history').classList.contains('open'), 'Cancel should return to Details, not drop the user with nothing open');
+  });
+
+  test('Log Cleaning opened directly (not via Details) does not touch Details modal', async () => {
+    const win = await ready(loadApp());
+    win.openLogCleaning('dg1');
+    assert.ok(win.document.getElementById('modal-cleaning').classList.contains('open'));
+    win.saveCleaning();
+    assert.ok(!win.document.getElementById('modal-history').classList.contains('open'), 'Details was never open, so it must not appear now');
+  });
+});
+
 // ── BASIC SMOKE TEST: every tab renders without throwing ────────────
 
 describe('smoke test', () => {
