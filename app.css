@@ -399,6 +399,15 @@
     font-weight: 600;
     font-variant-numeric: tabular-nums;
   }
+  /* Every figure carries its unit — with the headline in MOA, an unlabelled number
+     beneath it would read as MOA too. */
+  .group-unit { font-size: 0.62rem; color: var(--text-dim); font-weight: 400; }
+  .req {
+    color: var(--accent-dim);
+    font-size: 0.55rem;
+    letter-spacing: 0.5px;
+    margin-left: 4px;
+  }
   .group-tile-label {
     font-family: var(--font-mono);
     font-size: 0.55rem;

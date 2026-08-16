@@ -2501,6 +2501,17 @@ function gDrawReticle() {
 
 /* ---- gestures ---- */
 function gBindStage() {
+  // These fields feed straight into the measurements — distance drives MOA and MRAD,
+  // the reference length drives the scale, bullet diameter sizes the impact rings — so
+  // editing one has to recompute immediately rather than leave stale numbers on screen.
+  ['group-distance', 'group-distance-unit', 'group-cal-w', 'group-cal-h', 'group-bullet']
+    .forEach(id => {
+      const field = document.getElementById(id);
+      if (field.dataset.bound) return;
+      field.dataset.bound = '1';
+      field.addEventListener('input', () => { if (G) gRefresh(); });
+    });
+
   const steps = document.getElementById('group-steps');
   if (!steps.dataset.bound) {
     steps.dataset.bound = '1';
@@ -2706,6 +2717,17 @@ function gRenderResults() {
 
   const dIn = groupDistanceInches(form);
   const ang = v => dIn ? `${gFmt(toMOA(v, dIn))} MOA · ${gFmt(toMRAD(v, dIn))} MRAD` : '';
+
+  // MOA leads: it's the figure that stays comparable across firearms and distances,
+  // which inches can't. Falls back to inches when there's no distance to convert with —
+  // and says why, rather than showing a bare dash.
+  const esMOA = toMOA(m.es, dIn);
+  const heroNum = esMOA != null
+    ? `${gFmt(esMOA)}<span> MOA</span>`
+    : `${gFmt(m.es)}<span> in</span>`;
+  const heroSub = esMOA != null
+    ? `${gFmt(m.es)} in · ${gFmt(toMRAD(m.es, dIn))} MRAD`
+    : 'Enter the distance to target — a group can’t be judged without it';
   // Below the displayed precision there is no real direction, so don't invent one.
   const dir = (v, pos, neg) => Math.abs(v) < 0.005 ? 'on point' : v > 0 ? pos : neg;
 
@@ -2713,23 +2735,23 @@ function gRenderResults() {
     ${noPhotoNote}
     <div class="group-hero">
       <div class="group-tile-label">Group size — extreme spread, center to center</div>
-      <div class="group-hero-num">${gFmt(m.es)}<span> in</span></div>
-      <div class="group-hint">${ang(m.es)}</div>
+      <div class="group-hero-num">${heroNum}</div>
+      <div class="group-hint">${heroSub}</div>
     </div>
     <div class="group-tiles">
-      <div class="group-tile"><div class="group-tile-num">${gFmt(m.meanRadius)}</div><div class="group-tile-label">Mean radius</div></div>
-      <div class="group-tile"><div class="group-tile-num">${gFmt(m.width)}</div><div class="group-tile-label">Width</div></div>
-      <div class="group-tile"><div class="group-tile-num">${gFmt(m.height)}</div><div class="group-tile-label">Height</div></div>
+      <div class="group-tile"><div class="group-tile-num">${gFmt(m.meanRadius)}<span class="group-unit"> in</span></div><div class="group-tile-label">Mean radius</div></div>
+      <div class="group-tile"><div class="group-tile-num">${gFmt(m.width)}<span class="group-unit"> in</span></div><div class="group-tile-label">Width</div></div>
+      <div class="group-tile"><div class="group-tile-num">${gFmt(m.height)}<span class="group-unit"> in</span></div><div class="group-tile-label">Height</div></div>
     </div>
     <div class="group-offsets">
       <div class="group-offset">
         <div class="group-offset-axis">Elevation</div>
-        <div class="group-offset-val">${gFmt(Math.abs(m.cy))}</div>
+        <div class="group-offset-val">${gFmt(Math.abs(m.cy))}<span class="group-unit"> in</span></div>
         <div class="group-offset-dir">${dir(m.cy, 'high', 'low')}</div>
       </div>
       <div class="group-offset">
         <div class="group-offset-axis">Windage</div>
-        <div class="group-offset-val">${gFmt(Math.abs(m.cx))}</div>
+        <div class="group-offset-val">${gFmt(Math.abs(m.cx))}<span class="group-unit"> in</span></div>
         <div class="group-offset-dir">${dir(m.cx, 'right', 'left')}</div>
       </div>
     </div>
