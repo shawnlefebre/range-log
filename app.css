@@ -278,6 +278,9 @@
 
   /* GROUP ANALYSIS */
   .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  /* Collapses to one column when the second field is hidden, so a lone input fills the
+     row instead of sitting in a half-width column with a gap beside it. */
+  .form-row-2.single { grid-template-columns: 1fr; }
   .group-hint {
     font-family: var(--font-mono);
     font-size: 0.65rem;
@@ -316,6 +319,8 @@
   }
   .group-step.active { border-top-color: var(--accent); color: var(--text); }
   .group-step.done { border-top-color: var(--accent-dim); color: var(--text-muted); }
+  .group-step.clickable { cursor: pointer; }
+  .group-step.clickable:hover { color: var(--accent); border-top-color: var(--accent-dim); }
   .group-stage {
     position: relative;
     background: #000;

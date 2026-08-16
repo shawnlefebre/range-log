@@ -2488,6 +2488,17 @@ function gDrawReticle() {
 
 /* ---- gestures ---- */
 function gBindStage() {
+  const steps = document.getElementById('group-steps');
+  if (!steps.dataset.bound) {
+    steps.dataset.bound = '1';
+    steps.addEventListener('click', e => {
+      const el = e.target.closest('[data-step]');
+      if (!el || !G) return;
+      const i = Number(el.dataset.step);
+      if (gStepReachable(i)) { G.step = i; gRefresh(); }
+    });
+  }
+
   const stage = document.getElementById('group-stage');
   if (stage.dataset.bound) return;
   stage.dataset.bound = '1';
@@ -2571,6 +2582,17 @@ const GROUP_PROMPTS = [
   () => `Marking complete. Review below, then Save.`,
 ];
 
+// A step can be jumped to once its prerequisites exist — which makes the rail a way to
+// go back and re-do one part of an existing group without redoing the rest.
+function gStepReachable(i) {
+  if (!G || !G.img) return false;
+  if (i === 0) return true;
+  const calDone = G.calPts.length === gNeededCalPoints();
+  if (i === 1) return calDone;
+  if (i === 2) return calDone && !!G.poa;
+  return calDone && !!G.poa && G.impacts.length >= 2;
+}
+
 function gRefresh() {
   if (!G) return;
   const marking = !!G.img && G.step < 3;
@@ -2579,8 +2601,9 @@ function gRefresh() {
   document.getElementById('group-keep-photo-field').style.display = G.img ? '' : 'none';
 
   document.getElementById('group-steps').innerHTML = GROUP_STEPS.map((name, i) => {
-    const cls = i === G.step ? 'group-step active' : i < G.step ? 'group-step done' : 'group-step';
-    return `<div class="${cls}">${i + 1} ${name}</div>`;
+    const state = i === G.step ? 'active' : i < G.step ? 'done' : '';
+    const clickable = i !== G.step && gStepReachable(i) ? 'clickable' : '';
+    return `<div class="group-step ${state} ${clickable}" data-step="${i}">${i + 1} ${name}</div>`;
   }).join('');
 
   document.getElementById('group-prompt').innerHTML = G.img ? GROUP_PROMPTS[G.step]() : '';
@@ -2624,6 +2647,7 @@ function groupNextStep() {
 function handleGroupCalModeChange() {
   const persp = document.getElementById('group-cal-mode').value === 'perspective';
   document.getElementById('group-cal-h-field').style.display = persp ? '' : 'none';
+  document.getElementById('group-cal-row').classList.toggle('single', !persp);
   document.getElementById('group-cal-w-label').textContent =
     persp ? 'Rectangle width (in)' : 'Known distance (in)';
   if (G) {
@@ -2645,15 +2669,26 @@ function handleGroupAmmoChange() {
 /* ---- results ---- */
 function gRenderResults() {
   const box = document.getElementById('group-results');
-  if (!G || !G.img || G.step < 2) { box.innerHTML = ''; return; }
+  if (!G) { box.innerHTML = ''; return; }
 
   const form = gFormGroup();
   const pts = groupToInches(form);
   const m = groupMetrics(pts);
+
+  // Results come from the marked points, not the photo — so a group saved without its
+  // image still shows every measurement, and everything but re-marking stays editable.
   if (!m) {
-    box.innerHTML = '<div class="empty-state" style="padding:16px;">Mark at least two impacts to see results.</div>';
+    box.innerHTML = (G.img && G.step === 2)
+      ? '<div class="empty-state" style="padding:16px;">Mark at least two impacts to see results.</div>'
+      : '';
     return;
   }
+
+  const noPhotoNote = !G.img
+    ? `<div class="group-hint" style="margin-bottom:10px;">No photo was kept with this
+       group, so the impacts can’t be re-marked. Everything else here is still editable,
+       and the measurements below recompute from the saved points.</div>`
+    : '';
 
   const dIn = groupDistanceInches(form);
   const ang = v => dIn ? `${gFmt(toMOA(v, dIn))} MOA · ${gFmt(toMRAD(v, dIn))} MRAD` : '';
@@ -2661,6 +2696,7 @@ function gRenderResults() {
   const dir = (v, pos, neg) => Math.abs(v) < 0.005 ? 'on point' : v > 0 ? pos : neg;
 
   box.innerHTML = `
+    ${noPhotoNote}
     <div class="group-hero">
       <div class="group-tile-label">Group size — extreme spread, center to center</div>
       <div class="group-hero-num">${gFmt(m.es)}<span> in</span></div>
@@ -2925,9 +2961,9 @@ function closeModal(id) {
     openGunHistory(gunId);
   }
 }
-document.querySelectorAll('.modal-overlay').forEach(m => {
-  m.addEventListener('click', e => { if (e.target === m) closeModal(m.id); });
-});
+// Deliberately no click-outside-to-dismiss. These modals hold half-finished work — a
+// stray tap on the backdrop used to discard a group mid-marking. Every modal has an
+// explicit Cancel or Close button, so leaving is always a deliberate act.
 
 // ── TABS ──────────────────────────────────────────────────────────
 function showTab(name) {
