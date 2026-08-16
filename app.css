@@ -431,8 +431,34 @@
     color: var(--mark-poa);
     margin-top: 2px;
   }
-  .group-plot-wrap { position: relative; display: flex; justify-content: center; }
-  .group-plot { width: 100%; max-width: 320px; height: auto; touch-action: none; display: block; }
+  .group-plot-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .group-plot-wrap {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .group-plot {
+    width: 100%;
+    max-width: 320px;
+    height: auto;
+    touch-action: none;
+    display: block;
+    cursor: grab;
+  }
+  .group-plot:active { cursor: grabbing; }
   .group-row {
     display: grid;
     grid-template-columns: 1fr auto auto;

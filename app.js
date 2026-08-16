@@ -2719,12 +2719,129 @@ function gRenderResults() {
         <div class="group-offset-dir">${dir(m.cx, 'right', 'left')}</div>
       </div>
     </div>
-    <div class="group-plot-wrap">${groupPlotSVG(pts, m)}</div>`;
+    <div class="group-plot-head">
+      <span>Group plot — drag to pan, pinch to zoom</span>
+      <button type="button" class="btn-mini" id="group-plot-reset">Reset view</button>
+    </div>
+    <div class="group-plot-wrap">
+      ${groupPlotSVG(pts, m)}
+      <div class="group-zoom" id="group-plot-zoom">1.0×</div>
+    </div>`;
+
+  // The SVG is rebuilt on every render, so gestures re-bind; gPlotVB is module-level and
+  // survives, keeping your zoom when an unrelated field changes.
+  gApplyPlotView();
+  gBindPlotGestures();
 }
 
 // Scale drawing of the group: point of aim at the origin, 1-inch rings, true-size holes.
+const PLOT_SIZE = 300;
+
+/* ---- plot pan / zoom ----
+   For a group saved without its photo this plot is the only picture there is, so it
+   gets the same drag-and-pinch treatment as the target image. Driven by the viewBox
+   rather than a transform, so geometry scales while strokes and labels stay legible. */
+let gPlotVB = null;
+
+function gClampPlotW(w) {
+  return Math.max(PLOT_SIZE / 20, Math.min(w, PLOT_SIZE * 2));
+}
+
+function gResetPlotView() {
+  gPlotVB = null;
+  gApplyPlotView();
+}
+
+function gApplyPlotView() {
+  const svg = document.getElementById('group-plot-svg');
+  if (!svg) return;
+  if (!gPlotVB) gPlotVB = { x: 0, y: 0, w: PLOT_SIZE, h: PLOT_SIZE };
+  svg.setAttribute('viewBox', `${gPlotVB.x} ${gPlotVB.y} ${gPlotVB.w} ${gPlotVB.h}`);
+
+  const k = gPlotVB.w / PLOT_SIZE;
+  svg.querySelectorAll('text[data-fs]').forEach(t =>
+    t.setAttribute('font-size', (Number(t.dataset.fs) * k).toFixed(2)));
+
+  const chip = document.getElementById('group-plot-zoom');
+  if (chip) chip.textContent = (1 / k).toFixed(1) + '×';
+}
+
+function gBindPlotGestures() {
+  const svg = document.getElementById('group-plot-svg');
+  if (!svg) return;
+  const reset = document.getElementById('group-plot-reset');
+  if (reset) reset.addEventListener('click', gResetPlotView);
+
+  const pts = new Map();
+  let pinch = null;
+  const toUser = (clientX, clientY) => {
+    const r = svg.getBoundingClientRect();
+    return {
+      x: gPlotVB.x + (clientX - r.left) / r.width * gPlotVB.w,
+      y: gPlotVB.y + (clientY - r.top) / r.height * gPlotVB.h,
+    };
+  };
+
+  svg.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+  svg.addEventListener('pointerdown', e => {
+    svg.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) {
+      const [a, b] = [...pts.values()];
+      pinch = {
+        d: Math.hypot(a.x - b.x, a.y - b.y),
+        w: gPlotVB.w,
+        u: toUser((a.x + b.x) / 2, (a.y + b.y) / 2),
+      };
+    }
+  });
+
+  svg.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId)) return;
+    const prev = pts.get(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const r = svg.getBoundingClientRect();
+
+    if (pts.size === 1) {
+      gPlotVB.x -= (e.clientX - prev.x) / r.width * gPlotVB.w;
+      gPlotVB.y -= (e.clientY - prev.y) / r.height * gPlotVB.h;
+      gApplyPlotView();
+    } else if (pts.size === 2 && pinch) {
+      const [a, b] = [...pts.values()];
+      const dd = Math.hypot(a.x - b.x, a.y - b.y);
+      const w = gClampPlotW(pinch.w * (pinch.d / dd));
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      gPlotVB.w = gPlotVB.h = w;
+      gPlotVB.x = pinch.u.x - (mid.x - r.left) / r.width * w;
+      gPlotVB.y = pinch.u.y - (mid.y - r.top) / r.height * w;
+      gApplyPlotView();
+    }
+  });
+
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
+    svg.addEventListener(ev, e => {
+      pts.delete(e.pointerId);
+      if (pts.size < 2) pinch = null;
+    })
+  );
+
+  svg.addEventListener('wheel', e => {
+    e.preventDefault();
+    const before = toUser(e.clientX, e.clientY);
+    const r = svg.getBoundingClientRect();
+    const w = gClampPlotW(gPlotVB.w * (e.deltaY < 0 ? 1 / 1.12 : 1.12));
+    gPlotVB.w = gPlotVB.h = w;
+    gPlotVB.x = before.x - (e.clientX - r.left) / r.width * w;
+    gPlotVB.y = before.y - (e.clientY - r.top) / r.height * w;
+    gApplyPlotView();
+  }, { passive: false });
+
+  svg.addEventListener('dblclick', gResetPlotView);
+}
+
 function groupPlotSVG(pts, m) {
-  const size = 300, pad = 24;
+  const size = PLOT_SIZE, pad = 24;
   const reach = Math.max(1.2, ...pts.map(p => Math.max(Math.abs(p.x), Math.abs(p.y)))) * 1.25;
   const k = (size / 2 - pad) / reach;
   const X = v => size / 2 + v * k;
@@ -2732,26 +2849,31 @@ function groupPlotSVG(pts, m) {
   const bullet = parseFloat(document.getElementById('group-bullet').value);
   const rHole = Math.max((bullet > 0 ? bullet : 0.22) * k / 2, 3);
 
+  // The plot pans and zooms via its viewBox, so hole geometry scales with it while
+  // non-scaling-stroke keeps line weights constant. Text carries its base size in
+  // data-fs and is counter-scaled in gApplyPlotView(), so labels never balloon.
+  const ns = 'vector-effect="non-scaling-stroke"';
+
   let grid = '';
   for (let r = 1; r <= Math.ceil(reach); r++) {
-    grid += `<circle cx="${size / 2}" cy="${size / 2}" r="${r * k}" fill="none" stroke="var(--surface3)" stroke-width="1"/>`;
-    grid += `<text x="${size / 2 + 3}" y="${Y(r) - 3}" fill="var(--text-dim)" font-family="var(--font-mono)" font-size="8">${r}"</text>`;
+    grid += `<circle cx="${size / 2}" cy="${size / 2}" r="${r * k}" fill="none" stroke="var(--surface3)" stroke-width="1" ${ns}/>`;
+    grid += `<text x="${size / 2 + 3}" y="${Y(r) - 3}" fill="var(--text-dim)" font-family="var(--font-mono)" font-size="8" data-fs="8">${r}"</text>`;
   }
   const esLine = m.esPair
-    ? `<line x1="${X(pts[m.esPair[0]].x)}" y1="${Y(pts[m.esPair[0]].y)}" x2="${X(pts[m.esPair[1]].x)}" y2="${Y(pts[m.esPair[1]].y)}" stroke="var(--accent-dim)" stroke-width="1.5" stroke-dasharray="4 3"/>`
+    ? `<line x1="${X(pts[m.esPair[0]].x)}" y1="${Y(pts[m.esPair[0]].y)}" x2="${X(pts[m.esPair[1]].x)}" y2="${Y(pts[m.esPair[1]].y)}" stroke="var(--accent-dim)" stroke-width="1.5" stroke-dasharray="4 3" ${ns}/>`
     : '';
   const holes = pts.map((p, i) => `
-    <circle cx="${X(p.x)}" cy="${Y(p.y)}" r="${rHole}" fill="none" stroke="var(--mark-impact)" stroke-width="2"/>
-    <text x="${X(p.x) + rHole + 3}" y="${Y(p.y) - rHole - 1}" fill="var(--mark-impact)" font-family="var(--font-mono)" font-size="9">${i + 1}</text>`).join('');
+    <circle cx="${X(p.x)}" cy="${Y(p.y)}" r="${rHole}" fill="none" stroke="var(--mark-impact)" stroke-width="2" ${ns}/>
+    <text x="${X(p.x) + rHole + 3}" y="${Y(p.y) - rHole - 1}" fill="var(--mark-impact)" font-family="var(--font-mono)" font-size="9" data-fs="9">${i + 1}</text>`).join('');
 
-  return `<svg class="group-plot" viewBox="0 0 ${size} ${size}" role="img"
+  return `<svg class="group-plot" id="group-plot-svg" viewBox="0 0 ${size} ${size}" role="img"
       aria-label="Shot group plotted against point of aim">
-    <rect width="${size}" height="${size}" fill="var(--surface2)" rx="4"/>
+    <rect x="-2000" y="-2000" width="4400" height="4400" fill="var(--surface2)"/>
     ${grid}
-    <line x1="${pad / 2}" y1="${size / 2}" x2="${size - pad / 2}" y2="${size / 2}" stroke="var(--surface3)" stroke-width="1"/>
-    <line x1="${size / 2}" y1="${pad / 2}" x2="${size / 2}" y2="${size - pad / 2}" stroke="var(--surface3)" stroke-width="1"/>
+    <line x1="${pad / 2}" y1="${size / 2}" x2="${size - pad / 2}" y2="${size / 2}" stroke="var(--surface3)" stroke-width="1" ${ns}/>
+    <line x1="${size / 2}" y1="${pad / 2}" x2="${size / 2}" y2="${size - pad / 2}" stroke="var(--surface3)" stroke-width="1" ${ns}/>
     ${esLine}
-    <g stroke="var(--mark-poa)" stroke-width="1.5" fill="none">
+    <g stroke="var(--mark-poa)" stroke-width="1.5" fill="none" ${ns}>
       <circle cx="${size / 2}" cy="${size / 2}" r="7"/>
       <path d="M${size / 2 - 13} ${size / 2}h6M${size / 2 + 7} ${size / 2}h6M${size / 2} ${size / 2 - 13}v6M${size / 2} ${size / 2 + 7}v6"/>
     </g>
@@ -2767,6 +2889,7 @@ async function openLogGroup(gunId, groupId) {
 
   G = groupBlank(gunId);
   G.editId = groupId || null;
+  gPlotVB = null;   // each group opens at full view rather than inheriting a zoom
   document.getElementById('group-gun-id').value = gunId;
   document.getElementById('group-edit-id').value = groupId || '';
   document.getElementById('group-modal-title').textContent =
