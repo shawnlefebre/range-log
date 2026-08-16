@@ -1021,6 +1021,12 @@ function renderGunHistory(gunId) {
       const size = groupSizeInches(g);
       const dIn = groupDistanceInches(g);
       const moa = size != null ? toMOA(size, dIn) : null;
+      // MOA leads here: these rows sit side by side across different distances, and
+      // inches aren't comparable between them. Inches drops to the secondary line —
+      // unless the distance is missing, in which case it's all we can honestly show.
+      const primary = moa != null ? `${gFmt(moa)} MOA`
+        : size != null ? `${gFmt(size)}"` : '—';
+      const secondary = (moa != null && size != null) ? `${gFmt(size)}"` : '';
       const sub = [`${g.distance} ${g.distanceUnit || 'yd'}`, `${(g.impacts || []).length} shots`];
       if (g.ammo) sub.push(g.ammo);
       return `
@@ -1030,8 +1036,8 @@ function renderGunHistory(gunId) {
             <div class="group-row-sub">${sub.join(' · ')}${g.photoId ? ' · 📷' : ''}</div>
           </div>
           <div style="text-align:right;">
-            <div class="group-row-size">${size != null ? gFmt(size) + '"' : '—'}</div>
-            <div class="group-row-sub">${moa != null ? gFmt(moa) + ' MOA' : ''}</div>
+            <div class="group-row-size">${primary}</div>
+            <div class="group-row-sub">${secondary}</div>
           </div>
           <div style="display:flex;gap:4px;">
             <button class="btn-icon" onclick="openLogGroup('${gunId}','${g.id}')" title="Edit">✏️</button>
