@@ -431,6 +431,8 @@
     color: var(--mark-poa);
     margin-top: 2px;
   }
+  /* Shared header for the photo and plot views — label on the left, reset on the right. */
+  .group-view-head,
   .group-plot-head {
     display: flex;
     justify-content: space-between;

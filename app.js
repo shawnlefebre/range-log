@@ -2340,6 +2340,13 @@ function gFitImage() {
   G.view.ox = (cv.clientWidth - G.imgW * s) / 2;
   G.view.oy = (cv.clientHeight - G.imgH * s) / 2;
 }
+// Refits the photo to the stage without disturbing any marks already placed.
+function gResetPhotoView() {
+  if (!G || !G.img) return;
+  gFitImage();
+  gDrawCanvas();
+}
+
 function gResizeCanvas() {
   const cv = gCanvas();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
