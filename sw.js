@@ -1,7 +1,7 @@
 // Range Log service worker
 // Strategy: network-first for HTML so app updates propagate quickly.
 // Bump APP_VERSION whenever the HTML changes to force a new SW install.
-const APP_VERSION = '5.3';
+const APP_VERSION = '6.0';
 const CACHE_NAME = `range-log-${APP_VERSION}`;
 
 self.addEventListener('install', event => {
@@ -38,8 +38,15 @@ self.addEventListener('fetch', event => {
   const isHTML = req.mode === 'navigate' || req.destination === 'document' ||
                  (isSameOrigin && (url.pathname === '/' || url.pathname.endsWith('.html')));
 
-  if (isHTML) {
-    // Network-first for HTML so we always try to get the latest
+  // app.css and app.js are part of the app itself, not static assets — they must update
+  // in lockstep with the HTML. Serving them cache-first would leave a window after a
+  // deploy where new HTML runs against stale JS, so they get the same network-first
+  // treatment (and the same fall back to cache when offline).
+  const isAppAsset = isSameOrigin &&
+                     (url.pathname.endsWith('.js') || url.pathname.endsWith('.css'));
+
+  if (isHTML || isAppAsset) {
+    // Network-first so we always try to get the latest
     event.respondWith(
       (async () => {
         try {
@@ -50,12 +57,15 @@ self.addEventListener('fetch', event => {
         } catch {
           const cached = await caches.match(req);
           if (cached) return cached;
-          // Last resort: serve cached index
-          const cache = await caches.open(CACHE_NAME);
-          const keys = await cache.keys();
-          for (const k of keys) {
-            if (k.url.endsWith('.html') || new URL(k.url).pathname === '/') {
-              return cache.match(k);
+          // Last resort: serve the cached index, but only for a page navigation.
+          // Handing index.html back for a missing app.js would just fail confusingly.
+          if (isHTML) {
+            const cache = await caches.open(CACHE_NAME);
+            const keys = await cache.keys();
+            for (const k of keys) {
+              if (k.url.endsWith('.html') || new URL(k.url).pathname === '/') {
+                return cache.match(k);
+              }
             }
           }
           throw new Error('offline and no cache');

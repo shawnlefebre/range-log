@@ -14,16 +14,32 @@ const fs = require('fs');
 const path = require('path');
 
 const APP_PATH = path.join(__dirname, '..', 'index.html');
+const CSS_PATH = path.join(__dirname, '..', 'app.css');
+const JS_PATH = path.join(__dirname, '..', 'app.js');
 
-function loadApp() {
-  if (!fs.existsSync(APP_PATH)) {
-    throw new Error(
-      `Could not find ${APP_PATH}. The test suite expects the app at repo root as "index.html" ` +
-      `(rename if you're testing a copy, e.g. range-tracker.html).`
-    );
+// The app ships as index.html + app.css + app.js. jsdom won't fetch external assets, so
+// we splice them back inline — the app then runs exactly as it does in a browser, with
+// no network or resource loading involved.
+function buildDocument(mutateJs) {
+  for (const [label, p] of [['index.html', APP_PATH], ['app.css', CSS_PATH], ['app.js', JS_PATH]]) {
+    if (!fs.existsSync(p)) throw new Error(`Could not find ${label} at ${p}.`);
   }
   const html = fs.readFileSync(APP_PATH, 'utf8');
-  const dom = new JSDOM(html, {
+  const css = fs.readFileSync(CSS_PATH, 'utf8');
+  let js = fs.readFileSync(JS_PATH, 'utf8');
+  if (mutateJs) js = mutateJs(js);
+
+  // Replacer functions, not strings: the source is full of `${...}` template literals and
+  // String.replace would otherwise interpret those $ sequences as substitution patterns.
+  const withCss = html.replace('<link rel="stylesheet" href="app.css">', () => `<style>\n${css}\n</style>`);
+  assert.notStrictEqual(withCss, html, 'app.css link tag not found — update the splice in buildDocument');
+  const withJs = withCss.replace('<script src="app.js"></script>', () => `<script>\n${js}\n</script>`);
+  assert.notStrictEqual(withJs, withCss, 'app.js script tag not found — update the splice in buildDocument');
+  return withJs;
+}
+
+function loadApp(mutateJs) {
+  const dom = new JSDOM(buildDocument(mutateJs), {
     runScripts: 'dangerously',
     url: 'https://example.com/',
     pretendToBeVisual: true,
@@ -52,7 +68,7 @@ describe('schema migration', () => {
       locations: [], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v1)));
-    assert.strictEqual(migrated.schemaVersion, 8);
+    assert.strictEqual(migrated.schemaVersion, 9);
     assert.strictEqual(migrated.isDemo, false, 'migrated real data must never be flagged as demo');
     assert.deepStrictEqual([...migrated.firearms[0].calibers], ['.22 LR']);
     assert.strictEqual(migrated.firearms[0].cleanings.length, 1);
@@ -68,7 +84,7 @@ describe('schema migration', () => {
       locations: [{ id: 'l1', name: 'Real Range' }], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v6)));
-    assert.strictEqual(migrated.schemaVersion, 8);
+    assert.strictEqual(migrated.schemaVersion, 9);
     assert.strictEqual(migrated.isDemo, false);
     assert.strictEqual(migrated.firearms[0].name, 'Real Gun', 'existing data must survive migration untouched');
   });
@@ -84,7 +100,7 @@ describe('schema migration', () => {
       locations: [], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v7)));
-    assert.strictEqual(migrated.schemaVersion, 8);
+    assert.strictEqual(migrated.schemaVersion, 9);
     assert.strictEqual(migrated.firearms[0].notes, '', 'missing notes should default to empty string');
     assert.strictEqual(migrated.firearms[1].notes, 'Torque: 20 in-lbs', 'existing notes must survive migration untouched');
   });
@@ -92,7 +108,7 @@ describe('schema migration', () => {
   test('already-current data passes through without modification', () => {
     const current = win.buildDefaultData();
     const migrated = win.migrateData(JSON.parse(JSON.stringify(current)));
-    assert.strictEqual(migrated.schemaVersion, 8);
+    assert.strictEqual(migrated.schemaVersion, 9);
     assert.strictEqual(migrated.firearms.length, current.firearms.length);
   });
 });
@@ -132,15 +148,17 @@ describe('caliber merge and disclaimer', () => {
   });
 
   test('disclaimer fires when a firearm carries a caliber outside the selected group', async () => {
-    // Inject a firearm sharing .223/5.56 with Example Rifle but also carrying a unique third caliber.
-    let html = fs.readFileSync(APP_PATH, 'utf8');
-    html = html.replace(
-      "{ id: g2, name: 'Example Pistol', type: 'pistol', calibers: ['9mm'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], notes: '' },",
-      "{ id: g2, name: 'Example Pistol', type: 'pistol', calibers: ['.223 Rem', '5.56 NATO', '.300 BLK'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], notes: '' },"
-    );
-    const dom = new JSDOM(html, { runScripts: 'dangerously', url: 'https://example.com/', pretendToBeVisual: true });
-    dom.window.alert = () => {};
-    const win = await ready(dom);
+    // Inject a firearm sharing .223/5.56 with Example Rifle but also carrying a unique
+    // third caliber. Targets only the calibers array on the g2 line, so adding unrelated
+    // fields to the demo firearms doesn't silently turn this into a no-op test.
+    const win = await ready(loadApp(js => {
+      const patched = js.replace(
+        /(\{ id: g2,[^}]*?calibers: )\['9mm'\]/,
+        "$1['.223 Rem', '5.56 NATO', '.300 BLK']"
+      );
+      assert.notStrictEqual(patched, js, 'demo-firearm injection failed to match — update the pattern');
+      return patched;
+    }));
 
     win.showTab('stats');
     const calSelect = win.document.getElementById('stats-rf-caliber');
@@ -379,6 +397,132 @@ describe('Details modal never stays open behind Cleaning/Zero modals', () => {
     assert.ok(win.document.getElementById('modal-cleaning').classList.contains('open'));
     win.saveCleaning();
     assert.ok(!win.document.getElementById('modal-history').classList.contains('open'), 'Details was never open, so it must not appear now');
+  });
+});
+
+// ── GROUP ANALYSIS ──────────────────────────────────────────────────
+// Points are normalised by image width. Using 0.01 units == 1 inch throughout, so a
+// shot 0.01 from the point of aim is exactly 1 inch out and results are hand-checkable.
+
+describe('group analysis math', () => {
+  let win;
+  before(async () => { win = await ready(loadApp()); });
+
+  // Four impacts 1 inch from the aim point, N/E/S/W.
+  const impacts = [
+    { x: 0.50, y: 0.49 }, { x: 0.51, y: 0.50 },
+    { x: 0.50, y: 0.51 }, { x: 0.49, y: 0.50 },
+  ];
+  const linear = {
+    calMode: 'linear', calInches: 1, distance: 50, distanceUnit: 'yd',
+    calPts: [{ x: 0.40, y: 0.50 }, { x: 0.41, y: 0.50 }],
+    poa: { x: 0.50, y: 0.50 },
+    impacts,
+  };
+
+  test('linear scale returns hand-computed spread, mean radius and W/H', () => {
+    const m = win.groupMetrics(win.groupToInches(linear));
+    assert.strictEqual(+m.es.toFixed(4), 2, 'extreme spread is 2 inches');
+    assert.strictEqual(+m.meanRadius.toFixed(4), 1, 'every shot is 1 inch from center');
+    assert.strictEqual(+m.width.toFixed(4), 2);
+    assert.strictEqual(+m.height.toFixed(4), 2);
+    assert.strictEqual(+m.cx.toFixed(4), 0, 'symmetric group is centered on the aim point');
+    assert.strictEqual(+m.cy.toFixed(4), 0);
+  });
+
+  test('angular conversions match the standard subtensions', () => {
+    const dIn = win.groupDistanceInches(linear);
+    assert.strictEqual(dIn, 1800, '50 yards is 1800 inches');
+    // 1 MOA subtends 1.047 in at 100 yd; 1 mrad subtends 3.6 in at 100 yd.
+    assert.strictEqual(+win.toMOA(2, dIn).toFixed(3), 3.820);
+    assert.strictEqual(+win.toMRAD(2, dIn).toFixed(3), 1.111);
+  });
+
+  test('elevation is positive upward and windage positive to the right', () => {
+    const pts = win.groupToInches({ ...linear, impacts: [{ x: 0.52, y: 0.49 }, { x: 0.50, y: 0.50 }] });
+    assert.strictEqual(+pts[0].x.toFixed(4), 2, 'right of aim is positive windage');
+    assert.strictEqual(+pts[0].y.toFixed(4), 1, 'above aim is positive elevation');
+  });
+
+  test('metrics need two impacts; one is not a group', () => {
+    assert.strictEqual(win.groupMetrics(win.groupToInches({ ...linear, impacts: [impacts[0]] })), null);
+  });
+
+  test('an incomplete group yields no measurements rather than a wrong one', () => {
+    assert.strictEqual(win.groupToInches({ ...linear, poa: null }), null, 'no aim point');
+    assert.strictEqual(win.groupToInches({ ...linear, calPts: [] }), null, 'no scale reference');
+    assert.strictEqual(win.groupToInches({ ...linear, calInches: 0 }), null, 'zero-length reference');
+  });
+
+  // The perspective path is the fragile maths, so it gets a genuinely warped target.
+  const warp = p => {
+    const [a, b, c, d, e, f, g, h] = [1, 0.15, 0, 0.1, 1, 0, 30, 20];
+    const w = g * p.x + h * p.y + 1;
+    return { x: (a * p.x + b * p.y + c) / w, y: (d * p.x + e * p.y + f) / w };
+  };
+  const square = [{ x: 0.46, y: 0.46 }, { x: 0.50, y: 0.46 }, { x: 0.50, y: 0.50 }, { x: 0.46, y: 0.50 }];
+
+  test('perspective correction recovers true measurements from a warped target', () => {
+    const g = {
+      calMode: 'perspective', calInches: 4, calInchesH: 4, distance: 50, distanceUnit: 'yd',
+      calPts: square.map(warp), poa: warp({ x: 0.50, y: 0.50 }), impacts: impacts.map(warp),
+    };
+    const m = win.groupMetrics(win.groupToInches(g));
+    assert.strictEqual(+m.es.toFixed(3), 2, 'warp must not change the real group size');
+    assert.strictEqual(+m.meanRadius.toFixed(3), 1);
+  });
+
+  test('corner marking order is irrelevant — all 24 permutations agree', () => {
+    const permute = a => a.length <= 1 ? [a]
+      : a.flatMap((v, i) => permute([...a.slice(0, i), ...a.slice(i + 1)]).map(r => [v, ...r]));
+    const base = {
+      calMode: 'perspective', calInches: 4, calInchesH: 4, distance: 50, distanceUnit: 'yd',
+      poa: warp({ x: 0.50, y: 0.50 }), impacts: impacts.map(warp),
+    };
+    const results = permute([0, 1, 2, 3]).map(order => {
+      const m = win.groupMetrics(win.groupToInches({ ...base, calPts: order.map(i => warp(square[i])) }));
+      return `${m.es.toFixed(3)}/${m.meanRadius.toFixed(3)}`;
+    });
+    assert.strictEqual(results.length, 24);
+    assert.strictEqual(new Set(results).size, 1, `every corner order must agree, got ${[...new Set(results)]}`);
+  });
+
+  test('a non-square reference stays correct in any corner order', () => {
+    // 4 in wide x 2 in tall, marked as a 0.04 x 0.02 rectangle.
+    const rect = [{ x: 0.46, y: 0.48 }, { x: 0.50, y: 0.48 }, { x: 0.50, y: 0.50 }, { x: 0.46, y: 0.50 }];
+    const permute = a => a.length <= 1 ? [a]
+      : a.flatMap((v, i) => permute([...a.slice(0, i), ...a.slice(i + 1)]).map(r => [v, ...r]));
+    const seen = new Set(permute([0, 1, 2, 3]).map(order => {
+      const m = win.groupMetrics(win.groupToInches({
+        calMode: 'perspective', calInches: 4, calInchesH: 2, distance: 50, distanceUnit: 'yd',
+        calPts: order.map(i => rect[i]), poa: { x: 0.50, y: 0.50 }, impacts,
+      }));
+      return `${m.es.toFixed(3)}/${m.width.toFixed(3)}/${m.height.toFixed(3)}`;
+    }));
+    assert.strictEqual(seen.size, 1, `non-square reference must not flip width and height, got ${[...seen]}`);
+  });
+
+  test('bullet diameter resolves from caliber and falls back rather than guessing', () => {
+    assert.strictEqual(win.caliberDiameter('.223 Rem'), 0.224);
+    assert.strictEqual(win.caliberDiameter('9MM'), 0.355, 'lookup is case-insensitive');
+    assert.strictEqual(win.caliberDiameter('  12 Gauge '), 0.729, 'surrounding space is ignored');
+    assert.strictEqual(win.caliberDiameter('.499 Wildcat'), null, 'unknown caliber must not be invented');
+    assert.strictEqual(win.caliberDiameter(''), null);
+    assert.strictEqual(win.caliberDiameter(undefined), null);
+  });
+
+  test('group size is derived, so editing the scale changes it without stored values', () => {
+    const half = win.groupMetrics(win.groupToInches({ ...linear, calInches: 0.5 }));
+    assert.strictEqual(+half.es.toFixed(4), 1, 'halving the reference length halves the group');
+  });
+
+  test('demo data ships a group whose size recomputes from its points alone', () => {
+    // `data` is a let-binding so it isn't on window; build a fresh copy instead.
+    const gun = win.buildDefaultData().firearms.find(g => (g.groups || []).length);
+    assert.ok(gun, 'demo data should include a sample group');
+    const size = win.groupSizeInches(gun.groups[0]);
+    assert.ok(size > 0 && size < 3, `expected a plausible demo group size, got ${size}`);
+    assert.ok(!('size' in gun.groups[0]), 'group size must never be stored on the record');
   });
 });
 
