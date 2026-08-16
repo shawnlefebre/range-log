@@ -2596,9 +2596,10 @@ function gStepReachable(i) {
 function gRefresh() {
   if (!G) return;
   const marking = !!G.img && G.step < 3;
+  // The keep-photo checkbox sits inside the stage wrapper, so it appears and hides
+  // with the photo it refers to — no separate toggle needed.
   document.getElementById('group-stage-wrap').style.display = G.img ? '' : 'none';
   document.getElementById('group-load').style.display = G.img ? 'none' : '';
-  document.getElementById('group-keep-photo-field').style.display = G.img ? '' : 'none';
 
   document.getElementById('group-steps').innerHTML = GROUP_STEPS.map((name, i) => {
     const state = i === G.step ? 'active' : i < G.step ? 'done' : '';

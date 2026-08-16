@@ -603,16 +603,15 @@
         <button type="button" class="btn btn-primary" id="group-set" onclick="groupSetPoint()">Set point</button>
         <button type="button" class="btn btn-secondary" id="group-next" onclick="groupNextStep()">Next</button>
       </div>
+      <div class="form-group" id="group-keep-photo-field">
+        <label class="group-check" for="group-keep-photo">
+          <input type="checkbox" id="group-keep-photo" checked>
+          <span>Keep the photo so this group can be re-marked later</span>
+        </label>
+      </div>
     </div>
 
     <div id="group-results"></div>
-
-    <div class="form-group" id="group-keep-photo-field" style="display:none;">
-      <label class="group-check" for="group-keep-photo">
-        <input type="checkbox" id="group-keep-photo" checked>
-        <span>Keep the photo so this group can be re-marked later</span>
-      </label>
-    </div>
 
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="closeModal('modal-group')">Cancel</button>
