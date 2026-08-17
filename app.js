@@ -3394,7 +3394,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '6.1';
+const APP_VERSION = '6.2';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
