@@ -15,7 +15,10 @@
 //     Marked points are normalised by image WIDTH on both axes (so aspect is preserved
 //     and they stay valid at any resolution, with or without the photo). Group size,
 //     mean radius, W/H and offsets are always recomputed, never stored.
-const SCHEMA_VERSION = 9;
+// v10: group.sessionId added — links a group to the range session it was shot at, or
+//      null when unlinked. Existing groups are auto-linked only where a single session
+//      shares their date; anything ambiguous stays null rather than guessing.
+const SCHEMA_VERSION = 10;
 
 const CLEANING_TYPES = {
   quick: { label: 'Quick', resetsDeep: false },
@@ -201,28 +204,46 @@ function generateDemoData() {
     });
   });
 
-  // One sample group on the rifle so the feature is discoverable on a fresh load.
-  // Points are normalised by image width; this set works out to a ~0.6 in group.
+  // Sample groups so the feature is discoverable on a fresh load. They hang off a real
+  // session — one the rifle actually shot at — so the session scorecard has something to
+  // show. Points are normalised by image width; 0.01 unit == 1 inch at this scale.
   {
-    const d = new Date(now.getFullYear(), now.getMonth() - 1, 15);
-    firearms[0].groups.push({
-      id: 'dgroup_0',
-      date: toISO(d.getFullYear(), d.getMonth(), d.getDate()),
-      distance: 50,
-      distanceUnit: 'yd',
-      ammo: 'Example Ammo Co 55gr FMJ',
-      bulletDia: 0.224,
-      calMode: 'linear',
-      calInches: 1,
-      calInchesH: 1,
-      calPts: [{ x: 0.30, y: 0.50 }, { x: 0.40, y: 0.50 }],
-      poa: { x: 0.50, y: 0.50 },
-      impacts: [
-        { x: 0.502, y: 0.487 }, { x: 0.487, y: 0.499 },
-        { x: 0.495, y: 0.513 }, { x: 0.512, y: 0.505 },
-        { x: 0.499, y: 0.494 },
-      ],
-      photoId: null,
+    // Hang them off the most recent session the rifle shot at — sessions list newest
+    // first, so a recent one is what you actually see.
+    const host = [...sessions]
+      .filter(s => (s.rounds[g1] || 0) > 0)
+      .sort((a, b) => b.date.localeCompare(a.date))[0] || sessions[0];
+
+    // Fixed seed so demo data stays identical run to run, but scattered like real
+    // shooting rather than a perfect circle — including a slight high-right bias, since
+    // a group sitting exactly on the aim point is not what a real target looks like.
+    let seed = 20260817;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+    const gauss = () => (rnd() + rnd() + rnd() + rnd() - 2) / 2;
+
+    // 0.10 normalised units == 1 inch at this scale; these land around 1-1.5 MOA at 50 yd.
+    const spreads = [0.085, 0.075, 0.060];
+    spreads.forEach((sd, gi) => {
+      const impacts = [0, 1, 2, 3, 4].map(() => ({
+        x: 0.5 + 0.012 + gauss() * sd,
+        y: 0.5 - 0.010 + gauss() * sd,
+      }));
+      firearms[0].groups.push({
+        id: `dgroup_${gi}`,
+        date: host.date,
+        sessionId: host.id,
+        distance: 50,
+        distanceUnit: 'yd',
+        ammo: 'Example Ammo Co 55gr FMJ',
+        bulletDia: 0.224,
+        calMode: 'linear',
+        calInches: 1,
+        calInchesH: 1,
+        calPts: [{ x: 0.30, y: 0.50 }, { x: 0.40, y: 0.50 }],
+        poa: { x: 0.50, y: 0.50 },
+        impacts,
+        photoId: null,
+      });
     });
   }
 
@@ -334,11 +355,27 @@ function migrateData(d) {
     d.schemaVersion = 9;
   }
 
+  // v9 -> v10: link existing groups to a session where it's unambiguous. A group logged
+  // before this feature has only a date to go on, so we link it when exactly one session
+  // shares that date and leave it unlinked otherwise — a wrong link would quietly
+  // corrupt session scorecards, which is worse than no link at all.
+  if (d.schemaVersion === 9) {
+    d.firearms.forEach(gun => {
+      (gun.groups || []).forEach(g => {
+        if (g.sessionId !== undefined) return;
+        const sameDay = (d.sessions || []).filter(s => s.date === g.date);
+        g.sessionId = sameDay.length === 1 ? sameDay[0].id : null;
+      });
+    });
+    d.schemaVersion = 10;
+  }
+
   // Defensive: ensure every gun has cleanings + zeros + calibers arrays, and ammo + sellers exist
   d.firearms.forEach(gun => {
     if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
     if (!Array.isArray(gun.zeros)) gun.zeros = [];
     if (!Array.isArray(gun.groups)) gun.groups = [];
+    gun.groups.forEach(g => { if (g.sessionId === undefined) g.sessionId = null; });
     if (!Array.isArray(gun.calibers)) gun.calibers = gun.caliber ? [gun.caliber] : [];
     if (gun.type === undefined) gun.type = null;
     if (gun.notes === undefined) gun.notes = '';
@@ -701,9 +738,67 @@ function renderSessions() {
         ${s.locationId ? `<div class="session-location">${loc ? loc.name : 'Unknown location'}</div>` : ''}
         <div class="session-rounds">${pills}</div>
         ${s.notes ? `<div class="session-notes">${s.notes}</div>` : ''}
+        ${sessionScorecard(s.id)}
       </div>
     `;
   }).join('');
+}
+
+// Groups shot at a given session, newest first, with the firearm they belong to.
+function groupsForSession(sessionId) {
+  const out = [];
+  (data.firearms || []).forEach(gun => {
+    (gun.groups || []).forEach(g => {
+      if (g.sessionId === sessionId) out.push({ gun, group: g });
+    });
+  });
+  return out;
+}
+
+// A compact read of how the shooting actually went, shown inline on the session it
+// belongs to. Everything here is recomputed from the marked points, never stored.
+function sessionScorecard(sessionId) {
+  const rows = groupsForSession(sessionId)
+    .map(({ gun, group }) => {
+      const size = groupSizeInches(group);
+      const dIn = groupDistanceInches(group);
+      return { gun, group, moa: size != null ? toMOA(size, dIn) : null };
+    })
+    .filter(r => r.moa != null)
+    .sort((a, b) => a.moa - b.moa);
+
+  if (!rows.length) return '';
+
+  const best = rows[0].moa;
+  const avg = rows.reduce((s, r) => s + r.moa, 0) / rows.length;
+  // Beyond about a dozen rows the detail stops being scannable, so collapse to the
+  // headline figures and let the firearm's own Details view carry the specifics.
+  const DETAIL_LIMIT = 12;
+
+  // Two lines per row rather than five columns — at phone width a single row would push
+  // the MOA figure off the card, and that's the number worth reading.
+  const detail = rows.length <= DETAIL_LIMIT ? rows.map(r => {
+    const sub = [r.group.ammo, `${r.group.distance} ${r.group.distanceUnit || 'yd'}`,
+                 `${(r.group.impacts || []).length} shots`].filter(Boolean).join(' · ');
+    return `
+      <div class="scorecard-row">
+        <div class="scorecard-main">
+          <div class="scorecard-gun">${r.gun.name}</div>
+          <div class="scorecard-sub">${sub}</div>
+        </div>
+        <div class="scorecard-moa ${r.moa === best ? 'best' : ''}">${gFmt(r.moa)}<span> MOA</span></div>
+      </div>`;
+  }).join('') : `
+    <div class="scorecard-more">${rows.length} groups &mdash; open a firearm's Details to see each one.</div>`;
+
+  return `
+    <div class="scorecard">
+      <div class="scorecard-head">
+        <span>Groups this session</span>
+        <span class="scorecard-figs">best ${gFmt(best)} &middot; avg ${gFmt(avg)} MOA</span>
+      </div>
+      ${detail}
+    </div>`;
 }
 
 // ── SETTINGS ──────────────────────────────────────────────────────
@@ -1341,8 +1436,21 @@ function deleteSession(id) {
     gun.totalRounds = Math.max(0, (gun.totalRounds || 0) - r);
   });
 
+  // Unlink any groups that pointed here, rather than leaving them referencing a session
+  // that no longer exists. The groups themselves are kept — they're independent records.
+  let unlinked = 0;
+  data.firearms.forEach(gun => {
+    (gun.groups || []).forEach(g => {
+      if (g.sessionId === id) { g.sessionId = null; unlinked++; }
+    });
+  });
+
   data.sessions = data.sessions.filter(s => s.id !== id);
   save(data);
+  if (unlinked) {
+    alert(`${unlinked} group${unlinked > 1 ? 's are' : ' is'} no longer linked to a session. ` +
+          `The group${unlinked > 1 ? 's' : ''} and all measurements are unchanged.`);
+  }
   renderSessions();
   renderDashboard();
 }
@@ -2516,6 +2624,17 @@ function gBindStage() {
       field.addEventListener('input', () => { if (G) gRefresh(); });
     });
 
+  // Changing the date changes which session is the obvious match, so re-run the suggestion
+  // — but only while the group is still unlinked, so it never overrides a deliberate pick.
+  const dateField = document.getElementById('group-date');
+  if (!dateField.dataset.bound) {
+    dateField.dataset.bound = '1';
+    dateField.addEventListener('change', () => {
+      if (!G || document.getElementById('group-session').value) return;
+      populateGroupSessionDropdown(null, dateField.value);
+    });
+  }
+
   const steps = document.getElementById('group-steps');
   if (!steps.dataset.bound) {
     steps.dataset.bound = '1';
@@ -2708,6 +2827,36 @@ function handleGroupCalModeChange() {
     if (G.step > 0) G.step = 0;
     gRefresh();
   }
+}
+
+// Sessions are listed newest first, labelled by date and location. When a group's date
+// matches exactly one session we preselect it, since that's almost always the right
+// answer — but it stays changeable, and "not linked" is always available.
+function populateGroupSessionDropdown(selectedId, groupDate) {
+  const sel = document.getElementById('group-session');
+  const sessions = [...(data.sessions || [])].sort((a, b) => b.date.localeCompare(a.date));
+  sel.innerHTML = '<option value="">— Not linked to a session —</option>' +
+    sessions.map(s => {
+      const loc = data.locations.find(l => l.id === s.locationId);
+      const label = `${fmtDate(s.date)}${loc ? ' · ' + loc.name : ''}`;
+      return `<option value="${s.id}">${label}</option>`;
+    }).join('');
+
+  let hint = '';
+  if (selectedId && sessions.some(s => s.id === selectedId)) {
+    sel.value = selectedId;
+  } else if (!selectedId && groupDate) {
+    const sameDay = sessions.filter(s => s.date === groupDate);
+    if (sameDay.length === 1) {
+      sel.value = sameDay[0].id;
+      hint = 'Matched to the session you logged that day. Change it if that’s wrong.';
+    } else if (sameDay.length > 1) {
+      hint = `${sameDay.length} sessions on that date — pick the right one.`;
+    } else {
+      hint = 'No session logged on that date.';
+    }
+  }
+  document.getElementById('group-session-hint').textContent = hint;
 }
 
 function handleGroupAmmoChange() {
@@ -2971,6 +3120,10 @@ async function openLogGroup(gunId, groupId) {
   document.getElementById('group-bullet').value = existing && existing.bulletDia ? existing.bulletDia : '';
   document.getElementById('group-keep-photo').checked = existing ? !!existing.photoId : true;
   populateAmmoDropdown(gun, existing ? existing.ammo : '', 'group-ammo-select', 'group-ammo-custom');
+  populateGroupSessionDropdown(
+    existing ? existing.sessionId : null,
+    document.getElementById('group-date').value
+  );
   handleGroupCalModeChange();
 
   if (existing) {
@@ -3101,6 +3254,7 @@ async function saveGroup() {
   const record = {
     id: existing ? existing.id : uid(),
     date,
+    sessionId: document.getElementById('group-session').value || null,
     distance,
     distanceUnit: document.getElementById('group-distance-unit').value,
     ammo: getSelectedAmmo('group-ammo-select', 'group-ammo-custom'),

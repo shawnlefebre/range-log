@@ -68,7 +68,7 @@ describe('schema migration', () => {
       locations: [], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v1)));
-    assert.strictEqual(migrated.schemaVersion, 9);
+    assert.strictEqual(migrated.schemaVersion, 10);
     assert.strictEqual(migrated.isDemo, false, 'migrated real data must never be flagged as demo');
     assert.deepStrictEqual([...migrated.firearms[0].calibers], ['.22 LR']);
     assert.strictEqual(migrated.firearms[0].cleanings.length, 1);
@@ -84,7 +84,7 @@ describe('schema migration', () => {
       locations: [{ id: 'l1', name: 'Real Range' }], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v6)));
-    assert.strictEqual(migrated.schemaVersion, 9);
+    assert.strictEqual(migrated.schemaVersion, 10);
     assert.strictEqual(migrated.isDemo, false);
     assert.strictEqual(migrated.firearms[0].name, 'Real Gun', 'existing data must survive migration untouched');
   });
@@ -100,15 +100,47 @@ describe('schema migration', () => {
       locations: [], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v7)));
-    assert.strictEqual(migrated.schemaVersion, 9);
+    assert.strictEqual(migrated.schemaVersion, 10);
     assert.strictEqual(migrated.firearms[0].notes, '', 'missing notes should default to empty string');
     assert.strictEqual(migrated.firearms[1].notes, 'Torque: 20 in-lbs', 'existing notes must survive migration untouched');
+  });
+
+  test('v9 groups link to a session only when the date is unambiguous', () => {
+    const v9 = {
+      schemaVersion: 9,
+      isDemo: false,
+      firearms: [{
+        id: 'g1', name: 'Rifle', type: 'rifle', calibers: ['.223 Rem'], cleanThreshold: 500,
+        totalRounds: 0, cleanings: [], zeros: [], notes: '',
+        groups: [
+          { id: 'a', date: '2026-05-01', distance: 50, distanceUnit: 'yd', calMode: 'linear',
+            calInches: 1, calPts: [{ x: 0.4, y: 0.5 }, { x: 0.41, y: 0.5 }],
+            poa: { x: 0.5, y: 0.5 }, impacts: [{ x: 0.5, y: 0.49 }, { x: 0.51, y: 0.5 }] },
+          { id: 'b', date: '2026-05-02', distance: 50, distanceUnit: 'yd', calMode: 'linear',
+            calInches: 1, calPts: [{ x: 0.4, y: 0.5 }, { x: 0.41, y: 0.5 }],
+            poa: { x: 0.5, y: 0.5 }, impacts: [{ x: 0.5, y: 0.49 }, { x: 0.51, y: 0.5 }] },
+          { id: 'c', date: '2026-05-03', distance: 50, distanceUnit: 'yd', calMode: 'linear',
+            calInches: 1, calPts: [{ x: 0.4, y: 0.5 }, { x: 0.41, y: 0.5 }],
+            poa: { x: 0.5, y: 0.5 }, impacts: [{ x: 0.5, y: 0.49 }, { x: 0.51, y: 0.5 }] },
+        ],
+      }],
+      locations: [], sellers: [], ammo: [],
+      sessions: [
+        { id: 's1', date: '2026-05-01', rounds: {}, totalRounds: 0 },
+        { id: 's2', date: '2026-05-02', rounds: {}, totalRounds: 0 },
+        { id: 's3', date: '2026-05-02', rounds: {}, totalRounds: 0 },
+      ],
+    };
+    const groups = win.migrateData(JSON.parse(JSON.stringify(v9))).firearms[0].groups;
+    assert.strictEqual(groups[0].sessionId, 's1', 'one session that day should be linked');
+    assert.strictEqual(groups[1].sessionId, null, 'two sessions that day is ambiguous — must not guess');
+    assert.strictEqual(groups[2].sessionId, null, 'no session that day should stay unlinked');
   });
 
   test('already-current data passes through without modification', () => {
     const current = win.buildDefaultData();
     const migrated = win.migrateData(JSON.parse(JSON.stringify(current)));
-    assert.strictEqual(migrated.schemaVersion, 9);
+    assert.strictEqual(migrated.schemaVersion, 10);
     assert.strictEqual(migrated.firearms.length, current.firearms.length);
   });
 });
@@ -544,6 +576,49 @@ describe('group analysis math', () => {
     const size = win.groupSizeInches(gun.groups[0]);
     assert.ok(size > 0 && size < 3, `expected a plausible demo group size, got ${size}`);
     assert.ok(!('size' in gun.groups[0]), 'group size must never be stored on the record');
+  });
+});
+
+// ── GROUP ↔ SESSION LINKING ─────────────────────────────────────────
+
+describe('groups linked to sessions', () => {
+  test('demo groups attach to a real session and the scorecard reports them', async () => {
+    const win = await ready(loadApp());
+    const gun = win.buildDefaultData().firearms.find(g => g.groups.length);
+    const sessionId = gun.groups[0].sessionId;
+    assert.ok(sessionId, 'demo groups should be linked to a session');
+    assert.ok(gun.groups.every(g => g.sessionId === sessionId), 'all demo groups share one session');
+
+    win.showTab('sessions');
+    const html = win.document.getElementById('sessions-list').innerHTML;
+    assert.ok(html.includes('Groups this session'), 'the linked session should show a scorecard');
+    assert.ok(/best \d+\.\d+ · avg \d+\.\d+ MOA/.test(html), 'scorecard shows best and average MOA');
+  });
+
+  test('sessions without groups show no scorecard at all', async () => {
+    const win = await ready(loadApp());
+    win.showTab('sessions');
+    const cards = [...win.document.querySelectorAll('.session-card')];
+    const withScorecard = cards.filter(c => c.querySelector('.scorecard'));
+    assert.ok(withScorecard.length >= 1, 'at least one session has groups');
+    assert.ok(withScorecard.length < cards.length, 'sessions without groups stay clean');
+  });
+
+  test('deleting a session unlinks its groups instead of leaving them dangling', async () => {
+    const win = await ready(loadApp());
+    // Demo ids are deterministic, so a fresh build names the same session the live data uses.
+    const sessionId = win.buildDefaultData().firearms.find(g => g.groups.length).groups[0].sessionId;
+
+    const linked = win.groupsForSession(sessionId);
+    assert.ok(linked.length > 0, 'demo data should have groups on this session');
+    const unlinkedBefore = win.groupsForSession(null).length;
+
+    win.deleteSession(sessionId);
+
+    assert.strictEqual(win.groupsForSession(sessionId).length, 0,
+      'nothing may still point at a deleted session');
+    assert.strictEqual(win.groupsForSession(null).length, unlinkedBefore + linked.length,
+      'the groups themselves must survive the session being deleted, just unlinked');
   });
 });
 

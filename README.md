@@ -6,14 +6,32 @@ A simple, private tracker for your range sessions — built as a lightweight web
 - 📅 Range sessions — date, location, rounds fired per firearm, notes
 - 🧼 Cleaning history — quick / deep / detail-strip, with automatic round-count resets
 - 🎯 Zeros — distance, ammo, optic, and notes per firearm
+- 🎯 Target groups — photograph a target, mark the shots, get group size in inches, MOA and MRAD
 - 💵 Ammo purchases — cost per round, seller, stock status, with running averages
 - 📊 Stats — rounds fired, range trips, and ammo spend over time, filterable by firearm, caliber, and location
 
 All data is stored locally in your browser (nothing is sent to a server), and can be exported/imported as JSON for backup or moving between devices.
 
+## Group Analysis
+
+Open a firearm's **View Details → Groups → + Add Group** to measure a target from a photo.
+
+1. Take or choose a photo of the target
+2. Mark a **known distance** on it — one square of a 1-inch grid, say — so the app knows the scale
+3. Mark your **point of aim**, then the **centre of each hole**
+
+You get group size (extreme spread), mean radius, width and height, and how far the group sits from your point of aim — in inches, MOA and MRAD. The reticle is drawn at your bullet's true diameter as you mark, so it sits over the hole like a lid.
+
+- **Photos taken at an angle** are handled: switch the scale method to *4 corners* and mark the corners of a known rectangle, in any order, and the distortion is corrected mathematically
+- **The date** defaults to when the photo was taken, not when you logged it
+- **Bullet diameter** comes from the ammo you select
+- **Groups link to a range session**, so each session shows a scorecard of what you shot
+- **Keeping the photo is optional.** Marked points are always saved, so every measurement still recomputes without it — you just can't re-mark impacts. Photos are stored on the device only and are never included in a JSON export, which keeps backups small
+
 ## Screenshots
 ![Home](images/home.png)
 ![Sessions](images/sessions.png)
+![Group analysis](images/groups.png)
 ![Ammo](images/ammo.png)
 ![Stats](images/stats.png)
 
@@ -47,20 +65,22 @@ The app opens pre-loaded with a full year of sample data — firearms, sessions,
 
 ## Hosting Your Own Copy (GitHub Pages)
 
-1. **Fork this repository** (or create a new one and copy in `index.html` and `sw.js`)
+1. **Fork this repository** (or create a new one and copy in `index.html`, `app.css`, `app.js` and `sw.js`)
 2. Make sure the repo is **public** — GitHub Pages requires this on free accounts
 3. In your repo, go to **Settings → Pages**
 4. Under **Source**, select the **main** branch and **/ (root)** folder, then **Save**
 5. Wait about a minute, then your app will be live at:
    `https://YOUR-USERNAME.github.io/YOUR-REPO-NAME/`
 
-**Important:** both `index.html` and `sw.js` must sit in the same folder (repo root) for the app to auto-update correctly. If you rename or move one, update the other's references to match.
+**Important:** all four files — `index.html`, `app.css`, `app.js` and `sw.js` — must sit together in the same folder (repo root). The app has no build step, but it does need all four: `index.html` loads the other two, and `sw.js` handles updates. Deploy them together, or you can end up with new markup running against old code.
 
 ## Development & Testing
 
-The app itself is a zero-dependency single file — nothing here affects anyone just using or hosting it. This section is for anyone modifying the code.
+The app itself has zero runtime dependencies and no build step — nothing here affects anyone just using or hosting it. This section is for anyone modifying the code.
 
-A regression suite lives in `test/`, using Node's built-in test runner and `jsdom`. It covers the trickier logic: data-schema migrations, Stats filtering, weekly/monthly chart bucketing, and demo-data generation.
+`index.html` is markup only; `app.css` and `app.js` hold the styles and all the application code. `app.js` is loaded as a plain script rather than an ES module, because the markup uses inline `onclick` handlers that need global scope.
+
+A regression suite lives in `test/`, using Node's built-in test runner and `jsdom`. It covers the trickier logic: data-schema migrations, Stats filtering, weekly/monthly chart bucketing, group geometry (including the perspective correction), and demo-data generation.
 
 ```bash
 npm install

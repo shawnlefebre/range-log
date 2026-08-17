@@ -493,6 +493,60 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* SESSION SCORECARD */
+  .scorecard {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .scorecard-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .scorecard-figs { color: var(--accent); letter-spacing: 0.3px; }
+  .scorecard-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: baseline;
+    padding: 5px 0;
+  }
+  /* min-width:0 lets the ellipsis actually engage inside a grid column. */
+  .scorecard-main { min-width: 0; }
+  .scorecard-gun { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text); }
+  .scorecard-sub {
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .scorecard-moa {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .scorecard-moa span { font-size: 0.55rem; color: var(--text-dim); font-weight: 400; }
+  .scorecard-moa.best { color: var(--accent); }
+  .scorecard-more {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--text-dim);
+  }
+
   /* SESSIONS */
   .session-card {
     background: var(--surface);
