@@ -2641,13 +2641,19 @@ function gRefresh() {
 
   const need = gNeededCalPoints();
   const canSet = G.step === 0 ? G.calPts.length < need : G.step === 1 ? true : G.step === 2;
-  const canUndo = G.step === 0 ? G.calPts.length > 0 : G.step === 1 ? !!G.poa : G.impacts.length > 0;
-  const canNext = G.step === 0 ? G.calPts.length === need
-    : G.step === 1 ? !!G.poa : G.impacts.length >= 2;
+  // Undo reaches back into the previous step, so it's live whenever any point exists.
+  const canUndo = G.step === 0 ? G.calPts.length > 0
+    : G.step === 1 ? (!!G.poa || G.calPts.length > 0)
+    : (G.impacts.length > 0 || !!G.poa);
   document.getElementById('group-set').disabled = !canSet;
   document.getElementById('group-undo').disabled = !canUndo;
-  document.getElementById('group-next').disabled = !canNext;
-  document.getElementById('group-next').textContent = G.step === 2 ? 'Done' : 'Next';
+
+  // Only impacts need a confirm — the earlier steps advance themselves.
+  const next = document.getElementById('group-next');
+  next.style.display = G.step === 2 ? '' : 'none';
+  next.textContent = 'Done';
+  next.disabled = G.impacts.length < 2;
+  document.querySelector('.group-actions').classList.toggle('no-next', G.step !== 2);
 
   gDrawCanvas();
   gRenderResults();
@@ -2655,16 +2661,34 @@ function gRefresh() {
 
 function groupSetPoint() {
   const p = gCrosshairPoint();
-  if (G.step === 0 && G.calPts.length < gNeededCalPoints()) G.calPts.push(p);
-  else if (G.step === 1) G.poa = p;
-  else if (G.step === 2) G.impacts.push(p);
+  // Scale and aim take a known number of points, so the step is finished the moment the
+  // last one lands — no reason to make you confirm it. Impacts are open-ended, so that
+  // one waits for Done.
+  if (G.step === 0 && G.calPts.length < gNeededCalPoints()) {
+    G.calPts.push(p);
+    if (G.calPts.length === gNeededCalPoints()) G.step = 1;
+  } else if (G.step === 1) {
+    G.poa = p;
+    G.step = 2;
+  } else if (G.step === 2) {
+    G.impacts.push(p);
+  }
   gRefresh();
 }
 
+// Undo removes the last point you placed. Because steps advance on their own, that point
+// may sit in the previous step — so when the current one is empty, step back and undo
+// there rather than doing nothing.
 function groupUndo() {
-  if (G.step === 0) G.calPts.pop();
-  else if (G.step === 1) G.poa = null;
-  else if (G.step === 2) G.impacts.pop();
+  if (G.step === 0) {
+    G.calPts.pop();
+  } else if (G.step === 1) {
+    if (G.poa) G.poa = null;
+    else if (G.calPts.length) { G.calPts.pop(); G.step = 0; }
+  } else if (G.step === 2) {
+    if (G.impacts.length) G.impacts.pop();
+    else if (G.poa) { G.poa = null; G.step = 1; }
+  }
   gRefresh();
 }
 

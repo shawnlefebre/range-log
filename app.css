@@ -352,6 +352,9 @@
     gap: 8px;
     margin: 10px 0 14px;
   }
+  /* Scale and aim advance on their own, so Done is absent there and Set point takes
+     the space rather than leaving a gap where the third button was. */
+  .group-actions.no-next { grid-template-columns: auto 1fr; }
   .group-actions .btn { padding: 10px 14px; font-size: 0.7rem; }
   .group-check {
     display: flex;
