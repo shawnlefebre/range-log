@@ -2230,10 +2230,14 @@ function groupUnitsPerInch(g) {
   return gDist(g.calPts[0], g.calPts[1]) / calW;
 }
 
+// Everything downstream works in inches, so distance converts once here. Unknown or
+// missing units fall back to yards, which is what pre-existing records assumed.
+const DISTANCE_UNIT_INCHES = { yd: 36, ft: 12, m: 39.3701 };
+
 function groupDistanceInches(g) {
   const d = Number(g.distance);
   if (!(d > 0)) return null;
-  return g.distanceUnit === 'm' ? d * 39.3701 : d * 36;
+  return d * (DISTANCE_UNIT_INCHES[g.distanceUnit] || DISTANCE_UNIT_INCHES.yd);
 }
 
 const RAD_TO_MOA = 3437.746;

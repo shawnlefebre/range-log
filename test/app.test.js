@@ -438,6 +438,27 @@ describe('group analysis math', () => {
     assert.strictEqual(+win.toMRAD(2, dIn).toFixed(3), 1.111);
   });
 
+  test('distance converts correctly from yards, feet and meters', () => {
+    const at = (distance, distanceUnit) => win.groupDistanceInches({ distance, distanceUnit });
+    assert.strictEqual(at(50, 'yd'), 1800, '50 yd is 1800 in');
+    assert.strictEqual(at(50, 'ft'), 600, '50 ft is 600 in');
+    assert.strictEqual(+at(50, 'm').toFixed(2), 1968.51, '50 m is 1968.51 in');
+    // 25 yd and 75 ft are the same distance, so they must give identical angles.
+    assert.strictEqual(at(25, 'yd'), at(75, 'ft'));
+    assert.strictEqual(at(10, undefined), at(10, 'yd'), 'a missing unit falls back to yards');
+    assert.strictEqual(at(0, 'yd'), null, 'no distance means no conversion');
+  });
+
+  test('the same group reads different MOA at different distances', () => {
+    const g = { ...linear, distance: 50, distanceUnit: 'yd' };
+    const m = win.groupMetrics(win.groupToInches(g));
+    const moaAt50yd = win.toMOA(m.es, win.groupDistanceInches(g));
+    const moaAt150ft = win.toMOA(m.es, win.groupDistanceInches({ ...g, distance: 150, distanceUnit: 'ft' }));
+    assert.strictEqual(+moaAt50yd.toFixed(4), +moaAt150ft.toFixed(4), '50 yd and 150 ft are the same distance');
+    const moaAt100yd = win.toMOA(m.es, win.groupDistanceInches({ ...g, distance: 100 }));
+    assert.strictEqual(+(moaAt50yd / moaAt100yd).toFixed(4), 2, 'doubling the distance halves the MOA');
+  });
+
   test('elevation is positive upward and windage positive to the right', () => {
     const pts = win.groupToInches({ ...linear, impacts: [{ x: 0.52, y: 0.49 }, { x: 0.50, y: 0.50 }] });
     assert.strictEqual(+pts[0].x.toFixed(4), 2, 'right of aim is positive windage');
