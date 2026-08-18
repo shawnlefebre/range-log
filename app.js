@@ -2635,6 +2635,24 @@ function gBindStage() {
     });
   }
 
+  // The reverse direction: picking a session sets the date to that session's, since a
+  // group was shot on the day of the session it belongs to. Say so, because a field
+  // changing on its own otherwise reads as a glitch. Clearing the link leaves the date be.
+  const sessionField = document.getElementById('group-session');
+  if (!sessionField.dataset.bound) {
+    sessionField.dataset.bound = '1';
+    sessionField.addEventListener('change', () => {
+      const s = (data.sessions || []).find(x => x.id === sessionField.value);
+      const hint = document.getElementById('group-session-hint');
+      if (!s) { hint.textContent = ''; return; }
+      const dateEl = document.getElementById('group-date');
+      const changed = dateEl.value !== s.date;
+      dateEl.value = s.date;
+      hint.textContent = changed ? `Date set to ${fmtDate(s.date)} to match the session.` : '';
+      if (G) gRefresh();
+    });
+  }
+
   const steps = document.getElementById('group-steps');
   if (!steps.dataset.bound) {
     steps.dataset.bound = '1';
