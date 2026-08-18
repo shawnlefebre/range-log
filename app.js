@@ -1125,7 +1125,8 @@ function renderGunHistory(gunId) {
       const sub = [`${g.distance} ${g.distanceUnit || 'yd'}`, `${(g.impacts || []).length} shots`];
       if (g.ammo) sub.push(g.ammo);
       return `
-        <div class="group-row">
+        <div class="group-row tappable" onclick="openViewGroup('${gunId}','${g.id}')"
+             role="button" tabindex="0" title="View this group">
           <div>
             <div class="group-row-main">${fmtDate(g.date)}</div>
             <div class="group-row-sub">${sub.join(' · ')}${g.photoId ? ' · 📷' : ''}</div>
@@ -1135,8 +1136,8 @@ function renderGunHistory(gunId) {
             <div class="group-row-sub">${secondary}</div>
           </div>
           <div style="display:flex;gap:4px;">
-            <button class="btn-icon" onclick="openLogGroup('${gunId}','${g.id}')" title="Edit">✏️</button>
-            <button class="btn-icon" onclick="deleteGroup('${gunId}','${g.id}')" title="Delete">🗑</button>
+            <button class="btn-icon" onclick="event.stopPropagation(); openLogGroup('${gunId}','${g.id}')" title="Edit">✏️</button>
+            <button class="btn-icon" onclick="event.stopPropagation(); deleteGroup('${gunId}','${g.id}')" title="Delete">🗑</button>
           </div>
         </div>
       `;
@@ -2760,11 +2761,14 @@ function gStepReachable(i) {
 
 function gRefresh() {
   if (!G) return;
-  const marking = !!G.img && G.step < 3;
+  // Viewing keeps the marked-up photo on screen to inspect, but none of the marking
+  // chrome — no steps, no prompt, no Set point.
+  const marking = !!G.img && G.step < 3 && !G.readOnly;
   // The keep-photo checkbox sits inside the stage wrapper, so it appears and hides
   // with the photo it refers to — no separate toggle needed.
   document.getElementById('group-stage-wrap').style.display = G.img ? '' : 'none';
-  document.getElementById('group-load').style.display = G.img ? 'none' : '';
+  document.getElementById('group-load').style.display = (G.img || G.readOnly) ? 'none' : '';
+  document.getElementById('group-steps').style.display = G.readOnly ? 'none' : '';
 
   document.getElementById('group-steps').innerHTML = GROUP_STEPS.map((name, i) => {
     const state = i === G.step ? 'active' : i < G.step ? 'done' : '';
@@ -2877,6 +2881,42 @@ function populateGroupSessionDropdown(selectedId, groupDate) {
   document.getElementById('group-session-hint').textContent = hint;
 }
 
+// Everything editable in the group form. Viewing disables the lot rather than trusting
+// the user not to touch it — a stray tap on a date field shouldn't silently alter a
+// saved record just because you opened it to look.
+const GROUP_FIELDS = [
+  'group-date', 'group-distance', 'group-distance-unit', 'group-bullet', 'group-session',
+  'group-ammo-select', 'group-ammo-custom', 'group-cal-mode', 'group-cal-w', 'group-cal-h',
+  'group-keep-photo', 'group-file',
+];
+
+function gApplyMode() {
+  const viewing = !!(G && G.readOnly);
+  GROUP_FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = viewing;
+  });
+  document.getElementById('modal-group').classList.toggle('viewing', viewing);
+  document.getElementById('group-cancel').textContent = viewing ? 'Close' : 'Cancel';
+  document.getElementById('group-save').style.display = viewing ? 'none' : '';
+  document.getElementById('group-edit').style.display = viewing ? '' : 'none';
+}
+
+// Switching to edit keeps everything already on screen — no reload, no re-marking.
+function groupEnterEdit() {
+  if (!G) return;
+  G.readOnly = false;
+  const gun = data.firearms.find(x => x.id === G.gunId);
+  document.getElementById('group-modal-title').textContent =
+    'Edit Group' + (gun ? ' · ' + gun.name : '');
+  gApplyMode();
+  gRefresh();
+}
+
+function openViewGroup(gunId, groupId) {
+  return openLogGroup(gunId, groupId, true);
+}
+
 function handleGroupAmmoChange() {
   handleAmmoSelectChange('group-ammo-select', 'group-ammo-custom');
   // Ammo carries the caliber, so it can fill the bullet diameter in for you.
@@ -2904,10 +2944,12 @@ function gRenderResults() {
     return;
   }
 
+  // Don't promise editability while viewing — nothing here is editable in that mode.
   const noPhotoNote = !G.img
     ? `<div class="group-hint" style="margin-bottom:10px;">No photo was kept with this
-       group, so the impacts can’t be re-marked. Everything else here is still editable,
-       and the measurements below recompute from the saved points.</div>`
+       group, so the impacts can’t be re-marked. ${G.readOnly
+         ? 'The measurements below are recomputed from the saved points.'
+         : 'Everything else here is still editable, and the measurements below recompute from the saved points.'}</div>`
     : '';
 
   const dIn = groupDistanceInches(form);
@@ -3133,7 +3175,7 @@ function groupPlotSVG(pts, m) {
 }
 
 /* ---- group CRUD ---- */
-async function openLogGroup(gunId, groupId) {
+async function openLogGroup(gunId, groupId, readOnly) {
   const gun = data.firearms.find(g => g.id === gunId);
   if (!gun) return;
 
@@ -3142,8 +3184,9 @@ async function openLogGroup(gunId, groupId) {
   gPlotVB = null;   // each group opens at full view rather than inheriting a zoom
   document.getElementById('group-gun-id').value = gunId;
   document.getElementById('group-edit-id').value = groupId || '';
+  G.readOnly = !!readOnly && !!groupId;
   document.getElementById('group-modal-title').textContent =
-    (groupId ? 'Edit Group · ' : 'Add Group · ') + gun.name;
+    (G.readOnly ? 'Group · ' : groupId ? 'Edit Group · ' : 'Add Group · ') + gun.name;
   document.getElementById('group-date-note').textContent = '';
   document.getElementById('group-file').value = '';
 
@@ -3178,6 +3221,7 @@ async function openLogGroup(gunId, groupId) {
     if (dia) document.getElementById('group-bullet').value = dia;
   }
 
+  gApplyMode();
   gBindStage();
 
   // Only one modal open at a time (see closeModal) — never stack over Details.
@@ -3261,7 +3305,7 @@ async function handleGroupFile(input) {
 }
 
 async function saveGroup() {
-  if (!G) return;
+  if (!G || G.readOnly) return;
   const gun = data.firearms.find(g => g.id === G.gunId);
   if (!gun) return;
 
