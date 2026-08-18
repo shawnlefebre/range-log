@@ -435,6 +435,20 @@
     font-variant-numeric: tabular-nums;
     margin-top: 3px;
   }
+  .group-tile-sub {
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    color: var(--text-dim);
+    margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  .group-offset-sub {
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    color: var(--text-dim);
+    margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
   .group-offset-dir {
     font-family: var(--font-mono);
     font-size: 0.62rem;

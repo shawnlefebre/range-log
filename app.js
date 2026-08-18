@@ -2898,6 +2898,23 @@ function gRenderResults() {
   // MOA leads: it's the figure that stays comparable across firearms and distances,
   // which inches can't. Falls back to inches when there's no distance to convert with —
   // and says why, rather than showing a bare dash.
+  // Every derived figure follows the same rule as the headline: MOA leads because it's
+  // comparable across distances, inches sits beneath. Mean radius especially — it's the
+  // measure that stays honest when shot counts differ, so it's the one worth comparing.
+  const angPrimary = v => {
+    const moa = toMOA(v, dIn);
+    return moa != null
+      ? `${gFmt(moa)}<span class="group-unit"> MOA</span>`
+      : `${gFmt(v)}<span class="group-unit"> in</span>`;
+  };
+  const angSecondary = v => (toMOA(v, dIn) != null ? `${gFmt(v)} in` : '');
+  const tile = (v, label) => `
+      <div class="group-tile">
+        <div class="group-tile-num">${angPrimary(v)}</div>
+        <div class="group-tile-label">${label}</div>
+        <div class="group-tile-sub">${angSecondary(v)}</div>
+      </div>`;
+
   const esMOA = toMOA(m.es, dIn);
   const heroNum = esMOA != null
     ? `${gFmt(esMOA)}<span> MOA</span>`
@@ -2916,20 +2933,22 @@ function gRenderResults() {
       <div class="group-hint">${heroSub}</div>
     </div>
     <div class="group-tiles">
-      <div class="group-tile"><div class="group-tile-num">${gFmt(m.meanRadius)}<span class="group-unit"> in</span></div><div class="group-tile-label">Mean radius</div></div>
-      <div class="group-tile"><div class="group-tile-num">${gFmt(m.width)}<span class="group-unit"> in</span></div><div class="group-tile-label">Width</div></div>
-      <div class="group-tile"><div class="group-tile-num">${gFmt(m.height)}<span class="group-unit"> in</span></div><div class="group-tile-label">Height</div></div>
+      ${tile(m.meanRadius, 'Mean radius')}
+      ${tile(m.width, 'Width')}
+      ${tile(m.height, 'Height')}
     </div>
     <div class="group-offsets">
       <div class="group-offset">
         <div class="group-offset-axis">Elevation</div>
-        <div class="group-offset-val">${gFmt(Math.abs(m.cy))}<span class="group-unit"> in</span></div>
+        <div class="group-offset-val">${angPrimary(Math.abs(m.cy))}</div>
         <div class="group-offset-dir">${dir(m.cy, 'high', 'low')}</div>
+        <div class="group-offset-sub">${angSecondary(Math.abs(m.cy))}</div>
       </div>
       <div class="group-offset">
         <div class="group-offset-axis">Windage</div>
-        <div class="group-offset-val">${gFmt(Math.abs(m.cx))}<span class="group-unit"> in</span></div>
+        <div class="group-offset-val">${angPrimary(Math.abs(m.cx))}</div>
         <div class="group-offset-dir">${dir(m.cx, 'right', 'left')}</div>
+        <div class="group-offset-sub">${angSecondary(Math.abs(m.cx))}</div>
       </div>
     </div>
     <div class="group-plot-head">
