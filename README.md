@@ -28,6 +28,14 @@ You get group size (extreme spread), mean radius, width and height, and how far 
 - **Groups link to a range session**, so each session shows a scorecard of what you shot
 - **Keeping the photo is optional.** Marked points are always saved, so every measurement still recomputes without it — you just can't re-mark impacts. Photos are stored on the device only and are never included in a JSON export, which keeps backups small
 
+### Photo storage
+
+Photos are downscaled before storing, so each one lands around 30–100 KB — a few range trips a month works out to under 10 MB a year, against the gigabytes a browser will give an installed app.
+
+**Settings → Target Photos** shows exactly what's stored: how many photos, their total size, and how much room the app has. If any photos are no longer attached to a group — which can happen after importing a backup — it offers to reclaim that space.
+
+Because photos are left out of the JSON backup, moving them to another device is a separate step: **Export photos** writes a bundle you import on the new device *after* restoring the JSON backup. Importing a bundle only restores images that some group actually refers to.
+
 ## Screenshots
 ![Home](images/home.png)
 ![Sessions](images/sessions.png)

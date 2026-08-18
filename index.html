@@ -235,6 +235,26 @@
       </div>
     </div>
 
+    <div class="section-header">
+      <div class="section-title">Target Photos</div>
+    </div>
+    <div class="card">
+      <div id="photo-storage"></div>
+      <div class="form-group" style="margin-top:12px;">
+        <label>Move photos between devices</label>
+        <div style="font-size:0.78rem; color:var(--text-muted); margin-bottom:10px; line-height:1.45;">
+          Photos are kept out of the JSON backup so it stays small. Export them separately
+          to carry them to another device &mdash; import the JSON backup there first, then
+          this bundle.
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="exportPhotos()">Export photos</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('import-photos-file').click()">Import photos</button>
+        </div>
+        <input type="file" id="import-photos-file" accept=".json" onchange="importPhotos(this)" style="display:none;">
+      </div>
+    </div>
+
     <div class="section-header" style="margin-top:24px;">
       <div class="section-title" style="color:var(--danger);">Danger Zone</div>
     </div>

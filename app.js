@@ -428,6 +428,43 @@ function putPhoto(id, blob) { return photoTx('readwrite', s => s.put(blob, id)).
 function getPhoto(id) { return photoTx('readonly', s => s.get(id)).catch(() => null); }
 function deletePhoto(id) { return photoTx('readwrite', s => s.delete(id)).catch(() => null); }
 
+function allPhotoKeys() { return photoTx('readonly', s => s.getAllKeys()).then(k => k || []).catch(() => []); }
+function clearAllPhotos() { return photoTx('readwrite', s => s.clear()).catch(() => null); }
+
+// Every photoId currently referenced by a group. Anything in the store outside this set
+// is unreachable — no screen can show it and nothing will ever delete it.
+function referencedPhotoIds(d = data) {
+  const ids = new Set();
+  (d.firearms || []).forEach(gun => (gun.groups || []).forEach(g => {
+    if (g.photoId) ids.add(g.photoId);
+  }));
+  return ids;
+}
+
+// Orphans accumulate whenever the dataset is replaced wholesale — importing a backup, or
+// any path that drops groups without going through deleteGroup. Sweeping is precise: it
+// removes only what nothing references, so re-importing your own backup on the same
+// device keeps its photos, since those ids still match.
+async function sweepOrphanedPhotos() {
+  const keys = await allPhotoKeys();
+  const keep = referencedPhotoIds();
+  const orphans = keys.filter(k => !keep.has(k));
+  for (const id of orphans) await deletePhoto(id);
+  return orphans.length;
+}
+
+// Total bytes held by the photo store, so storage can be reported rather than guessed at.
+async function photoStoreStats() {
+  const keys = await allPhotoKeys();
+  let bytes = 0;
+  for (const id of keys) {
+    const blob = await getPhoto(id);
+    if (blob && typeof blob.size === 'number') bytes += blob.size;
+  }
+  const keep = referencedPhotoIds();
+  return { count: keys.length, bytes, orphans: keys.filter(k => !keep.has(k)).length };
+}
+
 // ── UTILS ─────────────────────────────────────────────────────────
 function uid() { return 'id_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
 function today() { return new Date().toISOString().slice(0,10); }
@@ -556,6 +593,9 @@ function wipeAllData() {
     ammo: [],
   };
   save(data);
+  // Without this every photo blob survives the wipe, unreachable and invisible — the app
+  // looks empty while still holding every image it ever stored.
+  clearAllPhotos();
   renderAll();
 }
 
@@ -803,6 +843,7 @@ function sessionScorecard(sessionId) {
 
 // ── SETTINGS ──────────────────────────────────────────────────────
 function renderSettings() {
+  renderPhotoStorage();
   const gl = document.getElementById('guns-settings-list');
   gl.innerHTML = data.firearms.map((gun, idx) => {
     const isFirst = idx === 0;
@@ -3444,7 +3485,7 @@ function importJSON(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     try {
       const imported = JSON.parse(e.target.result);
       if (!imported.schemaVersion || !imported.firearms || !imported.sessions) {
@@ -3454,8 +3495,139 @@ function importJSON(input) {
       data = migrateData(imported);
       save(data);
       renderAll();
-      alert('Import successful!');
+      // Photos aren't in the backup, so whatever the incoming records don't reference is
+      // now unreachable. Sweep rather than wipe: re-importing your own backup on this
+      // device keeps its photos, because those ids still match.
+      const reclaimed = await sweepOrphanedPhotos();
+      alert('Import successful!' + (reclaimed
+        ? `\n\n${reclaimed} photo${reclaimed > 1 ? 's' : ''} no longer referenced by any group ` +
+          `${reclaimed > 1 ? 'were' : 'was'} removed.`
+        : ''));
     } catch { alert('Could not read file. Make sure it is a valid Range Log JSON backup.'); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// ── PHOTO STORAGE READOUT ─────────────────────────────────────────
+// Answers "how much is this actually using" with measured numbers rather than a guess,
+// and surfaces orphans, which are otherwise invisible by definition.
+function fmtBytes(b) {
+  if (b < 1024) return `${b} B`;
+  if (b < 1048576) return `${(b / 1024).toFixed(0)} KB`;
+  if (b < 1073741824) return `${(b / 1048576).toFixed(1)} MB`;
+  return `${(b / 1073741824).toFixed(1)} GB`;
+}
+
+async function renderPhotoStorage() {
+  const el = document.getElementById('photo-storage');
+  if (!el) return;
+
+  const stats = await photoStoreStats();
+  let quotaLine = '';
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      const { usage, quota } = await navigator.storage.estimate();
+      if (quota) {
+        quotaLine = `<div class="photo-stat-sub">This app is using ${fmtBytes(usage)} of about
+          ${fmtBytes(quota)} available to it on this device.</div>`;
+      }
+    }
+  } catch (e) { /* estimate is advisory; its absence isn't worth surfacing */ }
+
+  const orphanBlock = stats.orphans ? `
+    <div class="photo-orphans">
+      <div>${stats.orphans} photo${stats.orphans > 1 ? 's are' : ' is'} no longer attached to any
+        group, so nothing can display ${stats.orphans > 1 ? 'them' : 'it'}.</div>
+      <button class="btn-mini" style="margin-top:8px;" onclick="reclaimOrphanedPhotos()">Reclaim space</button>
+    </div>` : '';
+
+  el.innerHTML = `
+    <div class="photo-stats">
+      <div class="photo-stat">
+        <div class="photo-stat-num">${stats.count}</div>
+        <div class="photo-stat-label">Photos stored</div>
+      </div>
+      <div class="photo-stat">
+        <div class="photo-stat-num">${fmtBytes(stats.bytes)}</div>
+        <div class="photo-stat-label">Total size</div>
+      </div>
+      <div class="photo-stat">
+        <div class="photo-stat-num">${stats.count ? fmtBytes(Math.round(stats.bytes / stats.count)) : '—'}</div>
+        <div class="photo-stat-label">Average</div>
+      </div>
+    </div>
+    ${quotaLine}
+    ${orphanBlock}`;
+}
+
+async function reclaimOrphanedPhotos() {
+  const n = await sweepOrphanedPhotos();
+  await renderPhotoStorage();
+  alert(n ? `Removed ${n} unattached photo${n > 1 ? 's' : ''}.` : 'Nothing to reclaim.');
+}
+
+// ── PHOTO BUNDLE ──────────────────────────────────────────────────
+// Photos are deliberately absent from the JSON backup, which keeps that file small enough
+// to email. This is the opt-in companion for moving them between devices: import the JSON
+// first so the records exist, then this restores the images they point at.
+
+function blobToDataURL(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(blob);
+  });
+}
+
+async function exportPhotos() {
+  const keys = await allPhotoKeys();
+  if (!keys.length) { alert('No photos are stored, so there is nothing to export.'); return; }
+
+  const photos = {};
+  for (const id of keys) {
+    const blob = await getPhoto(id);
+    if (blob) photos[id] = await blobToDataURL(blob);
+  }
+
+  const payload = { type: 'range-log-photos', version: 1, exported: today(), photos };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `range-log-photos-${today()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importPhotos(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const payload = JSON.parse(e.target.result);
+      if (payload.type !== 'range-log-photos' || !payload.photos) {
+        alert('That is not a Range Log photo bundle. Photo bundles are exported separately from the JSON backup.');
+        return;
+      }
+      const wanted = referencedPhotoIds();
+      let restored = 0, skipped = 0;
+      for (const [id, dataUrl] of Object.entries(payload.photos)) {
+        // Only restore images some group actually points at, or importing an old bundle
+        // would put back exactly the orphans this feature exists to clear out.
+        if (!wanted.has(id)) { skipped++; continue; }
+        const res = await fetch(dataUrl);
+        await putPhoto(id, await res.blob());
+        restored++;
+      }
+      renderAll();
+      alert(`${restored} photo${restored === 1 ? '' : 's'} restored.` +
+        (skipped ? `\n\n${skipped} skipped — no group in this data refers to them.` : ''));
+    } catch {
+      alert('Could not read that photo bundle.');
+    }
   };
   reader.readAsText(file);
   input.value = '';

@@ -527,6 +527,43 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* PHOTO STORAGE */
+  .photo-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .photo-stat { background: var(--surface2); border-radius: var(--radius); padding: 10px; }
+  .photo-stat-num {
+    font-family: var(--font-mono);
+    font-size: 1.05rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+  .photo-stat-label {
+    font-family: var(--font-mono);
+    font-size: 0.52rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .photo-stat-sub {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    line-height: 1.5;
+    color: var(--text-dim);
+    margin-top: 10px;
+  }
+  .photo-orphans {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+    background: var(--surface2);
+    border-left: 2px solid var(--accent-dim);
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin-top: 10px;
+  }
+
   /* SESSION SCORECARD */
   .scorecard {
     margin-top: 10px;
