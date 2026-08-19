@@ -95,4 +95,13 @@ npm install
 npm test
 ```
 
-Tests also run automatically on every push via GitHub Actions — free and unlimited for public repos, no setup required beyond the workflow file already being in the repo.
+There is also a **browser suite** covering what jsdom can't reach — canvas rendering, IndexedDB, real file inputs, pointer gestures and layout, which is where most real bugs in this app have turned up. It drives a headless Chromium against a throwaway local server:
+
+```bash
+npx playwright install chromium   # one time
+npm run test:browser
+```
+
+It is deliberately kept out of `npm test` so the unit suite stays fast and CI needs no browser download.
+
+The unit tests run automatically on every push via GitHub Actions — free and unlimited for public repos, no setup required beyond the workflow file already being in the repo.

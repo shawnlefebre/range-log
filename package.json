@@ -1,12 +1,14 @@
 {
   "name": "range-log",
   "version": "1.0.0",
-  "description": "Regression tests for the Range Log PWA. The app itself (index.html) has zero dependencies and needs nothing here to run — this is dev-only tooling.",
+  "description": "Dev tooling and regression tests for the Range Log PWA. The app itself (index.html, app.css, app.js, sw.js) has zero runtime dependencies and needs nothing from here to run.",
   "private": true,
   "scripts": {
-    "test": "node --test"
+    "test": "node --test test/app.test.js",
+    "test:browser": "node test/browser/run.js"
   },
   "devDependencies": {
-    "jsdom": "^24.0.0"
+    "jsdom": "^24.0.0",
+    "playwright": "^1.62.1"
   }
 }
