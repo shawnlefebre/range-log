@@ -23,6 +23,7 @@ const SUITES = [
   ['storage-check', 'photo storage leaks, orphan detection and reclaim'],
   ['bundle-check', 'photo bundle export and import round trip'],
   ['exif-check', 'EXIF date reading and session auto-linking'],
+  ['tags-check', 'group tags: entry, case-insensitive dedup, view mode'],
 ];
 
 const waitForServer = () => new Promise((resolve, reject) => {

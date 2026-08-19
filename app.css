@@ -527,6 +527,22 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* GROUP TAGS */
+  .group-row-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  .tag-pill {
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    letter-spacing: 0.4px;
+    color: var(--mark-poa);
+    border: 1px solid var(--surface3);
+    border-radius: 3px;
+    padding: 2px 6px;
+  }
+  /* Viewing a group shows its tags but offers no way to add one. */
+  .viewing #group-tag-add-select,
+  .viewing #group-tag-custom,
+  .viewing #group-tags-chips + div { display: none; }
+
   /* PHOTO STORAGE */
   .photo-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .photo-stat { background: var(--surface2); border-radius: var(--radius); padding: 10px; }

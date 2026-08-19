@@ -18,7 +18,9 @@
 // v10: group.sessionId added — links a group to the range session it was shot at, or
 //      null when unlinked. Existing groups are auto-linked only where a single session
 //      shares their date; anything ambiguous stays null rather than guessing.
-const SCHEMA_VERSION = 10;
+// v11: group.tags added — freeform labels (prone, bench, bipod, wind...) so a group can
+//      be described along whatever dimension matters, without a new field per idea.
+const SCHEMA_VERSION = 11;
 
 const CLEANING_TYPES = {
   quick: { label: 'Quick', resetsDeep: false },
@@ -235,6 +237,7 @@ function generateDemoData() {
         distance: 50,
         distanceUnit: 'yd',
         ammo: 'Example Ammo Co 55gr FMJ',
+        tags: gi === 2 ? ['prone', 'bipod'] : ['bench', 'bags'],
         bulletDia: 0.224,
         calMode: 'linear',
         calInches: 1,
@@ -370,12 +373,23 @@ function migrateData(d) {
     d.schemaVersion = 10;
   }
 
+  // v10 -> v11: add a tags array to every group
+  if (d.schemaVersion === 10) {
+    d.firearms.forEach(gun => {
+      (gun.groups || []).forEach(g => { if (!Array.isArray(g.tags)) g.tags = []; });
+    });
+    d.schemaVersion = 11;
+  }
+
   // Defensive: ensure every gun has cleanings + zeros + calibers arrays, and ammo + sellers exist
   d.firearms.forEach(gun => {
     if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
     if (!Array.isArray(gun.zeros)) gun.zeros = [];
     if (!Array.isArray(gun.groups)) gun.groups = [];
-    gun.groups.forEach(g => { if (g.sessionId === undefined) g.sessionId = null; });
+    gun.groups.forEach(g => {
+      if (g.sessionId === undefined) g.sessionId = null;
+      if (!Array.isArray(g.tags)) g.tags = [];
+    });
     if (!Array.isArray(gun.calibers)) gun.calibers = gun.caliber ? [gun.caliber] : [];
     if (gun.type === undefined) gun.type = null;
     if (gun.notes === undefined) gun.notes = '';
@@ -1165,12 +1179,16 @@ function renderGunHistory(gunId) {
       const secondary = (moa != null && size != null) ? `${gFmt(size)}"` : '';
       const sub = [`${g.distance} ${g.distanceUnit || 'yd'}`, `${(g.impacts || []).length} shots`];
       if (g.ammo) sub.push(g.ammo);
+      const tagLine = (g.tags || []).length
+        ? `<div class="group-row-tags">${g.tags.map(t => `<span class="tag-pill">${t}</span>`).join('')}</div>`
+        : '';
       return `
         <div class="group-row tappable" onclick="openViewGroup('${gunId}','${g.id}')"
              role="button" tabindex="0" title="View this group">
           <div>
             <div class="group-row-main">${fmtDate(g.date)}</div>
             <div class="group-row-sub">${sub.join(' · ')}${g.photoId ? ' · 📷' : ''}</div>
+            ${tagLine}
           </div>
           <div style="text-align:right;">
             <div class="group-row-size">${primary}</div>
@@ -2931,7 +2949,7 @@ function populateGroupSessionDropdown(selectedId, groupDate) {
 const GROUP_FIELDS = [
   'group-date', 'group-distance', 'group-distance-unit', 'group-bullet', 'group-session',
   'group-ammo-select', 'group-ammo-custom', 'group-cal-mode', 'group-cal-w', 'group-cal-h',
-  'group-keep-photo', 'group-file',
+  'group-keep-photo', 'group-file', 'group-tag-add-select', 'group-tag-custom',
 ];
 
 function gApplyMode() {
@@ -2950,6 +2968,7 @@ function gApplyMode() {
 function groupEnterEdit() {
   if (!G) return;
   G.readOnly = false;
+  renderGroupTagChips();
   const gun = data.firearms.find(x => x.id === G.gunId);
   document.getElementById('group-modal-title').textContent =
     'Edit Group' + (gun ? ' · ' + gun.name : '');
@@ -3245,6 +3264,8 @@ async function openLogGroup(gunId, groupId, readOnly) {
   document.getElementById('group-cal-h').value = existing ? (existing.calInchesH || 1) : 1;
   document.getElementById('group-bullet').value = existing && existing.bulletDia ? existing.bulletDia : '';
   document.getElementById('group-keep-photo').checked = existing ? !!existing.photoId : true;
+  groupModalTags = existing && Array.isArray(existing.tags) ? [...existing.tags] : [];
+  renderGroupTagChips();
   populateAmmoDropdown(gun, existing ? existing.ammo : '', 'group-ammo-select', 'group-ammo-custom');
   populateGroupSessionDropdown(
     existing ? existing.sessionId : null,
@@ -3393,6 +3414,7 @@ async function saveGroup() {
     distance,
     distanceUnit: document.getElementById('group-distance-unit').value,
     ammo: getSelectedAmmo('group-ammo-select', 'group-ammo-custom'),
+    tags: [...groupModalTags],
     bulletDia: parseFloat(document.getElementById('group-bullet').value) || null,
     calMode: document.getElementById('group-cal-mode').value,
     calInches,
@@ -3521,6 +3543,78 @@ function importJSON(input) {
   reader.readAsText(file);
   input.value = '';
 }
+
+// ── GROUP TAGS ────────────────────────────────────────────────────
+// Freeform labels so a group can be described along whatever dimension matters — prone
+// vs bench, bipod vs bags, windy — without inventing a schema field per idea. Matching is
+// case-insensitive so "Prone" reuses "prone" rather than quietly creating a rival tag,
+// which would break any comparison built on them.
+let groupModalTags = [];
+
+function allKnownTags() {
+  const seen = new Map();   // lowercase -> first spelling used, so casing stays stable
+  (data.firearms || []).forEach(gun => (gun.groups || []).forEach(g => {
+    (g.tags || []).forEach(t => {
+      const k = String(t).trim().toLowerCase();
+      if (k && !seen.has(k)) seen.set(k, String(t).trim());
+    });
+  }));
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+function renderGroupTagChips() {
+  const container = document.getElementById('group-tags-chips');
+  const viewing = !!(G && G.readOnly);
+  if (!groupModalTags.length) {
+    container.innerHTML = `<div class="chips-empty">${viewing ? 'NO TAGS' : 'NO TAGS ADDED'}</div>`;
+  } else {
+    container.innerHTML = groupModalTags.map((t, i) =>
+      `<span class="chip">${t}${viewing ? '' : `<span class="remove-x" onclick="removeGroupTag(${i})">×</span>`}</span>`
+    ).join('');
+  }
+
+  const sel = document.getElementById('group-tag-add-select');
+  const known = allKnownTags().filter(t =>
+    !groupModalTags.some(x => x.trim().toLowerCase() === t.trim().toLowerCase()));
+  sel.innerHTML =
+    '<option value="">— Add tag —</option>' +
+    known.map(t => `<option value="${t.replace(/"/g, '&quot;')}">${t}</option>`).join('') +
+    '<option value="__new__">+ New tag...</option>';
+  const custom = document.getElementById('group-tag-custom');
+  custom.style.display = 'none';
+  custom.value = '';
+}
+
+function removeGroupTag(idx) {
+  groupModalTags.splice(idx, 1);
+  renderGroupTagChips();
+}
+
+function addGroupTagFromSelect() {
+  const sel = document.getElementById('group-tag-add-select');
+  const custom = document.getElementById('group-tag-custom');
+  let val = sel.value;
+  if (val === '__new__') {
+    val = custom.value.trim();
+    if (!val) { custom.style.display = 'block'; custom.focus(); return; }
+  }
+  val = val.trim().replace(/\s+/g, ' ');
+  if (!val) return;
+  // Reuse the existing spelling of a tag that already exists, so casing never forks.
+  const existing = allKnownTags().find(t => t.toLowerCase() === val.toLowerCase());
+  const tag = existing || val;
+  if (groupModalTags.some(x => x.toLowerCase() === tag.toLowerCase())) { renderGroupTagChips(); return; }
+  groupModalTags.push(tag);
+  renderGroupTagChips();
+}
+
+document.addEventListener('change', e => {
+  if (e.target && e.target.id === 'group-tag-add-select') {
+    const custom = document.getElementById('group-tag-custom');
+    if (e.target.value === '__new__') { custom.style.display = 'block'; custom.focus(); }
+    else { custom.style.display = 'none'; custom.value = ''; }
+  }
+});
 
 // ── PHOTO STORAGE READOUT ─────────────────────────────────────────
 // Answers "how much is this actually using" with measured numbers rather than a guess,

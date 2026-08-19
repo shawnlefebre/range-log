@@ -267,7 +267,7 @@
         <button class="btn btn-danger" style="width:100%;" onclick="openDeleteAllModal()">Delete All Data</button>
       </div>
     </div>
-    <div class="schema-badge">Data schema v10 · Range Log</div>
+    <div class="schema-badge">Data schema v11 · Range Log</div>
   </section>
 </div>
 
@@ -522,6 +522,19 @@
         </select>
       </div>
     </div>
+    <div class="form-group">
+      <label>Tags</label>
+      <div id="group-tags-chips" class="chips-container"></div>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <select id="group-tag-add-select" style="flex:1;">
+          <option value="">&mdash; Add tag &mdash;</option>
+        </select>
+        <button type="button" class="btn btn-secondary" style="padding:8px 12px;font-size:0.7rem;" onclick="addGroupTagFromSelect()">Add</button>
+      </div>
+      <input type="text" id="group-tag-custom" placeholder="Type a new tag, e.g. prone" style="margin-top:6px;display:none;">
+      <div class="group-hint">However you want to slice groups later &mdash; position, rest, conditions.</div>
+    </div>
+
     <div class="form-group">
       <label>Ammo</label>
       <select id="zero-ammo-select" onchange="handleZeroAmmoSelectChange()">
