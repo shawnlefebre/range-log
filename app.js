@@ -2672,7 +2672,7 @@ function gBindStage() {
   if (!dateField.dataset.bound) {
     dateField.dataset.bound = '1';
     dateField.addEventListener('change', () => {
-      if (!G || document.getElementById('group-session').value) return;
+      if (!G || G.sessionTouched) return;
       populateGroupSessionDropdown(null, dateField.value);
     });
   }
@@ -2684,6 +2684,9 @@ function gBindStage() {
   if (!sessionField.dataset.bound) {
     sessionField.dataset.bound = '1';
     sessionField.addEventListener('change', () => {
+      // A real change event only fires for user interaction — programmatic .value
+      // assignment doesn't — so this is a reliable "they chose it themselves" signal.
+      if (G) G.sessionTouched = true;
       const s = (data.sessions || []).find(x => x.id === sessionField.value);
       const hint = document.getElementById('group-session-hint');
       if (!s) { hint.textContent = ''; return; }
@@ -3226,6 +3229,8 @@ async function openLogGroup(gunId, groupId, readOnly) {
   document.getElementById('group-gun-id').value = gunId;
   document.getElementById('group-edit-id').value = groupId || '';
   G.readOnly = !!readOnly && !!groupId;
+  // A link already saved on a group was a deliberate choice, so treat it as touched.
+  G.sessionTouched = !!(groupId && (gun.groups || []).some(x => x.id === groupId && x.sessionId));
   document.getElementById('group-modal-title').textContent =
     (G.readOnly ? 'Group · ' : groupId ? 'Edit Group · ' : 'Add Group · ') + gun.name;
   document.getElementById('group-date-note').textContent = '';
@@ -3342,6 +3347,14 @@ async function handleGroupFile(input) {
   document.getElementById('group-date-note').textContent = exif
     ? `Dated from the photo (${fmtDate(exif)}). Change it if that’s wrong.`
     : 'No date found in the photo, so today’s date was used.';
+
+  // Assigning .value above fires no change event, so the session suggestion has to be
+  // re-run here. Without this it keeps whatever matched today's date when the modal
+  // opened — which doesn't just fail to link, it links the wrong session silently.
+  if (G && !G.sessionTouched) {
+    populateGroupSessionDropdown(null, document.getElementById('group-date').value);
+  }
+
   await gLoadImage(file, true);
 }
 
