@@ -29,6 +29,42 @@ You get group size (extreme spread), mean radius, width and height, and how far 
 - **Tags** let you label a group however you like — prone, bench, bipod, windy — picking from tags you've used before or typing a new one. Matching ignores case, so *Prone* reuses *prone* rather than creating a second tag that would split your comparisons later
 - **Keeping the photo is optional.** Marked points are always saved, so every measurement still recomputes without it — you just can't re-mark impacts. Photos are stored on the device only and are never included in a JSON export, which keeps backups small
 
+### Reading the numbers
+
+The app reports several measurements because they answer different questions.
+
+**Group size (extreme spread)** is the conventional figure — the distance between the two
+farthest holes, centre to centre. It's what most people quote, but it uses only two shots
+and ignores the rest, so it grows with how many rounds you fired. From the same rifle, a
+5-shot group runs roughly 25% larger than a 3-shot, and a 10-shot roughly 55% larger.
+Comparing groups of different shot counts by this number flatters whichever had fewer
+shots.
+
+**Mean radius** is the average distance of each hole from the centre of the group. It uses
+every shot and doesn't drift with sample size, which makes it the fair way to compare
+groups — and the number to trust when your shot counts aren't consistent.
+
+**Why MOA rather than inches.** A 1″ group at 50 yards and a 1″ group at 100 yards are not
+the same performance; the second is twice as good. MOA is angular, so it stays comparable
+across distances. One MOA subtends about 1.047″ at 100 yards. Inches are still shown, but
+the headline figures are MOA for this reason.
+
+**Elevation and windage offsets** describe where the group sat relative to your point of
+aim — a zeroing question, not an accuracy one. A tight group in the wrong place and a loose
+group centred on your aim are different problems, and the offsets separate them.
+
+**Shot count is worth standardising.** Five shots per group is the usual convention and a
+reasonable balance: enough for the number to mean something, not so many that barrel heat
+or fatigue creep in. Rimfire is cheap enough that ten is worth it. Shooting several groups
+in a session tells you more than one large one, because the spread *between* groups is
+where fliers and inconsistency show up.
+
+**When to use 4-corner scaling.** Rotation doesn't change group size — distances between
+holes are unaffected by how the camera was held — but it does skew the elevation and
+windage split, since those are measured against the image's own axes. If the photo wasn't
+taken square-on and you care about the offsets, mark four corners of a known rectangle and
+the distortion is corrected mathematically.
+
 ### Photo storage
 
 Photos are downscaled before storing, so each one lands around 30–100 KB — a few range trips a month works out to under 10 MB a year, against the gigabytes a browser will give an installed app.
