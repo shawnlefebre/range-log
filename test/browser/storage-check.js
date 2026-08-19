@@ -41,6 +41,11 @@ require('fs').mkdirSync(ARTIFACTS, { recursive: true });
   await p.waitForTimeout(800);
   const nums = await p.locator('.photo-stat-num').allTextContents();
   ck('readout shows the stored photo', nums[0].trim() === '1' && /\d/.test(nums[1]));
+  // Safari's storage.estimate() under-reports IndexedDB badly, so the panel must never
+  // print a "using X" figure that contradicts the measured totals beside it.
+  const sub = await p.locator('.photo-stat-sub').textContent().catch(() => '');
+  ck('no contradictory usage figure is shown', !/is using/i.test(sub));
+  ck('the totals are described as measured', /measured/i.test(sub));
   await p.locator('#photo-storage').screenshot({ path: ARTIFACTS + '/photo-storage.png' });
 
   await p.evaluate(() => wipeAllData());

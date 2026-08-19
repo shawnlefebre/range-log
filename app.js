@@ -3540,10 +3540,14 @@ async function renderPhotoStorage() {
   let quotaLine = '';
   try {
     if (navigator.storage && navigator.storage.estimate) {
-      const { usage, quota } = await navigator.storage.estimate();
+      const { quota } = await navigator.storage.estimate();
       if (quota) {
-        quotaLine = `<div class="photo-stat-sub">This app is using ${fmtBytes(usage)} of about
-          ${fmtBytes(quota)} available to it on this device.</div>`;
+        // Only the quota is reported here. Safari's `usage` figure under-reports badly —
+        // it showed 320 KB against 3.9 MB of photos actually stored — because it doesn't
+        // appear to count IndexedDB blobs, which it keeps as separate files. The totals
+        // above are summed from the blobs themselves, so they're the honest numbers.
+        quotaLine = `<div class="photo-stat-sub">Measured from the stored images.
+          This device allows this app about ${fmtBytes(quota)}.</div>`;
       }
     }
   } catch (e) { /* estimate is advisory; its absence isn't worth surfacing */ }
