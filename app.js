@@ -20,7 +20,10 @@
 //      shares their date; anything ambiguous stays null rather than guessing.
 // v11: group.tags added — freeform labels (prone, bench, bipod, wind...) so a group can
 //      be described along whatever dimension matters, without a new field per idea.
-const SCHEMA_VERSION = 11;
+// v12: gun.opticUnit added — 'moa' | 'mrad' | null. Chooses which angular unit leads the
+//      point-of-aim offsets, so they match the turret you actually dial. Group size stays
+//      MOA regardless, since that figure is compared across firearms.
+const SCHEMA_VERSION = 12;
 
 const CLEANING_TYPES = {
   quick: { label: 'Quick', resetsDeep: false },
@@ -81,7 +84,7 @@ function generateDemoData() {
   const s1 = 'ds1', s2 = 'ds2';
 
   const firearms = [
-    { id: g1, name: 'Example Rifle', type: 'rifle', calibers: ['.223 Rem', '5.56 NATO'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], groups: [], notes: 'Action screws: 65 in-lbs, front then rear.' },
+    { id: g1, name: 'Example Rifle', type: 'rifle', calibers: ['.223 Rem', '5.56 NATO'], opticUnit: 'mrad', cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], groups: [], notes: 'Action screws: 65 in-lbs, front then rear.' },
     { id: g2, name: 'Example Pistol', type: 'pistol', calibers: ['9mm'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], groups: [], notes: '' },
     { id: g3, name: 'Example Revolver', type: 'revolver', calibers: ['.357 Mag', '.38 Special'], cleanThreshold: 300, totalRounds: 0, cleanings: [], zeros: [], groups: [], notes: '' },
     { id: g4, name: 'Example Shotgun', type: 'shotgun', calibers: ['12 Gauge'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], groups: [], notes: '' },
@@ -381,6 +384,12 @@ function migrateData(d) {
     d.schemaVersion = 11;
   }
 
+  // v11 -> v12: add the optic unit, unset until the user says otherwise
+  if (d.schemaVersion === 11) {
+    d.firearms.forEach(gun => { if (gun.opticUnit === undefined) gun.opticUnit = null; });
+    d.schemaVersion = 12;
+  }
+
   // Defensive: ensure every gun has cleanings + zeros + calibers arrays, and ammo + sellers exist
   d.firearms.forEach(gun => {
     if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
@@ -393,6 +402,7 @@ function migrateData(d) {
     if (!Array.isArray(gun.calibers)) gun.calibers = gun.caliber ? [gun.caliber] : [];
     if (gun.type === undefined) gun.type = null;
     if (gun.notes === undefined) gun.notes = '';
+    if (gun.opticUnit === undefined) gun.opticUnit = null;
   });
   if (!Array.isArray(d.ammo)) d.ammo = [];
   if (!Array.isArray(d.sellers)) d.sellers = [];
@@ -964,6 +974,7 @@ function openAddGun() {
   document.getElementById('gun-name').value = '';
   document.getElementById('gun-type').value = '';
   document.getElementById('gun-threshold').value = '';
+  document.getElementById('gun-optic-unit').value = '';
   document.getElementById('gun-notes').value = '';
   gunModalCalibers = [];
   renderGunCalibersChips();
@@ -977,6 +988,7 @@ function openEditGun(id) {
   document.getElementById('gun-name').value = gun.name;
   document.getElementById('gun-type').value = gun.type || '';
   document.getElementById('gun-threshold').value = gun.cleanThreshold;
+  document.getElementById('gun-optic-unit').value = gun.opticUnit || '';
   document.getElementById('gun-notes').value = gun.notes || '';
   gunModalCalibers = [...gunCalibers(gun)];
   renderGunCalibersChips();
@@ -988,15 +1000,16 @@ function saveGun() {
   const type = document.getElementById('gun-type').value || null;
   const threshold = parseInt(document.getElementById('gun-threshold').value, 10);
   const notes = document.getElementById('gun-notes').value.trim();
+  const opticUnit = document.getElementById('gun-optic-unit').value || null;
   const calibers = [...gunModalCalibers];
   if (!name) { alert('Please enter a name.'); return; }
   if (!calibers.length) { alert('Please add at least one caliber.'); return; }
   if (!threshold) { alert('Please set a clean threshold.'); return; }
   if (id) {
     const gun = data.firearms.find(g => g.id === id);
-    if (gun) { gun.name = name; gun.type = type; gun.calibers = calibers; gun.cleanThreshold = threshold; gun.notes = notes; delete gun.caliber; }
+    if (gun) { gun.name = name; gun.type = type; gun.calibers = calibers; gun.cleanThreshold = threshold; gun.notes = notes; gun.opticUnit = opticUnit; delete gun.caliber; }
   } else {
-    data.firearms.push({ id: uid(), name, type, calibers, cleanThreshold: threshold, notes, totalRounds: 0, cleanings: [], zeros: [], groups: [] });
+    data.firearms.push({ id: uid(), name, type, calibers, cleanThreshold: threshold, notes, opticUnit, totalRounds: 0, cleanings: [], zeros: [], groups: [] });
   }
   save(data);
   closeModal('modal-gun');
@@ -3031,6 +3044,28 @@ function gRenderResults() {
       : `${gFmt(v)}<span class="group-unit"> in</span>`;
   };
   const angSecondary = v => (toMOA(v, dIn) != null ? `${gFmt(v)} in` : '');
+  // Offsets are the figures you dial from, so they carry both angular units — a MOA
+  // turret and a mil turret can each read what they need without the app having to know
+  // which scope is on which rifle. Group size stays MOA-led; only corrections need this.
+  // Offsets lead with whatever unit this rifle's turret uses, falling back to MOA when
+  // it's unset. Safe to vary per firearm because offsets aren't compared between rifles —
+  // unlike group size, which stays MOA precisely so it can be.
+  const gun = data.firearms.find(x => x.id === G.gunId);
+  const opticUnit = gun && gun.opticUnit === 'mrad' ? 'mrad' : 'moa';
+  const offsetPrimary = v => {
+    const moa = toMOA(v, dIn), mrad = toMRAD(v, dIn);
+    if (moa == null) return `${gFmt(v)}<span class="group-unit"> in</span>`;
+    return opticUnit === 'mrad'
+      ? `${gFmt(mrad)}<span class="group-unit"> MRAD</span>`
+      : `${gFmt(moa)}<span class="group-unit"> MOA</span>`;
+  };
+  const offsetSub = v => {
+    const moa = toMOA(v, dIn), mrad = toMRAD(v, dIn);
+    if (moa == null) return '';
+    return opticUnit === 'mrad'
+      ? `${gFmt(v)} in · ${gFmt(moa)} MOA`
+      : `${gFmt(v)} in · ${gFmt(mrad)} MRAD`;
+  };
   const tile = (v, label) => `
       <div class="group-tile">
         <div class="group-tile-num">${angPrimary(v)}</div>
@@ -3063,15 +3098,15 @@ function gRenderResults() {
     <div class="group-offsets">
       <div class="group-offset">
         <div class="group-offset-axis">Elevation</div>
-        <div class="group-offset-val">${angPrimary(Math.abs(m.cy))}</div>
+        <div class="group-offset-val">${offsetPrimary(Math.abs(m.cy))}</div>
         <div class="group-offset-dir">${dir(m.cy, 'high', 'low')}</div>
-        <div class="group-offset-sub">${angSecondary(Math.abs(m.cy))}</div>
+        <div class="group-offset-sub">${offsetSub(Math.abs(m.cy))}</div>
       </div>
       <div class="group-offset">
         <div class="group-offset-axis">Windage</div>
-        <div class="group-offset-val">${angPrimary(Math.abs(m.cx))}</div>
+        <div class="group-offset-val">${offsetPrimary(Math.abs(m.cx))}</div>
         <div class="group-offset-dir">${dir(m.cx, 'right', 'left')}</div>
-        <div class="group-offset-sub">${angSecondary(Math.abs(m.cx))}</div>
+        <div class="group-offset-sub">${offsetSub(Math.abs(m.cx))}</div>
       </div>
     </div>
     <div class="group-plot-head">

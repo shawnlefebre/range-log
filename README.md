@@ -53,6 +53,11 @@ the headline figures are MOA for this reason.
 aim — a zeroing question, not an accuracy one. A tight group in the wrong place and a loose
 group centred on your aim are different problems, and the offsets separate them.
 
+Set a firearm's **optic adjustment unit** (MOA or MRAD) and its offsets lead with that
+unit, so they read in whatever your turret is marked in; all three units are shown either
+way. Group sizes stay in MOA whatever the optic, because those are compared between
+firearms and need one common unit.
+
 **Shot count is worth standardising.** Five shots per group is the usual convention and a
 reasonable balance: enough for the number to mean something, not so many that barrel heat
 or fatigue creep in. Rimfire is cheap enough that ten is worth it. Shooting several groups

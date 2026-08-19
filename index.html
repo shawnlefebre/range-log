@@ -267,7 +267,7 @@
         <button class="btn btn-danger" style="width:100%;" onclick="openDeleteAllModal()">Delete All Data</button>
       </div>
     </div>
-    <div class="schema-badge">Data schema v11 · Range Log</div>
+    <div class="schema-badge">Data schema v12 · Range Log</div>
   </section>
 </div>
 
@@ -301,6 +301,17 @@
       </div>
       <input type="text" id="gun-caliber-custom" placeholder="Type new caliber, e.g. .22 LR" style="margin-top:6px;display:none;">
     </div>
+    <div class="form-group">
+      <label>Optic adjustment unit</label>
+      <select id="gun-optic-unit">
+        <option value="">&mdash; Not set &mdash;</option>
+        <option value="moa">MOA</option>
+        <option value="mrad">MRAD (mils)</option>
+      </select>
+      <div class="group-hint">Sets which unit leads a group's point-of-aim offsets, so they
+        match the turret you dial. Group sizes stay in MOA either way.</div>
+    </div>
+
     <div class="form-group">
       <label>Clean reminder (rounds since last deep clean)</label>
       <input type="number" id="gun-threshold" placeholder="e.g. 300" min="50" step="50">

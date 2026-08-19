@@ -38,6 +38,31 @@ require('fs').mkdirSync(ARTIFACTS, { recursive: true });
   check('explains why impacts cannot be re-marked', /can.t be re-marked/.test(note));
   check('plot renders from stored points', await page.locator('svg.group-plot').count() === 1);
 
+  // Offsets are what you dial from, so they must carry both angular units — a MOA turret
+  // and a mil turret each need to read this without the app knowing which scope is fitted.
+  // The demo rifle is set to mils, so its offsets must headline MRAD with MOA beneath —
+  // and all three units are present either way.
+  const offsetSubs = await page.locator('.group-offset-sub').allTextContents();
+  const offsetVals = await page.locator('.group-offset-val').allTextContents();
+  check('offsets lead with the firearm\'s own optic unit',
+    offsetVals.length === 2 && offsetVals.every(t => /MRAD/.test(t)));
+  check('the other two units sit beneath',
+    offsetSubs.length === 2 && offsetSubs.every(t => /in ·.*MOA/.test(t)));
+  // Group size must stay MOA regardless, so it remains comparable between rifles.
+  check('group size stays MOA even on a mil rifle',
+    /MOA/.test(await page.textContent('.group-hero-num')));
+
+  // With the unit unset, offsets fall back to MOA rather than guessing.
+  await page.evaluate(() => {
+    data.firearms.forEach(g => { g.opticUnit = null; });
+    save(data); gRefresh();
+  });
+  await page.waitForTimeout(300);
+  const fallback = await page.locator('.group-offset-val').allTextContents();
+  check('an unset optic unit falls back to MOA', fallback.every(t => /MOA/.test(t)));
+  await page.evaluate(() => { data.firearms[0].opticUnit = 'mrad'; save(data); gRefresh(); });
+  await page.waitForTimeout(250);
+
   // --- 2. Backdrop click must not discard the modal ---
   await page.mouse.click(8, 450);
   await page.waitForTimeout(200);

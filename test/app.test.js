@@ -68,7 +68,7 @@ describe('schema migration', () => {
       locations: [], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v1)));
-    assert.strictEqual(migrated.schemaVersion, 11);
+    assert.strictEqual(migrated.schemaVersion, 12);
     assert.strictEqual(migrated.isDemo, false, 'migrated real data must never be flagged as demo');
     assert.deepStrictEqual([...migrated.firearms[0].calibers], ['.22 LR']);
     assert.strictEqual(migrated.firearms[0].cleanings.length, 1);
@@ -84,7 +84,7 @@ describe('schema migration', () => {
       locations: [{ id: 'l1', name: 'Real Range' }], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v6)));
-    assert.strictEqual(migrated.schemaVersion, 11);
+    assert.strictEqual(migrated.schemaVersion, 12);
     assert.strictEqual(migrated.isDemo, false);
     assert.strictEqual(migrated.firearms[0].name, 'Real Gun', 'existing data must survive migration untouched');
   });
@@ -100,7 +100,7 @@ describe('schema migration', () => {
       locations: [], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v7)));
-    assert.strictEqual(migrated.schemaVersion, 11);
+    assert.strictEqual(migrated.schemaVersion, 12);
     assert.strictEqual(migrated.firearms[0].notes, '', 'missing notes should default to empty string');
     assert.strictEqual(migrated.firearms[1].notes, 'Torque: 20 in-lbs', 'existing notes must survive migration untouched');
   });
@@ -161,10 +161,25 @@ describe('schema migration', () => {
     assert.deepStrictEqual([...groups[1].tags], ['prone'], 'existing tags survive untouched');
   });
 
+  test('v11 firearms gain an unset optic unit', () => {
+    const v11 = {
+      schemaVersion: 11, isDemo: false, locations: [], sellers: [], sessions: [], ammo: [],
+      firearms: [
+        { id: 'g1', name: 'No Optic', type: 'rifle', calibers: ['.223 Rem'], cleanThreshold: 500,
+          totalRounds: 0, cleanings: [], zeros: [], notes: '', groups: [] },
+        { id: 'g2', name: 'Has Optic', type: 'rifle', calibers: ['.308 Win'], cleanThreshold: 500,
+          totalRounds: 0, cleanings: [], zeros: [], notes: '', groups: [], opticUnit: 'mrad' },
+      ],
+    };
+    const guns = win.migrateData(JSON.parse(JSON.stringify(v11))).firearms;
+    assert.strictEqual(guns[0].opticUnit, null, 'unset rather than assumed');
+    assert.strictEqual(guns[1].opticUnit, 'mrad', 'an existing setting survives');
+  });
+
   test('already-current data passes through without modification', () => {
     const current = win.buildDefaultData();
     const migrated = win.migrateData(JSON.parse(JSON.stringify(current)));
-    assert.strictEqual(migrated.schemaVersion, 11);
+    assert.strictEqual(migrated.schemaVersion, 12);
     assert.strictEqual(migrated.firearms.length, current.firearms.length);
   });
 });
