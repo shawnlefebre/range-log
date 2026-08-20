@@ -707,6 +707,82 @@ describe('group tags', () => {
   });
 });
 
+// ── MODAL CONTROL PLACEMENT ─────────────────────────────────────────
+// Element ids are global, so a control placed in the wrong overlay still resolves by id
+// and every behavioural test keeps passing. That is exactly how the group tag picker
+// shipped inside the zero modal: getElementById found it, the logic worked on it, and it
+// was simply never on screen where it belonged. This asserts the structure itself.
+
+describe('modal control placement', () => {
+  test('each prefixed control sits inside the modal that owns it', async () => {
+    const win = await ready(loadApp());
+    const owner = { zero: 'modal-zero', group: 'modal-group', dope: 'modal-dope' };
+    const wrong = [];
+
+    win.document.querySelectorAll('[id]').forEach(el => {
+      const prefix = el.id.split('-')[0];
+      if (!owner[prefix]) return;
+      const overlay = el.closest('.modal-overlay');
+      if (!overlay || overlay.id !== owner[prefix]) {
+        wrong.push(`#${el.id} is in ${overlay ? '#' + overlay.id : 'no modal'}, expected #${owner[prefix]}`);
+      }
+    });
+
+    assert.deepStrictEqual(wrong, [], 'controls found in the wrong modal');
+  });
+
+  test('the tag picker is in the group modal, where groups are actually logged', async () => {
+    const win = await ready(loadApp());
+    ['group-tags-chips', 'group-tag-add-select', 'group-tag-custom'].forEach(id => {
+      const el = win.document.getElementById(id);
+      assert.ok(el, `${id} missing`);
+      assert.strictEqual(el.closest('.modal-overlay').id, 'modal-group');
+    });
+  });
+});
+
+// ── ZEROS: READ-ONLY VIEW ───────────────────────────────────────────
+
+describe('viewing a zero', () => {
+  const rifle = win => win.buildDefaultData().firearms.find(g => g.id);
+
+  test('tapping a zero opens it inert, with Edit rather than Save', async () => {
+    const win = await ready(loadApp());
+    const gun = win.buildDefaultData().firearms[0];
+    win.openLogZero(gun.id);                       // create one to view
+    win.document.getElementById('zero-date').value = '2026-07-12';
+    win.document.getElementById('zero-distance').value = '100';
+    win.saveZero();
+
+    const zeroId = JSON.parse(win.localStorage.getItem('rangeLogData'))
+      .firearms.find(g => g.id === gun.id).zeros[0].id;
+
+    win.openViewZero(gun.id, zeroId);
+    assert.ok(win.document.getElementById('modal-zero').classList.contains('viewing'));
+    ['zero-date', 'zero-distance', 'zero-distance-unit', 'zero-ammo-select',
+     'zero-optic-select', 'zero-notes'].forEach(id => {
+      assert.strictEqual(win.document.getElementById(id).disabled, true, `${id} should be inert`);
+    });
+    assert.match(win.document.getElementById('zero-buttons').textContent, /Edit/);
+    assert.doesNotMatch(win.document.getElementById('zero-buttons').textContent, /Save/);
+
+    win.zeroEnterEdit();
+    assert.strictEqual(win.document.getElementById('modal-zero').classList.contains('viewing'), false);
+    assert.strictEqual(win.document.getElementById('zero-distance').disabled, false);
+    assert.match(win.document.getElementById('zero-buttons').textContent, /Save/);
+  });
+
+  test('opening a zero to add or edit is never inert', async () => {
+    const win = await ready(loadApp());
+    const gun = win.buildDefaultData().firearms[0];
+    win.openLogZero(gun.id);
+    assert.strictEqual(win.document.getElementById('modal-zero').classList.contains('viewing'), false,
+      'the add form must not inherit view mode from a previous tap');
+    assert.strictEqual(win.document.getElementById('zero-date').disabled, false);
+    assert.match(win.document.getElementById('zero-buttons').textContent, /Save/);
+  });
+});
+
 // ── DOPE TABLES ─────────────────────────────────────────────────────
 
 describe('dope tables', () => {

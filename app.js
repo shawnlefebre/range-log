@@ -1188,15 +1188,16 @@ function renderGunHistory(gunId) {
       if (z.ammo) subParts.push(z.ammo);
       if (z.optic) subParts.push(z.optic);
       return `
-        <div class="cleaning-row">
+        <div class="cleaning-row tappable" onclick="openViewZero('${gunId}','${z.id}')"
+             role="button" tabindex="0" title="View this zero">
           <div class="cleaning-type-badge zero">${distLabel}</div>
           <div>
             <div class="cleaning-meta-date">${fmtDate(z.date)}${subParts.length ? ' · ' : ''}<span style="color:var(--text-muted);font-weight:normal;">${subParts.join(' · ')}</span></div>
             ${z.notes ? `<div class="cleaning-meta-notes">${z.notes}</div>` : ''}
           </div>
           <div style="display:flex;gap:4px;">
-            <button class="btn-icon" onclick="openLogZero('${gunId}','${z.id}')" title="Edit">✏️</button>
-            <button class="btn-icon" onclick="deleteZero('${gunId}','${z.id}')" title="Delete">🗑</button>
+            <button class="btn-icon" onclick="event.stopPropagation(); openLogZero('${gunId}','${z.id}')" title="Edit">✏️</button>
+            <button class="btn-icon" onclick="event.stopPropagation(); deleteZero('${gunId}','${z.id}')" title="Delete">🗑</button>
           </div>
         </div>
       `;
@@ -1389,13 +1390,45 @@ function getSelectedZeroOptic() {
   return sel.value.trim();
 }
 
-function openLogZero(gunId, zeroId) {
+// Reading a zero and changing one are different intentions. Tapping the row opens it
+// inert, the same way groups and dope tables already work, so a stray tap at the bench
+// can't quietly alter what the rifle is actually zeroed at.
+let zeroReadOnly = false;
+
+function zeroApplyMode() {
+  document.getElementById('modal-zero').classList.toggle('viewing', zeroReadOnly);
+  ['zero-date', 'zero-distance', 'zero-distance-unit', 'zero-ammo-select', 'zero-ammo-custom',
+   'zero-optic-select', 'zero-optic-custom', 'zero-notes'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = zeroReadOnly;
+  });
+  document.getElementById('zero-buttons').innerHTML = zeroReadOnly
+    ? `<button class="btn btn-secondary" onclick="closeModal('modal-zero')">Close</button>
+       <button class="btn btn-primary" onclick="zeroEnterEdit()">Edit</button>`
+    : `<button class="btn btn-secondary" onclick="closeModal('modal-zero')">Cancel</button>
+       <button class="btn btn-primary" onclick="saveZero()">Save</button>`;
+}
+
+function openViewZero(gunId, zeroId) {
+  return openLogZero(gunId, zeroId, true);
+}
+
+function zeroEnterEdit() {
+  zeroReadOnly = false;
+  const gun = data.firearms.find(x => x.id === document.getElementById('zero-gun-id').value);
+  document.getElementById('zero-modal-title').textContent =
+    'Edit Zero' + (gun ? ' · ' + gun.name : '');
+  zeroApplyMode();
+}
+
+function openLogZero(gunId, zeroId, readOnly) {
   const gun = data.firearms.find(g => g.id === gunId);
   if (!gun) return;
+  zeroReadOnly = !!readOnly;
   document.getElementById('zero-gun-id').value = gunId;
   document.getElementById('zero-edit-id').value = zeroId || '';
   document.getElementById('zero-modal-title').textContent =
-    (zeroId ? 'Edit Zero · ' : 'Add Zero · ') + gun.name;
+    (zeroReadOnly ? 'Zero · ' : zeroId ? 'Edit Zero · ' : 'Add Zero · ') + gun.name;
 
   let existingAmmo = '';
   let existingOptic = '';
@@ -1417,6 +1450,7 @@ function openLogZero(gunId, zeroId) {
   }
   populateZeroAmmoDropdown(gun, existingAmmo);
   populateZeroOpticDropdown(gun, existingOptic);
+  zeroApplyMode();
   if (document.getElementById('modal-history').classList.contains('open')) {
     restoreHistoryGunId = gunId;
     closeModal('modal-history');

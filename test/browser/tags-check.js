@@ -44,6 +44,14 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   ck('editing restores remove controls',
     await page.locator('#group-tags-chips .remove-x').count() > 0);
 
+  // The picker once lived in the zero modal. Every id-based check still passed, because
+  // ids are global — only "is it actually on screen with the group modal open" catches it.
+  ck('the tag picker is visible while the group modal is open',
+    await page.isVisible('#group-tag-add-select'));
+  ck('the picker is inside the group modal, not another overlay',
+    await page.evaluate(() =>
+      document.getElementById('group-tag-add-select').closest('.modal-overlay').id === 'modal-group'));
+
   // The important one: differing case must not create a rival tag.
   const before = await page.evaluate(() => allKnownTags());
   await page.evaluate(() => {

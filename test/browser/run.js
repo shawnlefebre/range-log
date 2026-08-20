@@ -26,6 +26,7 @@ const SUITES = [
   ['tags-check', 'group tags: entry, case-insensitive dedup, view mode'],
   ['multigroup-check', 'several groups on one photo, shared calibration and photo'],
   ['dope-check', 'dope tables: unit conversion, view mode, persistence, card cap'],
+  ['zero-check', 'zeros: tap to view read-only, edit, add without inheriting view mode'],
 ];
 
 const waitForServer = () => new Promise((resolve, reject) => {

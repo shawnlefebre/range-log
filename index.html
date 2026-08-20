@@ -540,19 +540,6 @@
       </div>
     </div>
     <div class="form-group">
-      <label>Tags</label>
-      <div id="group-tags-chips" class="chips-container"></div>
-      <div style="display:flex;gap:6px;margin-top:6px;">
-        <select id="group-tag-add-select" style="flex:1;">
-          <option value="">&mdash; Add tag &mdash;</option>
-        </select>
-        <button type="button" class="btn btn-secondary" style="padding:8px 12px;font-size:0.7rem;" onclick="addGroupTagFromSelect()">Add</button>
-      </div>
-      <input type="text" id="group-tag-custom" placeholder="Type a new tag, e.g. prone" style="margin-top:6px;display:none;">
-      <div class="group-hint">However you want to slice groups later &mdash; position, rest, conditions.</div>
-    </div>
-
-    <div class="form-group">
       <label>Ammo</label>
       <select id="zero-ammo-select" onchange="handleZeroAmmoSelectChange()">
         <option value="">— Select ammo —</option>
@@ -570,10 +557,7 @@
       <label>Notes (optional)</label>
       <textarea id="zero-notes" placeholder="Holdovers, dope, conditions..."></textarea>
     </div>
-    <div class="btn-row">
-      <button class="btn btn-secondary" onclick="closeModal('modal-zero')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveZero()">Save</button>
-    </div>
+    <div class="btn-row" id="zero-buttons"></div>
   </div>
 </div>
 
@@ -679,6 +663,19 @@
         <option value="">&mdash; Select ammo &mdash;</option>
       </select>
       <input type="text" id="group-ammo-custom" placeholder="Type custom ammo" style="margin-top:6px;display:none;">
+    </div>
+
+    <div class="form-group">
+      <label>Tags</label>
+      <div id="group-tags-chips" class="chips-container"></div>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <select id="group-tag-add-select" style="flex:1;">
+          <option value="">&mdash; Add tag &mdash;</option>
+        </select>
+        <button type="button" class="btn btn-secondary" style="padding:8px 12px;font-size:0.7rem;" onclick="addGroupTagFromSelect()">Add</button>
+      </div>
+      <input type="text" id="group-tag-custom" placeholder="Type a new tag, e.g. prone" style="margin-top:6px;display:none;">
+      <div class="group-hint">However you want to slice groups later &mdash; position, rest, conditions.</div>
     </div>
 
     <div class="form-group">
