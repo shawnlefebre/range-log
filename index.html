@@ -259,6 +259,15 @@
       <div class="section-title" style="color:var(--danger);">Danger Zone</div>
     </div>
     <div class="card" style="border-color:var(--danger);">
+      <div class="form-group" style="margin-bottom:18px;">
+        <label>Load Demo Data</label>
+        <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:10px; line-height:1.4;">
+          Replaces everything currently stored with the built-in sample set &mdash; useful for
+          screenshots, or trying a feature out without touching your own records. It sits here
+          because with real data in the app, that is exactly what it does.
+        </div>
+        <button class="btn btn-secondary" style="width:100%;" onclick="openLoadDemoModal()">Load Demo Data</button>
+      </div>
       <div class="form-group">
         <label style="color:var(--danger);">Delete All Data</label>
         <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:10px; line-height:1.4;">
@@ -380,6 +389,23 @@
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="closeModal('modal-seller')">Cancel</button>
       <button class="btn btn-primary" onclick="saveSeller()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-load-demo">
+  <div class="modal">
+    <div class="modal-title">Load Demo Data</div>
+    <div class="form-group">
+      <div style="font-size:0.85rem; color:var(--text-muted); line-height:1.5; margin-bottom:14px;">
+        This replaces <strong style="color:var(--text);">every firearm, session, cleaning, zero, dope table, group and ammo purchase</strong> with the sample set, and removes any stored target photos. There is no undo. If you haven't already, export a JSON backup first.
+      </div>
+      <label>Type <strong style="font-family:var(--font-mono);">DEMO</strong> to confirm</label>
+      <input type="text" id="load-demo-confirm-input" placeholder="DEMO" autocomplete="off" oninput="updateLoadDemoButtonState()">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal('modal-load-demo')">Cancel</button>
+      <button class="btn btn-primary" id="load-demo-confirm-btn" style="opacity:0.4;pointer-events:none;" onclick="confirmLoadDemo()">Load Demo Data</button>
     </div>
   </div>
 </div>

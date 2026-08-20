@@ -123,6 +123,9 @@ The app opens pre-loaded with a full year of sample data — firearms, sessions,
 - **Clear & Start Fresh** — wipes the sample data for a blank app
 - **Keep This Data** — dismisses the banner and leaves the sample entries in place, if you'd rather edit them into your real setup than start from zero
 
+
+Demo data is generated fresh each time and dated relative to today, so it never shows a session in the future. If you clear it and later want it back — for a screenshot, or to try a feature without touching your own records — **Setup → Danger Zone → Load Demo Data** regenerates it. It replaces everything currently stored, so it asks you to type `DEMO` first unless the app is already empty.
+
 ## Installing on iPhone (Home Screen App)
 
 1. Open the hosted URL (see above or your own if [hosting your own](#hosting-your-own-copy-github-pages)) in **Safari** — not Chrome or another browser, since only Safari supports adding web apps to the home screen on iOS

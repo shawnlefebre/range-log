@@ -657,6 +657,59 @@ function clearDemoData() {
   wipeAllData();
 }
 
+// ── LOAD DEMO DATA (Settings) ──────────────────────────────────────
+// Demo data is generated on first launch and never comes back once cleared, so there was
+// no way to get a populated app for a screenshot or to try a feature out. This restores it.
+
+// Anything the user could have entered themselves. Derived counters aren't consulted —
+// a firearm with no sessions is still something you'd be upset to lose.
+function hasAnyStoredData() {
+  return ['firearms', 'locations', 'sellers', 'sessions', 'ammo']
+    .some(k => (data[k] || []).length > 0);
+}
+
+function openLoadDemoModal() {
+  // With an empty app there is nothing at stake, so making you type a word would be
+  // ceremony. With real records in it, this is as destructive as Delete All and gets the
+  // same treatment.
+  if (!hasAnyStoredData()) {
+    if (!confirm('Load the built-in sample data? The app is currently empty, so nothing is lost.')) return;
+    loadDemoData();
+    return;
+  }
+  const input = document.getElementById('load-demo-confirm-input');
+  input.value = '';
+  updateLoadDemoButtonState();
+  openModal('modal-load-demo');
+  setTimeout(() => input.focus(), 50);
+}
+
+function updateLoadDemoButtonState() {
+  const input = document.getElementById('load-demo-confirm-input');
+  const btn = document.getElementById('load-demo-confirm-btn');
+  const match = input.value === 'DEMO';
+  btn.style.opacity = match ? '1' : '0.4';
+  btn.style.pointerEvents = match ? 'auto' : 'none';
+}
+
+function confirmLoadDemo() {
+  if (document.getElementById('load-demo-confirm-input').value !== 'DEMO') return;
+  loadDemoData();
+  closeModal('modal-load-demo');
+}
+
+function loadDemoData() {
+  data = buildDefaultData();
+  save(data);
+  // Demo groups reference no photos, so anything still in IndexedDB would be an orphan
+  // the app can neither show nor reclaim through normal use.
+  clearAllPhotos();
+  renderAll();
+  // isDemo is true again, so the banner returns — and with it "Keep This Data", which is
+  // already the way sample data becomes your own.
+  showTab('dashboard');
+}
+
 // ── DELETE ALL DATA (Settings, type-to-confirm) ────────────────────
 function openDeleteAllModal() {
   const input = document.getElementById('delete-all-confirm-input');

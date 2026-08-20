@@ -707,6 +707,73 @@ describe('group tags', () => {
   });
 });
 
+// ── LOAD DEMO DATA ──────────────────────────────────────────────────
+
+describe('loading demo data from Settings', () => {
+  test('an empty app takes a plain confirm; a populated one demands the typed word', async () => {
+    const win = await ready(loadApp());
+    let confirmed = 0;
+    win.confirm = () => { confirmed++; return false; };   // decline, so nothing is destroyed
+
+    // Fresh load ships demo data, so the app is populated.
+    win.openLoadDemoModal();
+    assert.strictEqual(confirmed, 0, 'a populated app must not settle for a plain confirm');
+    assert.ok(win.document.getElementById('modal-load-demo').classList.contains('open'));
+    win.closeModal('modal-load-demo');
+
+    win.wipeAllData();
+    win.openLoadDemoModal();
+    assert.strictEqual(confirmed, 1, 'an empty app should just ask once');
+    assert.strictEqual(win.document.getElementById('modal-load-demo').classList.contains('open'), false,
+      'no ceremony when there is nothing to lose');
+  });
+
+  test('the confirm button stays inert until DEMO is typed exactly', async () => {
+    const win = await ready(loadApp());
+    const input = win.document.getElementById('load-demo-confirm-input');
+    const btn = win.document.getElementById('load-demo-confirm-btn');
+    win.openLoadDemoModal();
+
+    ['', 'demo', 'DEMOO', 'DEM'].forEach(v => {
+      input.value = v;
+      win.updateLoadDemoButtonState();
+      assert.strictEqual(btn.style.pointerEvents, 'none', `"${v}" should not arm the button`);
+    });
+    input.value = 'DEMO';
+    win.updateLoadDemoButtonState();
+    assert.strictEqual(btn.style.pointerEvents, 'auto');
+  });
+
+  test('confirming replaces real data with sample data and flags it as demo', async () => {
+    const win = await ready(loadApp());
+    win.wipeAllData();
+    const emptied = JSON.parse(win.localStorage.getItem('rangeLogData'));
+    assert.strictEqual(emptied.firearms.length, 0, 'precondition: the app is empty');
+    assert.strictEqual(emptied.isDemo, false, 'precondition: not flagged as demo');
+
+    win.loadDemoData();
+    const stored = JSON.parse(win.localStorage.getItem('rangeLogData'));
+    assert.ok(stored.firearms.length > 0, 'sample firearms are loaded');
+    assert.ok(stored.sessions.length > 0, 'sample sessions are loaded');
+    assert.strictEqual(stored.isDemo, true,
+      'the banner must return, since this is freshly generated sample data');
+    assert.strictEqual(stored.schemaVersion, win.buildDefaultData().schemaVersion);
+  });
+
+  test('loaded demo data is dated no later than today, same as first launch', async () => {
+    const win = await ready(loadApp());
+    win.loadDemoData();
+    const stored = JSON.parse(win.localStorage.getItem('rangeLogData'));
+    const today = new Date().toISOString().slice(0, 10);
+    stored.sessions.forEach(s =>
+      assert.ok(s.date <= today, `session dated in the future: ${s.date}`));
+    stored.ammo.forEach(a =>
+      assert.ok(!a.date || a.date <= today, `purchase dated in the future: ${a.date}`));
+    stored.firearms.flatMap(g => g.groups || []).forEach(g =>
+      assert.ok(g.date <= today, `group dated in the future: ${g.date}`));
+  });
+});
+
 // ── MODAL CONTROL PLACEMENT ─────────────────────────────────────────
 // Element ids are global, so a control placed in the wrong overlay still resolves by id
 // and every behavioural test keeps passing. That is exactly how the group tag picker
