@@ -707,6 +707,140 @@ describe('group tags', () => {
   });
 });
 
+// ── VERSION CONSISTENCY ─────────────────────────────────────────────
+// index.html, app.js and sw.js each carry the app version, and they are deployed together.
+// Bumping one without the others breaks the service worker's update detection — the banner
+// either never appears or appears forever. Nothing caught that before this test.
+
+describe('app version', () => {
+  const readAll = () => ({
+    html: fs.readFileSync(APP_PATH, 'utf8'),
+    js: fs.readFileSync(JS_PATH, 'utf8'),
+    sw: fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'),
+  });
+
+  test('all three files declare the same version', () => {
+    const { html, js, sw } = readAll();
+    const span = html.match(/<span id="app-version">v([\d.]+)<\/span>/);
+    const inJs = js.match(/const APP_VERSION = '([\d.]+)';/);
+    const inSw = sw.match(/const APP_VERSION = '([\d.]+)';/);
+    assert.ok(span, 'no app-version span in index.html');
+    assert.ok(inJs, 'no APP_VERSION in app.js');
+    assert.ok(inSw, 'no APP_VERSION in sw.js');
+    assert.strictEqual(inJs[1], span[1], 'app.js disagrees with the badge in index.html');
+    assert.strictEqual(inSw[1], span[1], 'sw.js disagrees with the badge in index.html');
+  });
+
+  test('the version is major.minor with an optional patch', () => {
+    const { js } = readAll();
+    const v = js.match(/const APP_VERSION = '([\d.]+)';/)[1];
+    assert.match(v, /^\d+\.\d+(\.\d+)?$/,
+      `"${v}" is not a version the cache name and badge can both carry`);
+  });
+});
+
+// ── STATS SUB-TABS ──────────────────────────────────────────────────
+
+describe('stats sub-tabs', () => {
+  const paneVisible = (win, n) =>
+    win.document.getElementById('statspane-' + n).classList.contains('active');
+  const tabActive = (win, n) =>
+    win.document.getElementById('statstab-' + n).classList.contains('active');
+
+  test('exactly one pane is showing at a time', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    ['groups', 'practice', 'money', 'upkeep'].forEach(target => {
+      win.showStatsSection(target);
+      const shown = ['groups', 'practice', 'money', 'upkeep'].filter(n => paneVisible(win, n));
+      assert.deepStrictEqual(shown, [target], `showing ${shown.join()} after selecting ${target}`);
+      assert.ok(tabActive(win, target), 'the tab reflects the pane');
+    });
+  });
+
+  test('landing on Stats shows a pane rather than nothing', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    const shown = ['groups', 'practice', 'money', 'upkeep'].filter(n => paneVisible(win, n));
+    assert.strictEqual(shown.length, 1, 'a bare showTab must not leave every pane hidden');
+    assert.strictEqual(shown[0], 'practice');
+  });
+
+  test('an unknown section falls back rather than blanking the tab', async () => {
+    const win = await ready(loadApp());
+    win.showStatsSection('nonsense');
+    assert.ok(paneVisible(win, 'practice'));
+  });
+
+  test('the existing Rounds Fired and Ammo Spend views survived the split', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    win.showStatsSection('practice');
+    assert.ok(win.document.getElementById('stats-rf-chart').innerHTML.length > 0,
+      'Rounds Fired still renders');
+    assert.ok(win.document.getElementById('stats-rt-chart').innerHTML.length > 0,
+      'Range Trips still renders');
+    win.showStatsSection('money');
+    assert.ok(win.document.getElementById('stats-as-chart').innerHTML.length > 0,
+      'Ammo Spend still renders');
+  });
+
+  test('each moved view sits in the pane it was assigned to', async () => {
+    const win = await ready(loadApp());
+    const paneOf = id => win.document.getElementById(id).closest('.stats-pane').id;
+    assert.strictEqual(paneOf('stats-rf-chart'), 'statspane-practice');
+    assert.strictEqual(paneOf('stats-rt-chart'), 'statspane-practice');
+    assert.strictEqual(paneOf('stats-as-chart'), 'statspane-money');
+    assert.strictEqual(paneOf('stats-upkeep-cleaning'), 'statspane-upkeep');
+  });
+
+  test('Upkeep ranks firearms by how overdue they are, not by name', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    win.showStatsSection('upkeep');
+    const el = win.document.getElementById('stats-upkeep-cleaning');
+    const names = [...el.querySelectorAll('.breakdown-name')].map(n => n.textContent);
+    assert.strictEqual(names.length, win.buildDefaultData().firearms.length,
+      'every firearm appears');
+
+    // Assert the invariant rather than recomputing the ranking: the bars must run
+    // worst-first. Re-deriving the expected order here would just restate the
+    // implementation and would pass even if both were wrong the same way.
+    const widths = [...el.querySelectorAll('.breakdown-bar-fill')]
+      .map(b => parseFloat(b.style.width));
+    assert.strictEqual(widths.length, names.length);
+    widths.forEach((w, i) => {
+      if (i === 0) return;
+      assert.ok(w <= widths[i - 1] + 1e-9,
+        `row ${i} (${names[i]}, ${w}%) is more overdue than the row above it (${widths[i - 1]}%)`);
+    });
+    // And the ranking must be by fraction of each firearm's own threshold, not raw rounds:
+    // a 300-round pistol at 250 outranks a 1000-round rifle at 400.
+    assert.ok(widths[0] >= widths[widths.length - 1], 'sorted descending');
+  });
+
+  test('Upkeep pairs its status colour with a word, never colour alone', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    win.showStatsSection('upkeep');
+    const el = win.document.getElementById('stats-upkeep-cleaning');
+    [...el.querySelectorAll('.breakdown-pct')].forEach(p =>
+      assert.match(p.textContent, /ok|due soon|past due/,
+        'a colour-blind reader must still get the state'));
+  });
+
+  test('every tab renders without throwing, on demo data and on an empty app', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    ['groups', 'practice', 'money', 'upkeep'].forEach(n =>
+      assert.doesNotThrow(() => win.showStatsSection(n), `${n} threw with data`));
+    win.wipeAllData();
+    win.showTab('stats');
+    ['groups', 'practice', 'money', 'upkeep'].forEach(n =>
+      assert.doesNotThrow(() => win.showStatsSection(n), `${n} threw when empty`));
+  });
+});
+
 // ── CAPPED DETAILS LISTS ────────────────────────────────────────────
 
 describe('capped Details lists', () => {

@@ -22,7 +22,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   const checks = [];
   const check = (name, ok) => { checks.push([name, ok]); };
 
-  check('version matches the deployed build', /^v\d+\.\d+$/.test(await page.textContent('#app-version')));
+  check('version badge is well formed', /^v\d+\.\d+(\.\d+)?$/.test(await page.textContent('#app-version')));
 
   // Demo data should already carry a sample group on the rifle.
   await page.click('button.btn-clean:has-text("View Details")');

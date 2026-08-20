@@ -2428,11 +2428,75 @@ function buildStatsBarChart(buckets, formatVal) {
   return `<div class="stats-bar-chart">${bars}</div>`;
 }
 
+// ── STATS SUB-TABS ────────────────────────────────────────────────
+// Four panes rather than one long scroll. Which one is showing is view state, not data, so
+// it is deliberately not persisted — reopening Stats lands on Practice every time.
+const STATS_SECTIONS = ['groups', 'practice', 'money', 'upkeep'];
+let currentStatsSection = 'practice';
+
+function showStatsSection(name) {
+  if (!STATS_SECTIONS.includes(name)) name = 'practice';
+  currentStatsSection = name;
+  STATS_SECTIONS.forEach(n => {
+    const pane = document.getElementById('statspane-' + n);
+    const tab = document.getElementById('statstab-' + n);
+    if (pane) pane.classList.toggle('active', n === name);
+    if (tab) {
+      tab.classList.toggle('active', n === name);
+      tab.setAttribute('aria-selected', n === name ? 'true' : 'false');
+    }
+  });
+  renderStats();
+}
+
 function renderStats() {
   populateStatsFilterDropdowns();
   renderRoundsFiredStats();
   renderRangeTripsStats();
   renderAmmoSpendStats();
+  renderUpkeepStats();
+}
+
+// Rounds since the last deep clean against each firearm's own threshold, worst first.
+// Recomputed from history like everything else, never stored.
+function renderUpkeepStats() {
+  const el = document.getElementById('stats-upkeep-cleaning');
+  if (!el) return;
+  const rows = (data.firearms || []).map(gun => {
+    const since = computeRoundsSinceClean(gun);
+    const thr = gun.cleanThreshold || 0;
+    return { gun, since, thr, pct: thr ? since / thr : 0 };
+  }).sort((a, b) => b.pct - a.pct);
+
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:16px;">No firearms yet.</div>';
+    return;
+  }
+  // Reuses the breakdown-row pattern from Rounds Fired and Ammo Spend rather than inventing
+  // a third bar style.
+  const rowsHtml = rows.map(r => {
+    // Status colour is legitimate here — this is a state, not a series — and it is always
+    // paired with the number, so it never depends on colour alone.
+    const state = r.pct >= 1 ? 'danger' : r.pct >= 0.8 ? 'warn' : 'ok';
+    const label = r.pct >= 1 ? 'past due' : r.pct >= 0.8 ? 'due soon' : 'ok';
+    const lastDeep = lastDeepCleanDate(r.gun);
+    return `
+      <div class="breakdown-row">
+        <div class="breakdown-top">
+          <span class="breakdown-name">${r.gun.name}</span>
+          <span class="breakdown-val" style="color:var(--${state})">${r.since}${r.thr ? ` / ${r.thr}` : ''} rds</span>
+        </div>
+        <div class="breakdown-bar-track">
+          <div class="breakdown-bar-fill" style="width:${Math.min(100, r.pct * 100)}%;background:var(--${state});"></div>
+        </div>
+        <div class="breakdown-pct">${label}${lastDeep ? ` · last deep clean ${fmtDate(lastDeep)}` : ' · never deep cleaned'}</div>
+      </div>`;
+  }).join('');
+  el.innerHTML = `
+    <div class="stats-chart-card">
+      <div class="stats-chart-title">Rounds Since Deep Clean</div>
+      ${rowsHtml}
+    </div>`;
 }
 
 function renderRoundsFiredStats() {
@@ -4094,7 +4158,7 @@ function showTab(name) {
   if (name === 'log') renderLogForm();
   if (name === 'sessions') renderSessions();
   if (name === 'ammo') renderAmmo();
-  if (name === 'stats') renderStats();
+  if (name === 'stats') showStatsSection(currentStatsSection);
   if (name === 'settings') renderSettings();
 }
 
@@ -4378,7 +4442,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1';
+const APP_VERSION = '7.1.1';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

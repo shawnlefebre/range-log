@@ -15,7 +15,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.1</span>
+    <span id="app-version">v7.1.1</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -97,6 +97,25 @@
 
   <!-- STATS -->
   <section id="tab-stats">
+    <!-- Second-level navigation. Groups is scoped to one firearm; the other three cover the
+         whole collection, which is why the firearm picker lives inside Groups rather than here. -->
+    <div class="stats-subtabs" role="tablist">
+      <button id="statstab-groups"   role="tab" onclick="showStatsSection('groups')">Groups</button>
+      <button id="statstab-practice" role="tab" onclick="showStatsSection('practice')">Practice</button>
+      <button id="statstab-money"    role="tab" onclick="showStatsSection('money')">Money</button>
+      <button id="statstab-upkeep"   role="tab" onclick="showStatsSection('upkeep')">Upkeep</button>
+    </div>
+
+    <div id="statspane-groups" class="stats-pane">
+      <div class="empty-state" style="padding:26px 16px;">
+        Group analysis lands here next.<br>
+        <span style="font-size:0.72rem;color:var(--text-dim);">
+          Trend, ammo comparison and point of impact, for one firearm at a time.
+        </span>
+      </div>
+    </div>
+
+    <div id="statspane-practice" class="stats-pane">
     <div class="stats-section-title">Rounds Fired</div>
     <div class="stats-filter-grid">
       <div class="stats-filter-group">
@@ -167,6 +186,9 @@
     <div id="stats-rt-stats"></div>
     <div id="stats-rt-chart"></div>
 
+    </div>
+
+    <div id="statspane-money" class="stats-pane">
     <div class="stats-section-title">Ammo Spend</div>
     <div class="stats-filter-grid two">
       <div class="stats-filter-group">
@@ -196,6 +218,12 @@
     <div id="stats-as-chart"></div>
     <div id="stats-as-breakdown"></div>
     <div id="stats-as-rounds-breakdown"></div>
+    </div>
+
+    <div id="statspane-upkeep" class="stats-pane">
+      <div class="stats-section-title">Cleaning Due</div>
+      <div id="stats-upkeep-cleaning"></div>
+    </div>
   </section>
 
   <!-- SETTINGS -->

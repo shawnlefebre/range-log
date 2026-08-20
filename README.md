@@ -9,7 +9,7 @@ A simple, private tracker for your range sessions — built as a lightweight web
 - 🎯 Target groups — photograph a target, mark the shots, get group size in inches, MOA and MRAD
 - 📐 Dope tables — come-ups per firearm and load, entered by hand and editable, in MOA or mils
 - 💵 Ammo purchases — cost per round, seller, stock status, with running averages
-- 📊 Stats — rounds fired, range trips, and ammo spend over time, filterable by firearm, caliber, and location
+- 📊 Stats — rounds fired, range trips, ammo spend and cleaning status, filterable by firearm, caliber, and location
 
 All data is stored locally in your browser (nothing is sent to a server), and can be exported/imported as JSON for backup or moving between devices.
 
@@ -93,6 +93,20 @@ Photos are downscaled before storing, so each one lands around 30–100 KB — a
 **Settings → Target Photos** shows exactly what's stored: how many photos, their total size, and how much room the app has. If any photos are no longer attached to a group — which can happen after importing a backup — it offers to reclaim that space.
 
 Because photos are left out of the JSON backup, moving them to another device is a separate step: **Export photos** writes a bundle you import on the new device *after* restoring the JSON backup. Importing a bundle only restores images that some group actually refers to.
+
+## Stats
+
+Split into four sub-tabs rather than one long scroll, because they answer unrelated
+questions and nobody reads past the first:
+
+- **Groups** — per-firearm shooting analysis. Comparing group sizes across firearms isn't
+  meaningful (a rimfire rifle at 50 yd and a pistol at 25 ft aren't on the same scale), so
+  this one is always scoped to a single firearm.
+- **Practice** — rounds fired and range trips over time, by firearm, caliber and location.
+- **Money** — ammo spend and cost per round.
+- **Upkeep** — rounds since the last deep clean against each firearm's own threshold, sorted
+  by whoever needs it most. Amber past 80%, red past due — always with the number and the
+  word beside it, so the state never depends on colour alone.
 
 ## Dope Tables
 
