@@ -15,7 +15,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.1.8</span>
+    <span id="app-version">v7.1.9</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -276,7 +276,7 @@
         <button class="btn btn-danger" style="width:100%;" onclick="openDeleteAllModal()">Delete All Data</button>
       </div>
     </div>
-    <div class="schema-badge">Data schema v13 · Range Log</div>
+    <div class="schema-badge">Data schema v14 · Range Log</div>
   </section>
 </div>
 
@@ -470,6 +470,14 @@
         <option value="instock" selected>In stock</option>
         <option value="usedup">Used up</option>
       </select>
+    </div>
+    <div class="form-group">
+      <label class="group-check" for="ammo-not-range">
+        <input type="checkbox" id="ammo-not-range">
+        <span>Not range ammo</span>
+      </label>
+      <div class="group-hint">Carry, defensive or match ammo you don't shoot for practice.
+        It still counts toward what you spent — it just stops skewing the per-round prices.</div>
     </div>
     <div class="form-group">
       <label>Notes (optional)</label>

@@ -201,6 +201,20 @@ describe('schema migration', () => {
     assert.deepStrictEqual([...guns[0].dope], [], 'every firearm gets the array');
   });
 
+  test('v13 purchases default to range ammo', () => {
+    const v13 = {
+      schemaVersion: 13, isDemo: false, firearms: [], locations: [], sellers: [], sessions: [],
+      ammo: [
+        { id: 'a1', date: '2026-01-01', caliber: '9mm', quantity: 500, totalPrice: 120 },
+        { id: 'a2', date: '2026-01-02', caliber: '9mm', quantity: 20, totalPrice: 30, rangeAmmo: false },
+      ],
+    };
+    const out = win.migrateData(JSON.parse(JSON.stringify(v13)));
+    assert.strictEqual(out.ammo[0].rangeAmmo, true,
+      'everything logged before the flag existed was bought to shoot');
+    assert.strictEqual(out.ammo[1].rangeAmmo, false, 'an existing setting survives');
+  });
+
   test('the Settings schema badge matches the actual schema version', async () => {
     const badge = win.document.body.textContent.match(/Data schema v(\d+)/);
     assert.ok(badge, 'schema badge not found in Settings');
@@ -1296,7 +1310,7 @@ describe('picking an individual caliber on Money', () => {
     const sel = win.document.getElementById('ammo-caliber-select');
     const known = Array.from(sel.options).find(o => o.value === caliber);
     if (known) { sel.value = caliber; } else {
-      sel.value = '__custom__';
+      sel.value = '__new__';
       win.handleCaliberSelectChange();
       win.document.getElementById('ammo-caliber-custom').value = caliber;
     }
@@ -1353,6 +1367,129 @@ describe('picking an individual caliber on Money', () => {
     const lo = Math.min(aRate, bRate), hi = Math.max(aRate, bRate);
     assert.ok(bothRate > lo && bothRate < hi,
       `the merged rate (${bothRate}) sits between ${lo} and ${hi}, matching neither`);
+  });
+});
+
+// ── NON-RANGE AMMO ──────────────────────────────────────────────────
+// A 20-round box of carry ammo at five times the price says nothing about what practice
+// costs. Totals still count it — the money was spent — but per-round figures must not.
+
+describe('non-range ammo', () => {
+  const openMoney = (win, range = 'all') => {
+    win.showTab('stats');
+    win.showStatsSection('money');
+    win.document.getElementById('stats-range').value = range;
+    win.renderStats();
+  };
+  const stat = (win, label) => {
+    const box = [...win.document.querySelectorAll('#stats-as-stats .stats-stat-box')]
+      .find(b => new RegExp(label, 'i').test(b.querySelector('.stats-stat-label').textContent));
+    return box ? parseFloat(box.querySelector('.stats-stat-num').textContent.replace(/[$,]/g, '')) : null;
+  };
+
+  test('the flag round-trips through the form', async () => {
+    const win = await ready(loadApp());
+    win.openAddAmmo();
+    assert.strictEqual(win.document.getElementById('ammo-not-range').checked, false,
+      'the common case must be the default, or the flag is a chore');
+
+    win.document.getElementById('ammo-date').value = '2026-03-01';
+    win.document.getElementById('ammo-caliber-select').value = '__new__';
+    win.handleCaliberSelectChange();
+    win.document.getElementById('ammo-caliber-custom').value = '9mm';
+    win.document.getElementById('ammo-manufacturer').value = 'Test';
+    win.document.getElementById('ammo-model').value = 'Carry JHP';
+    win.document.getElementById('ammo-quantity').value = '20';
+    win.document.getElementById('ammo-price').value = '30';
+    win.document.getElementById('ammo-not-range').checked = true;
+    win.saveAmmo();
+
+    const saved = JSON.parse(win.localStorage.getItem('rangeLogData')).ammo
+      .find(a => a.model === 'Carry JHP');
+    assert.ok(saved);
+    assert.strictEqual(saved.rangeAmmo, false, 'checked means not range ammo');
+
+    win.openEditAmmo(saved.id);
+    assert.strictEqual(win.document.getElementById('ammo-not-range').checked, true,
+      'reopening shows what was saved');
+  });
+
+  test('spend counts every purchase; price per round counts only range ammo', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const stored = win.buildDefaultData().ammo;
+    const carry = stored.filter(a => a.rangeAmmo === false);
+    assert.ok(carry.length, 'demo data includes a non-range purchase');
+
+    const totalSpend = stored.reduce((s2, a) => s2 + a.totalPrice, 0);
+    const totalRounds = stored.reduce((s2, a) => s2 + a.quantity, 0);
+    const rangeSpend = stored.filter(a => a.rangeAmmo !== false)
+      .reduce((s2, a) => s2 + a.totalPrice, 0);
+    const rangeRounds = stored.filter(a => a.rangeAmmo !== false)
+      .reduce((s2, a) => s2 + a.quantity, 0);
+
+    assert.ok(Math.abs(stat(win, 'Total Spend') - totalSpend) < 0.02,
+      'the money was spent either way');
+    assert.ok(Math.abs(stat(win, 'Rounds Bought') - totalRounds) < 1);
+
+    const shown = stat(win, 'CPR');
+    assert.ok(Math.abs(shown - rangeSpend / rangeRounds) < 0.0006,
+      `per-round should be the range-only figure (${shown} vs ${(rangeSpend/rangeRounds).toFixed(4)})`);
+    assert.ok(Math.abs(shown - totalSpend / totalRounds) > 0.0001,
+      'and it should differ from the blended figure, or the exclusion is doing nothing');
+  });
+
+  test('it says how many purchases it left out', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const note = flat(win.document.getElementById('stats-as-stats'));
+    assert.match(note, /non-range purchase/i);
+    assert.match(note, /still include/i, 'and that the totals are unaffected');
+  });
+
+  test('with nothing flagged there is no note and no relabelling', async () => {
+    const win = await ready(loadApp());
+    // Clear the flag on the demo carry purchase and the exclusion should disappear entirely.
+    const carryId = win.buildDefaultData().ammo.find(a => a.rangeAmmo === false).id;
+    win.openEditAmmo(carryId);
+    win.document.getElementById('ammo-not-range').checked = false;
+    win.saveAmmo();
+    openMoney(win);
+    const el = flat(win.document.getElementById('stats-as-stats'));
+    assert.doesNotMatch(el, /non-range purchase/i);
+    assert.doesNotMatch(el, /Avg CPR · range/i, 'no exclusion, no qualifier on the label');
+  });
+
+  test('store prices exclude non-range ammo too, while store spend does not', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    // Narrow to the caliber the carry load is in, which is when per-round prices appear.
+    const stored = win.buildDefaultData().ammo;
+    const carry = stored.find(a => a.rangeAmmo === false);
+    const sel = win.document.getElementById('stats-caliber');
+    const opt = [...sel.options].find(o => o.value === carry.caliber);
+    assert.ok(opt, 'the caliber of the carry load is selectable');
+    sel.value = opt.value;
+    win.renderStats();
+
+    const seller = win.buildDefaultData().sellers.find(x => x.id === carry.sellerId);
+    const row = [...win.document.querySelectorAll('#stats-as-seller-breakdown .breakdown-row')]
+      .find(r => r.querySelector('.breakdown-name').textContent === seller.name);
+    assert.ok(row, 'the store that sold the carry load is listed');
+
+    const sameStore = stored.filter(a => a.sellerId === carry.sellerId && a.caliber === carry.caliber);
+    const spend = sameStore.reduce((s2, a) => s2 + a.totalPrice, 0);
+    const shownSpend = parseFloat(row.querySelector('.breakdown-val').textContent.replace('$', ''));
+    assert.ok(Math.abs(shownSpend - spend) < 0.02, 'store spend includes the carry box');
+
+    const rangeAt = sameStore.filter(a => a.rangeAmmo !== false);
+    const cprText = row.querySelector('.breakdown-pct').textContent.match(/\$([\d.]+)\/rd/);
+    if (rangeAt.length && cprText) {
+      const expect = rangeAt.reduce((s2, a) => s2 + a.totalPrice, 0)
+        / rangeAt.reduce((s2, a) => s2 + a.quantity, 0);
+      assert.ok(Math.abs(parseFloat(cprText[1]) - expect) < 0.0011,
+        'one defensive box must not make a shop look dear');
+    }
   });
 });
 

@@ -181,6 +181,10 @@ Two things there are deliberately careful:
 - **Filtering money by firearm is an inference.** Purchases are logged per caliber and never
   per firearm, so picking a rifle shows spend on the calibers it uses — including ammo you
   actually put through something else chambered the same way. The screen says so.
+- **Carry ammo can be marked "not range ammo"** on a purchase, unchecked by default. A
+  20-round box of defensive ammo at five times the price says nothing about what practice
+  costs, so per-round prices leave it out — while spend and round totals still include it,
+  because you spent the money either way. The screen says how many purchases it left out.
 - **Burn rate is not inventory.** It's rounds actually fired, from your session log, which
   is complete. What's *left on the shelf* can't be computed — ammo bought before you started
   logging was never recorded — so the app doesn't guess. It's grouped by a firearm's whole

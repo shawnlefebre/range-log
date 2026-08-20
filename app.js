@@ -23,11 +23,14 @@
 // v12: gun.opticUnit added — 'moa' | 'mrad' | null. Chooses which angular unit leads the
 //      point-of-aim offsets, so they match the turret you actually dial. Group size stays
 //      MOA regardless, since that figure is compared across firearms.
+// v14: ammo.rangeAmmo added — false for carry/defensive/match. Stored positively while the
+//      checkbox reads "Not range ammo", because everything you buy is range ammo unless you
+//      say otherwise. Per-round price figures exclude the false ones; totals include them.
 // v13: gun.dope array added — manually entered come-up tables, one per ammo, each
 //      {id, ammo, unit, zeroDistance, distanceUnit, conditions, entries[{distance, come}]}.
 //      The app never computes ballistics; numbers come from whatever solver the user
 //      trusts and are edited by hand.
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
 
 const CLEANING_TYPES = {
   quick: { label: 'Quick', resetsDeep: false },
@@ -194,9 +197,22 @@ function generateDemoData() {
       ammo.push({
         id: `dammo_${i}`, date: toISO(year, month, day1), caliber: opt.caliber,
         manufacturer: opt.manufacturer, model: opt.model, quantity: qty, totalPrice,
-        sellerId: (i % 2 === 0) ? s1 : s2, status: i < 9 ? 'usedup' : 'instock', notes: '',
+        sellerId: (i % 2 === 0) ? s1 : s2, status: i < 9 ? 'usedup' : 'instock',
+        rangeAmmo: true, notes: '',
       });
     }
+  }
+
+  // One small, expensive carry-ammo purchase. Without it nothing in the demo would exercise
+  // the per-round exclusion, and a rule nobody can see is a rule nobody trusts.
+  if (ammo.length) {
+    const nine = ammoOptions.find(o => o.caliber === '9mm') || ammoOptions[0];
+    ammo.push({
+      id: 'dammo_carry', date: ammo[ammo.length - 1].date, caliber: nine.caliber,
+      manufacturer: nine.manufacturer, model: 'Defender JHP 124gr', quantity: 20,
+      totalPrice: 27.99, sellerId: s1, status: 'instock', rangeAmmo: false,
+      notes: 'Carry load — not shot for practice.',
+    });
   }
 
   // A handful of cleanings per firearm, roughly quarterly, mostly quick with an occasional deep
@@ -419,6 +435,12 @@ function migrateData(d) {
     d.schemaVersion = 13;
   }
 
+  // v13 -> v14: everything already logged was bought to shoot, so default it to range ammo.
+  if (d.schemaVersion === 13) {
+    (d.ammo || []).forEach(a => { if (a.rangeAmmo === undefined) a.rangeAmmo = true; });
+    d.schemaVersion = 14;
+  }
+
   // Defensive: ensure every gun has cleanings + zeros + calibers arrays, and ammo + sellers exist
   d.firearms.forEach(gun => {
     if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
@@ -436,6 +458,7 @@ function migrateData(d) {
   if (!Array.isArray(d.ammo)) d.ammo = [];
   if (!Array.isArray(d.sellers)) d.sellers = [];
   if (d.isDemo === undefined) d.isDemo = false;
+  (d.ammo || []).forEach(a => { if (a.rangeAmmo === undefined) a.rangeAmmo = true; });
 
   return d;
 }
@@ -2098,6 +2121,7 @@ function openAddAmmo() {
   document.getElementById('ammo-quantity').value = '';
   document.getElementById('ammo-price').value = '';
   document.getElementById('ammo-status').value = 'instock';
+  document.getElementById('ammo-not-range').checked = false;
   document.getElementById('ammo-notes').value = '';
   populateAmmoSellerDropdown('');
   populateAmmoCaliberDropdown('');
@@ -2115,6 +2139,7 @@ function openEditAmmo(id) {
   document.getElementById('ammo-quantity').value = a.quantity || '';
   document.getElementById('ammo-price').value = a.totalPrice || '';
   document.getElementById('ammo-status').value = a.status || 'instock';
+  document.getElementById('ammo-not-range').checked = a.rangeAmmo === false;
   document.getElementById('ammo-notes').value = a.notes || '';
   populateAmmoSellerDropdown(a.sellerId || '');
   populateAmmoCaliberDropdown(a.caliber || '');
@@ -2131,6 +2156,8 @@ function saveAmmo() {
   const totalPrice = parseFloat(document.getElementById('ammo-price').value);
   const sellerId = document.getElementById('ammo-seller').value || null;
   const status = document.getElementById('ammo-status').value;
+  // Inverted on purpose: the box asks the unusual question, the field records the common case.
+  const rangeAmmo = !document.getElementById('ammo-not-range').checked;
   const notes = document.getElementById('ammo-notes').value.trim();
 
   if (!date) { alert('Please select a date.'); return; }
@@ -2141,9 +2168,9 @@ function saveAmmo() {
   if (!Array.isArray(data.ammo)) data.ammo = [];
   if (id) {
     const a = data.ammo.find(x => x.id === id);
-    if (a) Object.assign(a, { date, caliber, manufacturer, model, quantity, totalPrice, sellerId, status, notes });
+    if (a) Object.assign(a, { date, caliber, manufacturer, model, quantity, totalPrice, sellerId, status, rangeAmmo, notes });
   } else {
-    data.ammo.push({ id: uid(), date, caliber, manufacturer, model, quantity, totalPrice, sellerId, status, notes });
+    data.ammo.push({ id: uid(), date, caliber, manufacturer, model, quantity, totalPrice, sellerId, status, rangeAmmo, notes });
   }
   save(data);
   closeModal('modal-ammo');
@@ -3317,14 +3344,28 @@ function renderAmmoSpendStats() {
 
   const totalSpend = purchases.reduce((sum, a) => sum + (a.totalPrice || 0), 0);
   const totalRoundsBought = purchases.reduce((sum, a) => sum + (a.quantity || 0), 0);
-  const avgCPR = totalRoundsBought > 0 ? (totalSpend / totalRoundsBought) : 0;
+
+  // Totals count every purchase — you spent the money either way. The per-round figure does
+  // not: a 20-round box of defensive ammo at five times the price describes nothing about
+  // what practice costs, and averaging it in makes the number useless for planning.
+  const rangeOnly = purchases.filter(a => a.rangeAmmo !== false);
+  const excluded = purchases.length - rangeOnly.length;
+  const rangeSpend = rangeOnly.reduce((sum, a) => sum + (a.totalPrice || 0), 0);
+  const rangeRounds = rangeOnly.reduce((sum, a) => sum + (a.quantity || 0), 0);
+  const avgCPR = rangeRounds > 0 ? (rangeSpend / rangeRounds)
+    : (totalRoundsBought > 0 ? totalSpend / totalRoundsBought : 0);
 
   document.getElementById('stats-as-stats').innerHTML = `
     <div class="stats-stat-grid">
       <div class="stats-stat-box"><div class="stats-stat-num">$${totalSpend.toFixed(2)}</div><div class="stats-stat-label">Total Spend</div></div>
       <div class="stats-stat-box"><div class="stats-stat-num">${totalRoundsBought.toLocaleString()}</div><div class="stats-stat-label">Rounds Bought</div></div>
-      <div class="stats-stat-box"><div class="stats-stat-num">$${avgCPR.toFixed(3)}</div><div class="stats-stat-label">Avg CPR</div></div>
+      <div class="stats-stat-box"><div class="stats-stat-num">$${avgCPR.toFixed(3)}</div><div class="stats-stat-label">Avg CPR${
+        excluded ? ' · range' : ''}</div></div>
     </div>
+    ${excluded ? `<div class="stats-note">Per-round price leaves out ${excluded}
+      non-range purchase${excluded === 1 ? '' : 's'} — carry, defensive or match ammo you
+      don't shoot for practice. The spend and round totals still include ${
+      excluded === 1 ? 'it' : 'them'}.</div>` : ''}
   `;
 
   const buckets = pickBuckets(purchases, 'date', start, end);
@@ -3404,7 +3445,7 @@ function renderAmmoSpendStats() {
     ` : '';
   }
 
-  renderSellerSpend(purchases, tokens);
+  renderSellerSpend(purchases, tokens, rangeOnly);
   renderBurnRate();
 }
 
@@ -3412,7 +3453,7 @@ function renderAmmoSpendStats() {
 // are in scope: a shop that only ever sold you 5.56 would look expensive next to one that
 // sold you bulk .22, and the comparison would be between products, not prices. Filter to a
 // single caliber and the per-round figures become comparable, so they appear then.
-function renderSellerSpend(purchases, tokens) {
+function renderSellerSpend(purchases, tokens, rangeOnly) {
   const el = document.getElementById('stats-as-seller-breakdown');
   if (!el) return;
 
@@ -3427,8 +3468,21 @@ function renderSellerSpend(purchases, tokens) {
     if (a.caliber) per[key].cals.add(a.caliber);
   });
 
+  // Price per store follows the same rule as the headline: spend counts everything, the
+  // per-round figure counts range ammo only, or one defensive box makes a shop look dear.
+  const rangeSet = new Set((rangeOnly || purchases).map(a => a.id));
+  const perRange = {};
+  purchases.filter(a => rangeSet.has(a.id)).forEach(a => {
+    const seller = (data.sellers || []).find(x => x.id === a.sellerId);
+    const key = seller ? seller.name : '(no store recorded)';
+    if (!perRange[key]) perRange[key] = { spend: 0, rounds: 0 };
+    perRange[key].spend += (a.totalPrice || 0);
+    perRange[key].rounds += (a.quantity || 0);
+  });
   const rows = Object.entries(per)
-    .map(([name, v]) => ({ name, ...v, cpr: v.rounds ? v.spend / v.rounds : null }))
+    .map(([name, v]) => ({ name, ...v,
+      cpr: perRange[name] && perRange[name].rounds
+        ? perRange[name].spend / perRange[name].rounds : null }))
     .sort((a, b) => b.spend - a.spend);
   if (!rows.length) { el.innerHTML = ''; return; }
 
@@ -5131,7 +5185,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.8';
+const APP_VERSION = '7.1.9';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
