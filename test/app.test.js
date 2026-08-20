@@ -1823,6 +1823,61 @@ describe('cost per trip list', () => {
     }
   });
 
+  test('a trip carries its note, on one line, with the full text kept', async () => {
+    const win = await ready(loadApp());
+    open(win);
+    const row = win.document.querySelector('#stats-trip-list .trip-row');
+    const id = row.getAttribute('onclick').match(/openViewSession\('([^']+)'\)/)[1];
+    const sess = win.buildDefaultData().sessions.find(x => x.id === id);
+    const note = row.querySelector('.trip-note');
+
+    if (sess.notes && sess.notes.trim()) {
+      assert.ok(note, 'a session with a note shows it');
+      assert.strictEqual(note.textContent.includes('\n'), false,
+        'a multi-line note is flattened, or one trip would tower over the rest');
+      assert.strictEqual(note.getAttribute('title'), sess.notes,
+        'the untruncated note stays available');
+    } else {
+      assert.strictEqual(note, null);
+    }
+  });
+
+  test('a multi-line note joins with a separator rather than losing a line', async () => {
+    const win = await ready(loadApp());
+    open(win);
+    const rows = [...win.document.querySelectorAll('#stats-trip-list .trip-row')];
+    const d = win.buildDefaultData();
+    const multi = rows.find(r => {
+      const id = r.getAttribute('onclick').match(/openViewSession\('([^']+)'\)/)[1];
+      const sess = d.sessions.find(x => x.id === id);
+      return sess && (sess.notes || '').includes('\n');
+    });
+    if (!multi) return;                       // demo notes may all be single-line
+    const shown = multi.querySelector('.trip-note').textContent;
+    const id = multi.getAttribute('onclick').match(/openViewSession\('([^']+)'\)/)[1];
+    const sess = d.sessions.find(x => x.id === id);
+    sess.notes.split('\n').map(l => l.trim()).filter(Boolean).forEach(part =>
+      assert.ok(shown.includes(part), `"${part}" should survive the flattening`));
+    assert.match(shown, /·/, 'the line break becomes a visible separator');
+  });
+
+  test('a trip with no note gets no empty line', async () => {
+    const win = await ready(loadApp());
+    // Clear one session's note through the app, then check its row.
+    const sess = [...win.buildDefaultData().sessions].sort((a, b) => b.date.localeCompare(a.date))[0];
+    win.openEditSession(sess.id);
+    win.document.getElementById('session-edit-notes').value = '';
+    win.saveEditSession();
+
+    open(win);
+    const row = [...win.document.querySelectorAll('#stats-trip-list .trip-row')]
+      .find(r => r.getAttribute('onclick').includes(sess.id));
+    if (row) {
+      assert.strictEqual(row.querySelector('.trip-note'), null,
+        'no note, no line — an empty italic row is just noise');
+    }
+  });
+
   test('the ranking direction can be flipped', async () => {
     const win = await ready(loadApp());
     open(win);
@@ -2144,6 +2199,57 @@ describe('spend by store', () => {
       .textContent.replace(/[$,]/g, ''));
     assert.ok(Math.abs(total - headline) < 0.02,
       `store spend (${total.toFixed(2)}) must add up to total spend (${headline.toFixed(2)})`);
+  });
+});
+
+// ── HANDLERS RESOLVE ────────────────────────────────────────────────
+// The read-only modals build their own button rows in JavaScript, so a mistyped handler is
+// a button that silently does nothing rather than a syntax error. That shipped once: the
+// session Save button called saveSessionEdit(), and the function is saveEditSession().
+
+describe('inline handlers resolve to real functions', () => {
+  // Open every modal that generates its buttons, in both modes, then check the document.
+  const openEverything = async win => {
+    const d = win.buildDefaultData();
+    const gun = d.firearms[0];
+    const gunWithGroups = d.firearms.find(g => (g.groups || []).length) || gun;
+    const sess = d.sessions[0];
+    const ammo = d.ammo[0];
+
+    win.openViewSession(sess.id);   win.sessionEnterEdit();
+    win.openViewAmmo(ammo.id);      win.ammoEnterEdit();
+    win.openLogZero(gun.id);
+    win.openViewZero(gun.id, (win.buildDefaultData().firearms
+      .flatMap(g => g.zeros || [])[0] || {}).id || '');
+    win.openDope(gun.id);
+    await win.openLogGroup(gunWithGroups.id);
+    win.showTab('stats');
+    ['groups', 'practice', 'money', 'upkeep'].forEach(sec => win.showStatsSection(sec));
+    win.showTab('sessions');
+    win.showTab('ammo');
+    win.showTab('settings');
+  };
+
+  test('every onclick in the document names a function that exists', async () => {
+    const win = await ready(loadApp());
+    await openEverything(win);
+
+    const missing = new Set();
+    win.document.querySelectorAll('[onclick]').forEach(el => {
+      const code = el.getAttribute('onclick');
+      // Bare calls only. The lookbehind skips method calls like document.getElementById(),
+      // which are not globals and were never the risk here.
+      (code.match(/(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g) || []).forEach(m => {
+        const name = m.slice(0, -1).trim();
+        if (['if', 'return', 'event', 'this', 'typeof'].includes(name)) return;
+        if (typeof win[name] !== 'function') {
+          missing.add(`${name}() — on <${el.tagName.toLowerCase()}> "${
+            (el.textContent || '').trim().slice(0, 24)}"`);
+        }
+      });
+    });
+    assert.deepStrictEqual([...missing], [],
+      'a handler that does not exist is a button that silently does nothing');
   });
 });
 

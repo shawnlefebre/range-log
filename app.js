@@ -1912,7 +1912,7 @@ function sessionApplyMode() {
     ? `<button class="btn btn-secondary" onclick="closeModal('modal-session')">Close</button>
        <button class="btn btn-primary" onclick="sessionEnterEdit()">Edit</button>`
     : `<button class="btn btn-secondary" onclick="closeModal('modal-session')">Cancel</button>
-       <button class="btn btn-primary" onclick="saveSessionEdit()">Save</button>`;
+       <button class="btn btn-primary" onclick="saveEditSession()">Save</button>`;
 }
 
 function openViewSession(id) {
@@ -2859,6 +2859,13 @@ function renderCostPerTrip() {
           loc ? ` · ${loc.name}` : ''}</div>
         <div class="trip-guns">${guns.map(g =>
           `<span>${g.name} <b>${g.n}</b></span>`).join('')}</div>
+        ${r.s.notes && r.s.notes.trim()
+          // One line, clipped. Most notes fit whole; the long ones give their gist, and the
+          // row opens the session for the rest. A note is why the trip was what it was —
+          // "first time with AR15", "indoor qual" — so it earns the line.
+          ? `<div class="trip-note" title="${r.s.notes.replace(/"/g, '&quot;')}">${
+              r.s.notes.replace(/\s*\n+\s*/g, ' · ')}</div>`
+          : ''}
       </div>`;
   }).join('');
 
@@ -5487,7 +5494,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.14';
+const APP_VERSION = '7.1.15';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

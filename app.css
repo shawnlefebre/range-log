@@ -1733,3 +1733,16 @@
   }
   .sort-toggle:hover { border-color: var(--accent-dim); color: var(--text); }
   .sort-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Session note on a trip row: one line, clipped. It is context rather than data, so it
+     sits quietest of everything in the row. */
+  .trip-note {
+    font-family: var(--font-body);
+    font-size: 0.7rem;
+    font-style: italic;
+    color: var(--text-dim);
+    margin-top: 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }

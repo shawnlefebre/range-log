@@ -184,7 +184,9 @@ Two things there are deliberately careful:
   actually put through something else chambered the same way. The screen says so.
 - **Each range trip carries its estimated cost**, on the session card and ranked under Money
   — most expensive first, or flip it to see what a cheap afternoon looks like. Each row lists
-  the firearms and round counts that explain the figure, and tapping one opens that session. The spread is wider than an average suggests — the per-round rate beside each
+  the firearms and round counts that explain the figure, plus the session note on one line —
+  "AR15 Carbine/Rifle close range drills Class" explains a $95 afternoon at a glance. Tapping
+  a row opens that session. The spread is wider than an average suggests — the per-round rate beside each
   trip is what explains it, since a rimfire afternoon and a centerfire one cost very different
   money for the same round count.
 - **Cost of shooting is not total spend.** Total spend is what left your wallet; this is
