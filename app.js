@@ -2586,6 +2586,22 @@ function groupDistanceLabel(g) {
   return (Math.abs(y - Math.round(y)) < 0.01 ? Math.round(y) : y.toFixed(1)) + ' yd';
 }
 
+// Ammo names as logged carry a lot of words that add nothing once you know which load you
+// mean: "CCI Standard Velocity 22LR Ammo 40 Grain Round Nose" is four lines on a phone.
+// Only ever used for display — the stored name is untouched, and the full text stays in the
+// row's title.
+function shortLoadName(name) {
+  return String(name || '')
+    .replace(/\s+Ammo\s+/i, ' ')
+    .replace(/(\d+)\s*[Gg]rain/, '$1gr')
+    .replace(/\s+(Round Nose|Full Metal Jacket|hollow point boat tail.*|copper plated.*)/i, '')
+    // Trailing SKU like " - NR912450". Whitespace before the dash is required, or this eats
+    // the calibre out of names that hyphenate, turning "Norma Tac-22" into "Norma Tac".
+    .replace(/\s+-\s*\w+$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim() || String(name || '');
+}
+
 function statsMedian(a) {
   if (!a.length) return null;
   const s = [...a].sort((x, y) => x - y);
@@ -2689,10 +2705,12 @@ function renderGroupTrend(gun, groups) {
   groups.forEach(g => (byDate[g.date] = byDate[g.date] || []).push(g));
   const days = Object.keys(byDate).sort();
 
-  const W = 440, H = 190, PL = 34, PR = 34, PT = 18, PB = 30;
+  // Authored close to phone width on purpose: SVG text scales with the viewBox, so a canvas
+  // wider than the screen shrinks its own labels below body copy.
+  const W = 300, H = 172, PL = 30, PR = 26, PT = 16, PB = 30;
   // Inset the first and last day from the axis, or their dots and value labels sit on the
   // plot edge and collide with the y-axis and the re-zero line.
-  const inset = days.length > 1 ? 16 : 0;
+  const inset = days.length > 1 ? 12 : 0;
   const x = i => days.length === 1 ? PL + (W - PL - PR) / 2
     : PL + inset + (i / (days.length - 1)) * (W - PL - PR - inset * 2);
   const vals = groups.map(g => g.mrMOA);
@@ -2704,7 +2722,7 @@ function renderGroupTrend(gun, groups) {
   [0, ymax / 2, ymax].forEach(t => {
     svg += `<line x1="${PL}" y1="${y(t)}" x2="${W - PR}" y2="${y(t)}" stroke="${GRIDC}" stroke-width="1"/>
             <text x="${PL - 5}" y="${y(t) + 3}" fill="${DIM}" font-family="IBM Plex Mono"
-                  font-size="8" text-anchor="end">${gFmt(t, 1)}</text>`;
+                  font-size="9" text-anchor="end">${gFmt(t, 1)}</text>`;
   });
 
   // Re-zero marks are drawn whatever the time range is set to. Hiding the boundary unless
@@ -2723,7 +2741,7 @@ function renderGroupTrend(gun, groups) {
     svg += `<line x1="${px}" y1="${PT - 6}" x2="${px}" y2="${H - PB}" stroke="${ZERO}"
                   stroke-width="1" stroke-dasharray="3 3"/>
             <text x="${px + 4}" y="${PT + 8}" fill="${ZERO}" font-family="IBM Plex Mono"
-                  font-size="7">re-zero</text>`;
+                  font-size="8.5">re-zero</text>`;
   });
 
   const meds = days.map((d, i) => {
@@ -2742,15 +2760,24 @@ function renderGroupTrend(gun, groups) {
   });
   svg += `<polyline fill="none" stroke="${ACCENT}" stroke-width="2.2" stroke-linejoin="round"
             points="${meds.map(m => `${x(m.i)},${y(m.med)}`).join(' ')}"/>`;
+  // With more than a handful of range days the date labels would collide, so thin them out
+  // rather than let them overlap — the same trick the Rounds Fired chart uses.
+  const every = days.length > 6 ? Math.ceil(days.length / 6) : 1;
   meds.forEach(m => {
     svg += `<circle cx="${x(m.i)}" cy="${y(m.med)}" r="4.2" fill="${ACCENT}"
-                    stroke="var(--surface)" stroke-width="2"/>
-            <text x="${x(m.i)}" y="${y(m.med) - 9}" fill="${ACCENT}" font-family="IBM Plex Mono"
-                  font-size="8" text-anchor="middle">${gFmt(m.med)}</text>
-            <text x="${x(m.i)}" y="${H - 16}" fill="${DIM}" font-family="IBM Plex Mono"
-                  font-size="7" text-anchor="middle">${fmtDate(m.d).replace(/,.*/, '')}</text>
-            <text x="${x(m.i)}" y="${H - 6}" fill="${DIM}" font-family="IBM Plex Mono"
-                  font-size="6.5" text-anchor="middle">${m.n} group${m.n === 1 ? '' : 's'}</text>`;
+                    stroke="var(--surface)" stroke-width="2"/>`;
+    if (days.length <= 8) {
+      svg += `<text x="${x(m.i)}" y="${y(m.med) - 9}" fill="${ACCENT}" font-family="IBM Plex Mono"
+                    font-size="9.5" text-anchor="middle">${gFmt(m.med)}</text>`;
+    }
+    if (m.i % every === 0 || m.i === days.length - 1) {
+      svg += `<text x="${x(m.i)}" y="${H - 15}" fill="${DIM}" font-family="IBM Plex Mono"
+                    font-size="9" text-anchor="middle">${fmtDate(m.d).replace(/,.*/, '')}</text>`;
+      if (days.length <= 6) {
+        svg += `<text x="${x(m.i)}" y="${H - 5}" fill="${DIM}" font-family="IBM Plex Mono"
+                      font-size="8" text-anchor="middle">${m.n} group${m.n === 1 ? '' : 's'}</text>`;
+      }
+    }
   });
 
   el.innerHTML = `
@@ -2786,7 +2813,7 @@ function renderGroupCompare(groups) {
   groups.forEach(g => dim.of(g).forEach(k => (buckets[k] = buckets[k] || []).push(g)));
   const rows = Object.entries(buckets).map(([k, gs]) => ({
     key: k,
-    label: key === 'day' ? fmtDate(k) : k,
+    label: key === 'day' ? fmtDate(k) : key === 'ammo' ? shortLoadName(k) : k,
     gs,
     med: statsMedian(gs.map(x => x.mrMOA)),
     lo: Math.min(...gs.map(x => x.mrMOA)),
@@ -2800,46 +2827,39 @@ function renderGroupCompare(groups) {
     return;
   }
 
-  const W = 440, PL = 132, PR = 26, ROW = 46;
-  const H = 22 + rows.length * ROW;
-  const all = groups.map(g => g.mrMOA);
-  const xmax = Math.max(...all) * 1.12 || 1;
-  const x = v => PL + (v / xmax) * (W - PL - PR);
+  // Plain HTML rows rather than SVG. Text inside an SVG scales with the viewBox, so on a
+  // phone the labels came out smaller than body text; here they are real type at real sizes,
+  // and they wrap and stay selectable.
   const SERIES = ['#ba8c01', '#1f68bc', '#cf5a93', '#007c59'];
-  const GRIDC = '#2e2e2e', INK = '#888', DIM = '#555';
+  const all = groups.map(g => g.mrMOA);
+  const xmax = Math.max(...all) * 1.08 || 1;
+  const pct = v => (v / xmax) * 100;
 
-  let svg = '';
-  const ticks = [0, xmax / 3, (xmax * 2) / 3, xmax];
-  ticks.forEach(t => {
-    svg += `<line x1="${x(t)}" y1="8" x2="${x(t)}" y2="${H - 16}" stroke="${GRIDC}" stroke-width="1"/>
-            <text x="${x(t)}" y="${H - 4}" fill="${DIM}" font-family="IBM Plex Mono"
-                  font-size="7.5" text-anchor="middle">${gFmt(t, 2)}</text>`;
-  });
-
-  rows.forEach((r, i) => {
-    const yy = 24 + i * ROW;
+  const rowsHtml = rows.map((r, i) => {
     const c = SERIES[i % SERIES.length];
-    const label = r.label.length > 18 ? r.label.slice(0, 17) + '…' : r.label;
-    svg += `<text class="cmp-label" x="${PL - 9}" y="${yy + 2}" fill="${INK}"
-                  font-family="IBM Plex Mono" font-size="8.5" text-anchor="end">${label}</text>
-            <text x="${PL - 9}" y="${yy + 12}" fill="${DIM}" font-family="IBM Plex Mono"
-                  font-size="7" text-anchor="end">n=${r.gs.length}${
-                    r.days === 1 && key !== 'day' ? ' · 1 day' : ''}</text>`;
-    svg += `<line x1="${x(r.lo)}" y1="${yy}" x2="${x(r.hi)}" y2="${yy}" stroke="${c}"
-                  stroke-width="2" opacity="0.3" stroke-linecap="round"/>`;
-    r.gs.forEach(g => {
-      svg += `<circle cx="${x(g.mrMOA)}" cy="${yy}" r="3.4" fill="${c}" opacity="0.85"
-                      stroke="var(--surface)" stroke-width="1.1"/>`;
-    });
-    svg += `<line x1="${x(r.med)}" y1="${yy - 10}" x2="${x(r.med)}" y2="${yy + 10}"
-                  stroke="${c}" stroke-width="2.4"/>
-            <text class="cmp-median" x="${x(r.med)}" y="${yy - 13}" fill="${c}"
-                  font-family="IBM Plex Mono" font-size="8" text-anchor="middle">${gFmt(r.med)}</text>`;
-  });
+    const dots = r.gs.map(g =>
+      `<span class="cmp-dot" style="left:${pct(g.mrMOA)}%;background:${c}"></span>`).join('');
+    return `
+      <div class="cmp-row">
+        <div class="cmp-name" title="${r.key.replace(/"/g, '&quot;')}">
+          <span class="cmp-name-t">${r.label}</span>
+          <span>n=${r.gs.length}${r.days === 1 && key !== 'day' ? ' · 1 day' : ''}</span>
+        </div>
+        <div class="cmp-track">
+          <span class="cmp-span" style="left:${pct(r.lo)}%;width:${pct(r.hi - r.lo)}%;background:${c}"></span>
+          ${dots}
+          <span class="cmp-tick" style="left:${pct(r.med)}%;background:${c}"></span>
+        </div>
+        <div class="cmp-med" style="color:${c}">${gFmt(r.med)}</div>
+      </div>`;
+  }).join('');
+
+  const ticks = [0, xmax / 2, xmax];
+  const axis = `<div class="cmp-axis">${ticks.map(t =>
+    `<span style="left:${pct(t)}%">${gFmt(t, 1)}</span>`).join('')}</div>`;
 
   // A bucket whose groups all come from one afternoon is not evidence about the thing you
-  // grouped by — it is evidence about that afternoon. Say so rather than let the chart imply
-  // a conclusion it cannot support.
+  // grouped by — it is evidence about that afternoon.
   const confounded = key !== 'day' && rows.every(r => r.days === 1);
   const notes = [];
   if (confounded) {
@@ -2852,8 +2872,7 @@ function renderGroupCompare(groups) {
   }
 
   el.innerHTML = `
-    <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" role="img"
-         aria-label="Median group size by ${dim.label}">${svg}</svg>
+    <div class="cmp-chart">${rowsHtml}${axis}</div>
     <div class="stats-note">Median mean-radius MOA, lower is better. One dot per group, the
       bar is its spread.${notes.length ? ' ' + notes.join(' ') : ''}</div>`;
 }
@@ -2892,14 +2911,14 @@ function renderGroupPOI(gun, groups) {
     svg += `<circle cx="${C}" cy="${C}" r="${(C - PAD) * r / reach}" fill="none"
                     stroke="${GRIDC}" stroke-width="1"/>
             <text x="${C + (C - PAD) * r / reach - 3}" y="${C - 4}" fill="${DIM}"
-                  font-family="IBM Plex Mono" font-size="7" text-anchor="end">${r}</text>`;
+                  font-family="IBM Plex Mono" font-size="8.5" text-anchor="end">${r}</text>`;
   }
   svg += `<line x1="${PAD}" y1="${C}" x2="${W - PAD}" y2="${C}" stroke="${AXIS}" stroke-width="1"/>
           <line x1="${C}" y1="${PAD}" x2="${C}" y2="${H - PAD}" stroke="${AXIS}" stroke-width="1"/>
-          <text x="${W - 4}" y="${C - 5}" fill="${DIM}" font-family="IBM Plex Mono"
-                font-size="7.5" text-anchor="end">right</text>
-          <text x="${C + 5}" y="${PAD - 6}" fill="${DIM}" font-family="IBM Plex Mono"
-                font-size="7.5">up</text>`;
+          <text x="${W - 4}" y="${C - 6}" fill="${DIM}" font-family="IBM Plex Mono"
+                font-size="8.5" text-anchor="end">right</text>
+          <text x="${C + 6}" y="${PAD - 6}" fill="${DIM}" font-family="IBM Plex Mono"
+                font-size="8.5">up</text>`;
 
   names.forEach((n, i) => {
     const c = coloured ? SERIES[i % SERIES.length] : ACCENT;
@@ -2918,7 +2937,7 @@ function renderGroupPOI(gun, groups) {
   const legend = coloured
     ? `<div class="poi-legend">${names.map((n, i) =>
         `<span><i style="background:${SERIES[i % SERIES.length]}"></i>${
-          n.length > 22 ? n.slice(0, 21) + '…' : (key === 'day' ? fmtDate(n) : n)}</span>`).join('')}</div>`
+          key === 'day' ? fmtDate(n) : shortLoadName(n)}</span>`).join('')}</div>`
     : '';
 
   const mx = statsMedian(usable.map(g => g.offXMOA));
@@ -5033,7 +5052,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.6';
+const APP_VERSION = '7.1.7';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

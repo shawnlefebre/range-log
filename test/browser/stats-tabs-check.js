@@ -162,8 +162,9 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
     const st = await page.evaluate(() => {
       const el = document.getElementById('stats-groups-compare');
       const svg = el.querySelector('svg');
-      return { rows: el.querySelectorAll('.cmp-median').length,
-               w: svg ? svg.getBoundingClientRect().width : 0,
+      const chart = el.querySelector('.cmp-chart');
+      return { rows: el.querySelectorAll('.cmp-med').length,
+               w: chart ? chart.getBoundingClientRect().width : 0,
                text: el.textContent.replace(/\s+/g, ' ') };
     });
     // Either it draws a real chart, or it explains why it can't. Never a blank box.
@@ -196,6 +197,34 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   ck('it states where the groups sit relative to aim',
     poi && /(of aim|on aim)/i.test(poi.note));
   await page.locator('#stats-groups-poi').screenshot({ path: path.join(ARTIFACTS,'stats-groups-poi.png') });
+
+  // Legibility, measured rather than eyeballed. Text inside an SVG scales with the viewBox,
+  // so a chart authored wider than the phone renders its labels smaller than body copy —
+  // which is exactly how the comparison chart shipped unreadable once.
+  await page.selectOption('#stats-groups-compare-by', 'ammo');
+  await page.waitForTimeout(300);
+  const tiny = await page.evaluate(() => {
+    const out = [];
+    // HTML text in the Groups pane.
+    document.querySelectorAll('#statspane-groups .cmp-name, #statspane-groups .cmp-med, ' +
+      '#statspane-groups .cmp-axis span, #statspane-groups .stats-note').forEach(el => {
+      const px = parseFloat(getComputedStyle(el).fontSize);
+      if (px < 10) out.push(`${el.className} ${px.toFixed(1)}px`);
+    });
+    // SVG text, converted to rendered pixels via the viewBox scale.
+    document.querySelectorAll('#statspane-groups svg').forEach(svg => {
+      const vb = svg.getAttribute('viewBox').split(' ').map(Number);
+      const scale = svg.getBoundingClientRect().width / vb[2];
+      svg.querySelectorAll('text').forEach(t => {
+        const px = parseFloat(t.getAttribute('font-size')) * scale;
+        if (px < 9) out.push(`svg text "${t.textContent}" ${px.toFixed(1)}px`);
+      });
+    });
+    return out;
+  });
+  ck('no text in the Groups pane renders below its floor', tiny.length === 0);
+  if (tiny.length) console.log('     too small: ' + tiny.slice(0, 8).join(' | '));
+  await page.locator('#statspane-groups').screenshot({ path: path.join(ARTIFACTS,'stats-groups-full.png') });
 
   let bad=0;
   checks.forEach(([n,ok])=>{ if(!ok) bad++; console.log(`${ok?'ok  ':'FAIL'} ${n}`); });

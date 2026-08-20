@@ -1573,7 +1573,7 @@
   .stats-filter-note:empty { display: none; }
   .stats-note {
     font-family: var(--font-mono);
-    font-size: 0.6rem;
+    font-size: 0.7rem;
     line-height: 1.55;
     color: var(--text-dim);
     margin-top: 10px;
@@ -1597,3 +1597,73 @@
     display: inline-block; width: 9px; height: 9px; border-radius: 2px;
     margin-right: 5px; vertical-align: baseline;
   }
+
+  /* ── Group comparison rows ────────────────────────────────────────
+     Deliberately HTML rather than SVG. Text inside an SVG scales with the viewBox, so on a
+     phone these labels rendered smaller than body copy; as HTML they are real type at real
+     sizes, they wrap, and they can be selected. */
+  .cmp-chart { padding-bottom: 4px; }
+  .cmp-row {
+    display: grid;
+    grid-template-columns: minmax(78px, 104px) 1fr 46px;
+    gap: 9px;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .cmp-name {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    line-height: 1.25;
+    color: var(--text);
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  /* Two lines then ellipsis. A long load name is worth abbreviating, not worth four rows of
+     height — the untruncated name is on the row's title. */
+  .cmp-name-t {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .cmp-name span:not(.cmp-name-t) {
+    display: block;
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .cmp-track { position: relative; height: 22px; }
+  .cmp-track::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 50%;
+    height: 1px; background: var(--surface3);
+  }
+  .cmp-span {
+    position: absolute; top: 50%; height: 3px; border-radius: 2px;
+    transform: translateY(-50%); opacity: 0.35; min-width: 2px;
+  }
+  .cmp-dot {
+    position: absolute; top: 50%; width: 8px; height: 8px; border-radius: 50%;
+    transform: translate(-50%, -50%); opacity: 0.9;
+    box-shadow: 0 0 0 1.5px var(--surface);
+  }
+  .cmp-tick {
+    position: absolute; top: 50%; width: 3px; height: 20px; border-radius: 1px;
+    transform: translate(-50%, -50%);
+  }
+  .cmp-med {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .cmp-axis {
+    position: relative;
+    height: 14px;
+    margin-left: calc(minmax(72px, 96px));
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+  }
+  .cmp-axis { margin-left: 113px; margin-right: 55px; }
+  .cmp-axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }

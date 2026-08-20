@@ -914,11 +914,9 @@ describe('group comparison', () => {
     if (dim) win.document.getElementById('stats-groups-compare-by').value = dim;
     win.renderStats();
   };
-  // Target the labelled elements rather than filtering all <text>, which would also scoop
-  // up the x-axis ticks — they are numbers in the same format.
-  const rowLabels = win => [...win.document.querySelectorAll('#stats-groups-compare .cmp-label')]
-    .map(t => t.textContent);
-  const medians = win => [...win.document.querySelectorAll('#stats-groups-compare .cmp-median')]
+  const rowLabels = win => [...win.document.querySelectorAll('#stats-groups-compare .cmp-name-t')]
+    .map(t => t.textContent.trim());
+  const medians = win => [...win.document.querySelectorAll('#stats-groups-compare .cmp-med')]
     .map(t => Number(t.textContent));
 
   test('distances are normalised, so 25 ft and 8.333 yd are one bucket', async () => {
@@ -929,6 +927,29 @@ describe('group comparison', () => {
     assert.strictEqual(win.groupDistanceLabel({ distance: 8.333, distanceUnit: 'yd' }), '8.3 yd');
     assert.strictEqual(win.groupDistanceLabel({ distance: 50, distanceUnit: 'yd' }), '50 yd');
     assert.ok(Math.abs(win.groupDistanceYards({ distance: 100, distanceUnit: 'm' }) - 109.361) < 0.01);
+  });
+
+  test('long load names are shortened for display, never in storage', async () => {
+    const win = await ready(loadApp());
+    const full = 'CCI Standard Velocity 22LR Ammo 40 Grain Round Nose';
+    assert.strictEqual(win.shortLoadName(full), 'CCI Standard Velocity 22LR 40gr');
+    assert.strictEqual(win.shortLoadName('Federal Champion FMJ 115 grain'),
+      'Federal Champion FMJ 115gr');
+    // A trailing SKU goes, but only when it is actually trailing — a hyphen inside the
+    // product name is part of the name.
+    assert.strictEqual(
+      win.shortLoadName('New Republic Training and Range 9mm Ammo 124 Grain Full Metal Jacket - NR912450'),
+      'New Republic Training and Range 9mm 124gr');
+    assert.strictEqual(win.shortLoadName('Norma Tac-22'), 'Norma Tac-22',
+      'a hyphenated calibre is part of the name, not a SKU');
+    assert.strictEqual(
+      win.shortLoadName('CCI Mini-Mag 22 Long Rifle Ammo 40 Grain Copper Plated Round Nose - 3050CC'),
+      'CCI Mini-Mag 22 Long Rifle 40gr',
+      'a hyphen mid-name survives while the trailing SKU goes');
+
+    // Nothing recognisable to strip: leave it alone rather than return an empty label.
+    assert.strictEqual(win.shortLoadName('BPS FMJ M193 55 grain'), 'BPS FMJ M193 55gr');
+    assert.strictEqual(win.shortLoadName(''), '');
   });
 
   test('buckets are ranked best-first by median', async () => {
@@ -953,9 +974,8 @@ describe('group comparison', () => {
       assert.ok(labels.includes('Untagged'), 'untagged groups are still counted somewhere');
     }
     // Whatever the split, every group must land in at least one bucket.
-    const ns = [...win.document.querySelectorAll('#stats-groups-compare svg text')]
-      .map(t => t.textContent).filter(t => /^n=/.test(t))
-      .map(t => parseInt(t.slice(2), 10));
+    const ns = [...win.document.querySelectorAll('#stats-groups-compare .cmp-name span:not(.cmp-name-t)')]
+      .map(t => parseInt(t.textContent.replace(/^n=/, ''), 10));
     assert.ok(ns.reduce((a, b) => a + b, 0) >= gun.groups.length);
   });
 
@@ -969,7 +989,7 @@ describe('group comparison', () => {
     open(win, gun.id, 'distance');
     const el = win.document.getElementById('stats-groups-compare');
     assert.match(flat(el), /nothing to compare/i);
-    assert.strictEqual(el.querySelector('svg'), null, 'no chart for a single bucket');
+    assert.strictEqual(el.querySelector('.cmp-chart'), null, 'no chart for a single bucket');
   });
 
   test('a bucket drawn from one afternoon is flagged, not presented as a result', async () => {
