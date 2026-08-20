@@ -1667,3 +1667,9 @@
   }
   .cmp-axis { margin-left: 113px; margin-right: 55px; }
   .cmp-axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+
+  .ammo-card.tappable { cursor: pointer; }
+  .ammo-card.tappable:hover { background: var(--surface2); }
+  .ammo-card.tappable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* Viewing a purchase hides the controls that only make sense while editing. */
+  .viewing #ammo-caliber-custom:not([style*="block"]) { display: none; }

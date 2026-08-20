@@ -82,7 +82,8 @@ returns to the capped view when you reopen Details.
 
 Tapping a zero, dope table or group opens it read-only — the fields are genuinely inert, so
 a stray tap can't alter what the rifle is actually zeroed at. The pencil goes straight to
-editing.
+editing. Ammo purchases work the same way: tap the card to read it, and the card's own
+buttons still act on their own without opening the view.
 
 ## Group Analysis
 

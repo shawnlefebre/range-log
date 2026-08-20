@@ -1493,6 +1493,77 @@ describe('non-range ammo', () => {
   });
 });
 
+// ── VIEWING AN AMMO PURCHASE ────────────────────────────────────────
+// Reading a purchase and changing one are different intentions, the same argument that put
+// zeros, groups and dope tables behind a read-only view.
+
+describe('viewing an ammo purchase', () => {
+  const firstAmmoId = win => win.buildDefaultData().ammo[0].id;
+
+  test('tapping a purchase opens it inert, with Edit rather than Save', async () => {
+    const win = await ready(loadApp());
+    win.openViewAmmo(firstAmmoId(win));
+
+    assert.ok(win.document.getElementById('modal-ammo').classList.contains('viewing'));
+    ['ammo-date', 'ammo-caliber-select', 'ammo-manufacturer', 'ammo-model', 'ammo-quantity',
+     'ammo-price', 'ammo-seller', 'ammo-status', 'ammo-not-range', 'ammo-notes'].forEach(id =>
+      assert.strictEqual(win.document.getElementById(id).disabled, true, `${id} should be inert`));
+
+    const buttons = flat(win.document.getElementById('ammo-buttons'));
+    assert.match(buttons, /Edit/);
+    assert.doesNotMatch(buttons, /Save/);
+    assert.match(win.document.getElementById('ammo-modal-title').textContent, /^Ammo Purchase$/);
+  });
+
+  test('the values shown are the ones stored', async () => {
+    const win = await ready(loadApp());
+    const a = win.buildDefaultData().ammo.find(x => x.rangeAmmo === false);
+    win.openViewAmmo(a.id);
+    assert.strictEqual(win.document.getElementById('ammo-quantity').value, String(a.quantity));
+    assert.strictEqual(win.document.getElementById('ammo-price').value, String(a.totalPrice));
+    assert.strictEqual(win.document.getElementById('ammo-not-range').checked, true,
+      'the flag has to be visible without entering edit mode');
+  });
+
+  test('Edit unlocks the fields', async () => {
+    const win = await ready(loadApp());
+    win.openViewAmmo(firstAmmoId(win));
+    win.ammoEnterEdit();
+    assert.strictEqual(win.document.getElementById('modal-ammo').classList.contains('viewing'), false);
+    assert.strictEqual(win.document.getElementById('ammo-quantity').disabled, false);
+    assert.match(flat(win.document.getElementById('ammo-buttons')), /Save/);
+    assert.match(win.document.getElementById('ammo-modal-title').textContent, /Edit/);
+  });
+
+  test('the pencil goes straight to editing, skipping the read-only view', async () => {
+    const win = await ready(loadApp());
+    win.openEditAmmo(firstAmmoId(win));
+    assert.strictEqual(win.document.getElementById('modal-ammo').classList.contains('viewing'), false);
+    assert.match(flat(win.document.getElementById('ammo-buttons')), /Save/);
+  });
+
+  test('adding a purchase after viewing one is not stuck inert', async () => {
+    const win = await ready(loadApp());
+    win.openViewAmmo(firstAmmoId(win));
+    win.openAddAmmo();
+    assert.strictEqual(win.document.getElementById('modal-ammo').classList.contains('viewing'), false,
+      'the add form must not inherit view mode from a previous tap');
+    assert.strictEqual(win.document.getElementById('ammo-date').disabled, false);
+    assert.match(flat(win.document.getElementById('ammo-buttons')), /Save/);
+  });
+
+  test('the row buttons still work without also opening the view', async () => {
+    const win = await ready(loadApp());
+    win.showTab('ammo');
+    const card = win.document.querySelector('.ammo-card');
+    assert.ok(card, 'purchases render as cards');
+    assert.ok(card.classList.contains('tappable'));
+    [...card.querySelectorAll('.ammo-actions .btn-mini')].forEach(b =>
+      assert.match(b.getAttribute('onclick'), /event\.stopPropagation\(\)/,
+        'a control inside a tappable card must not also trigger the card'));
+  });
+});
+
 // ── COST OF SHOOTING ────────────────────────────────────────────────
 // Total spend is what left the wallet; this is what actually got fired. It is the reason the
 // "not range ammo" flag exists, so the link between the two is what matters most here.

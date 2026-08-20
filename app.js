@@ -2120,7 +2120,37 @@ function getSelectedCaliber() {
   return sel.value.trim();
 }
 
+// Reading a purchase and changing one are different intentions. Tapping the card opens it
+// inert, the same way zeros, groups and dope tables already work.
+let ammoReadOnly = false;
+
+function ammoApplyMode() {
+  document.getElementById('modal-ammo').classList.toggle('viewing', ammoReadOnly);
+  ['ammo-date', 'ammo-caliber-select', 'ammo-caliber-custom', 'ammo-manufacturer', 'ammo-model',
+   'ammo-quantity', 'ammo-price', 'ammo-seller', 'ammo-status', 'ammo-not-range', 'ammo-notes']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = ammoReadOnly;
+    });
+  document.getElementById('ammo-buttons').innerHTML = ammoReadOnly
+    ? `<button class="btn btn-secondary" onclick="closeModal('modal-ammo')">Close</button>
+       <button class="btn btn-primary" onclick="ammoEnterEdit()">Edit</button>`
+    : `<button class="btn btn-secondary" onclick="closeModal('modal-ammo')">Cancel</button>
+       <button class="btn btn-primary" onclick="saveAmmo()">Save</button>`;
+}
+
+function openViewAmmo(id) {
+  openEditAmmo(id, true);
+}
+
+function ammoEnterEdit() {
+  ammoReadOnly = false;
+  document.getElementById('ammo-modal-title').textContent = 'Edit Ammo Purchase';
+  ammoApplyMode();
+}
+
 function openAddAmmo() {
+  ammoReadOnly = false;
   document.getElementById('ammo-modal-title').textContent = 'Log Ammo Purchase';
   document.getElementById('ammo-edit-id').value = '';
   document.getElementById('ammo-date').value = today();
@@ -2133,13 +2163,16 @@ function openAddAmmo() {
   document.getElementById('ammo-notes').value = '';
   populateAmmoSellerDropdown('');
   populateAmmoCaliberDropdown('');
+  ammoApplyMode();
   openModal('modal-ammo');
 }
 
-function openEditAmmo(id) {
+function openEditAmmo(id, readOnly) {
   const a = (data.ammo || []).find(x => x.id === id);
   if (!a) return;
-  document.getElementById('ammo-modal-title').textContent = 'Edit Ammo Purchase';
+  ammoReadOnly = !!readOnly;
+  document.getElementById('ammo-modal-title').textContent =
+    ammoReadOnly ? 'Ammo Purchase' : 'Edit Ammo Purchase';
   document.getElementById('ammo-edit-id').value = id;
   document.getElementById('ammo-date').value = a.date || '';
   document.getElementById('ammo-manufacturer').value = a.manufacturer || '';
@@ -2151,6 +2184,7 @@ function openEditAmmo(id) {
   document.getElementById('ammo-notes').value = a.notes || '';
   populateAmmoSellerDropdown(a.sellerId || '');
   populateAmmoCaliberDropdown(a.caliber || '');
+  ammoApplyMode();
   openModal('modal-ammo');
 }
 
@@ -2256,7 +2290,9 @@ function renderAmmo() {
     const seller = a.sellerId ? (data.sellers || []).find(s => s.id === a.sellerId) : null;
     const sellerLabel = seller ? seller.name : (a.sellerId ? 'Unknown seller' : '');
     return `
-      <div class="ammo-card ${isUsedUp ? 'used-up' : ''}">
+      <div class="ammo-card tappable ${isUsedUp ? 'used-up' : ''}"
+           onclick="openViewAmmo('${a.id}')" role="button" tabindex="0"
+           title="View this purchase">
         <div class="ammo-card-header">
           <div style="flex:1;min-width:0;">
             <div class="ammo-caliber-badge">${a.caliber}</div>
@@ -2275,9 +2311,9 @@ function renderAmmo() {
         </div>
         ${a.notes ? `<div class="ammo-notes">${a.notes}</div>` : ''}
         <div class="ammo-actions">
-          <button class="btn-mini" onclick="toggleAmmoStatus('${a.id}')">${isUsedUp ? 'Mark in stock' : 'Mark used up'}</button>
-          <button class="btn-mini" onclick="openEditAmmo('${a.id}')">Edit</button>
-          <button class="btn-mini" onclick="deleteAmmo('${a.id}')">Delete</button>
+          <button class="btn-mini" onclick="event.stopPropagation(); toggleAmmoStatus('${a.id}')">${isUsedUp ? 'Mark in stock' : 'Mark used up'}</button>
+          <button class="btn-mini" onclick="event.stopPropagation(); openEditAmmo('${a.id}')">Edit</button>
+          <button class="btn-mini" onclick="event.stopPropagation(); deleteAmmo('${a.id}')">Delete</button>
         </div>
       </div>
     `;
@@ -5289,7 +5325,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.11';
+const APP_VERSION = '7.1.12';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

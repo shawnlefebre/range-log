@@ -15,7 +15,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.1.11</span>
+    <span id="app-version">v7.1.12</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -484,10 +484,7 @@
       <label>Notes (optional)</label>
       <textarea id="ammo-notes" placeholder="e.g. estimate, GovX discount, Ammoseek deal..."></textarea>
     </div>
-    <div class="btn-row">
-      <button class="btn btn-secondary" onclick="closeModal('modal-ammo')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveAmmo()">Save</button>
-    </div>
+    <div class="btn-row" id="ammo-buttons"></div>
   </div>
 </div>
 
