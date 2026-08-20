@@ -59,7 +59,14 @@ function ready(dom) {
 
 describe('schema migration', () => {
   let win;
-  before(async () => { win = await ready(loadApp()); });
+  // Asserted against the version fresh data is created at rather than a hardcoded number:
+  // migrated data must land exactly where buildDefaultData() lands, and that stays true
+  // across future bumps without editing four assertions.
+  let CURRENT;
+  before(async () => {
+    win = await ready(loadApp());
+    CURRENT = win.buildDefaultData().schemaVersion;
+  });
 
   test('v1 data (lastCleaned string) migrates to current schema', () => {
     const v1 = {
@@ -68,7 +75,7 @@ describe('schema migration', () => {
       locations: [], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v1)));
-    assert.strictEqual(migrated.schemaVersion, 12);
+    assert.strictEqual(migrated.schemaVersion, CURRENT);
     assert.strictEqual(migrated.isDemo, false, 'migrated real data must never be flagged as demo');
     assert.deepStrictEqual([...migrated.firearms[0].calibers], ['.22 LR']);
     assert.strictEqual(migrated.firearms[0].cleanings.length, 1);
@@ -84,7 +91,7 @@ describe('schema migration', () => {
       locations: [{ id: 'l1', name: 'Real Range' }], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v6)));
-    assert.strictEqual(migrated.schemaVersion, 12);
+    assert.strictEqual(migrated.schemaVersion, CURRENT);
     assert.strictEqual(migrated.isDemo, false);
     assert.strictEqual(migrated.firearms[0].name, 'Real Gun', 'existing data must survive migration untouched');
   });
@@ -100,7 +107,7 @@ describe('schema migration', () => {
       locations: [], sellers: [], sessions: [], ammo: [],
     };
     const migrated = win.migrateData(JSON.parse(JSON.stringify(v7)));
-    assert.strictEqual(migrated.schemaVersion, 12);
+    assert.strictEqual(migrated.schemaVersion, CURRENT);
     assert.strictEqual(migrated.firearms[0].notes, '', 'missing notes should default to empty string');
     assert.strictEqual(migrated.firearms[1].notes, 'Torque: 20 in-lbs', 'existing notes must survive migration untouched');
   });
@@ -176,10 +183,29 @@ describe('schema migration', () => {
     assert.strictEqual(guns[1].opticUnit, 'mrad', 'an existing setting survives');
   });
 
+  test('v12 data gains an empty dope array without disturbing existing tables', () => {
+    const v12 = {
+      schemaVersion: 12, isDemo: false, locations: [], sellers: [], sessions: [], ammo: [],
+      firearms: [
+        { id: 'g1', name: 'No Dope', type: 'rifle', calibers: ['.223 Rem'], cleanThreshold: 500,
+          totalRounds: 0, cleanings: [], zeros: [], notes: '', groups: [], opticUnit: null },
+      ],
+    };
+    const guns = win.migrateData(JSON.parse(JSON.stringify(v12))).firearms;
+    assert.deepStrictEqual([...guns[0].dope], [], 'every firearm gets the array');
+  });
+
+  test('the Settings schema badge matches the actual schema version', async () => {
+    const badge = win.document.body.textContent.match(/Data schema v(\d+)/);
+    assert.ok(badge, 'schema badge not found in Settings');
+    assert.strictEqual(Number(badge[1]), CURRENT,
+      'the badge in index.html was not bumped alongside SCHEMA_VERSION');
+  });
+
   test('already-current data passes through without modification', () => {
     const current = win.buildDefaultData();
     const migrated = win.migrateData(JSON.parse(JSON.stringify(current)));
-    assert.strictEqual(migrated.schemaVersion, 12);
+    assert.strictEqual(migrated.schemaVersion, CURRENT);
     assert.strictEqual(migrated.firearms.length, current.firearms.length);
   });
 });
@@ -678,6 +704,191 @@ describe('group tags', () => {
     const sets = gun.groups.map(g => (g.tags || []).join(','));
     assert.ok(sets.every(s => s.length), 'every demo group is tagged');
     assert.ok(new Set(sets).size > 1, 'not all demo groups share the same tags');
+  });
+});
+
+// ── DOPE TABLES ─────────────────────────────────────────────────────
+
+describe('dope tables', () => {
+  // Demo ids are deterministic, so a fresh build names the same table the live data holds.
+  const demoRifle = win => win.buildDefaultData().firearms.find(g => (g.dope || []).length);
+  // Reading back through localStorage rather than the in-memory object proves the table
+  // actually persisted, which is the thing that matters when the app is reopened at the range.
+  const storedDope = (win, gunId) =>
+    JSON.parse(win.localStorage.getItem('rangeLogData')).firearms.find(g => g.id === gunId).dope;
+
+  const rowCount = win => win.document.querySelectorAll('#dope-entries .entry-row').length;
+  const comeUpsShown = win => [...win.document.querySelectorAll('#dope-entries .entry-row')]
+    .map(r => parseFloat(r.querySelectorAll('input')[1].value));
+
+  function setRows(win, rows) {
+    while (rowCount(win)) win.removeDopeRow(0);
+    rows.forEach(([d, c], i) => {
+      win.addDopeRow();
+      if (d != null) win.setDopeCell(i, 'distance', String(d));
+      if (c != null) win.setDopeCell(i, 'come', String(c));
+    });
+  }
+  function setAmmo(win, text) {
+    win.document.getElementById('dope-ammo-select').value = '__custom__';
+    win.document.getElementById('dope-ammo-custom').value = text;
+  }
+
+  test('switching the come-up unit converts the numbers instead of relabelling them', async () => {
+    const win = await ready(loadApp());
+    const rifle = demoRifle(win);
+    const before = rifle.dope[0].entries.map(e => e.come);
+
+    win.openDope(rifle.id, rifle.dope[0].id);
+    assert.strictEqual(win.document.getElementById('dope-unit').value, 'mrad');
+    win.document.getElementById('dope-unit').value = 'moa';
+    win.handleDopeUnitChange();
+
+    // 0.6 mil is 2.06 MOA. A table still reading 0.6 after the switch would put every
+    // shot feet low at distance, and nothing on screen would say so.
+    comeUpsShown(win).forEach((v, i) => {
+      assert.ok(Math.abs(v - before[i] * 3.437746) < 0.011,
+        `row ${i}: shows ${v}, should show ~${(before[i] * 3.437746).toFixed(2)} MOA`);
+    });
+
+    win.saveDope();
+    const saved = storedDope(win, rifle.id)[0];
+    assert.strictEqual(saved.unit, 'moa');
+    saved.entries.forEach((e, i) => {
+      assert.ok(Math.abs(e.come - before[i] * 3.437746) < 0.011, `stored row ${i} was not converted`);
+    });
+  });
+
+  test('converting there and back leaves the table where it started', async () => {
+    const win = await ready(loadApp());
+    const rifle = demoRifle(win);
+    const before = rifle.dope[0].entries.map(e => e.come);
+
+    win.openDope(rifle.id, rifle.dope[0].id);
+    win.document.getElementById('dope-unit').value = 'moa';
+    win.handleDopeUnitChange();
+    win.document.getElementById('dope-unit').value = 'mrad';
+    win.handleDopeUnitChange();
+    win.saveDope();
+
+    const saved = storedDope(win, rifle.id)[0];
+    assert.strictEqual(saved.unit, 'mrad');
+    saved.entries.forEach((e, i) => {
+      assert.ok(Math.abs(e.come - before[i]) < 0.02, `round trip drifted: ${before[i]} -> ${e.come}`);
+    });
+  });
+
+  test('a half-filled row is dropped rather than saved with a hole in it', async () => {
+    const win = await ready(loadApp());
+    const rifle = demoRifle(win);
+
+    win.openDope(rifle.id, rifle.dope[0].id);
+    setRows(win, [[200, 0.6], [300, 1.5], [null, null], [700, null], [null, 9.9]]);
+    win.saveDope();
+
+    const saved = storedDope(win, rifle.id)[0];
+    assert.deepStrictEqual(saved.entries.map(e => e.distance), [200, 300],
+      'a distance with no come-up is not dope — reading it back at the range is worse than nothing');
+    assert.ok(saved.entries.every(e => e.distance != null && e.come != null));
+  });
+
+  test('entries are stored sorted by distance however they were typed', async () => {
+    const win = await ready(loadApp());
+    const rifle = demoRifle(win);
+
+    win.openDope(rifle.id);
+    setAmmo(win, 'Out Of Order Load');
+    setRows(win, [[500, 4.1], [200, 0.6], [300, 1.5]]);
+    win.saveDope();
+
+    const t = storedDope(win, rifle.id).find(x => x.ammo === 'Out Of Order Load');
+    assert.ok(t, 'the new table was saved');
+    assert.deepStrictEqual(t.entries.map(e => e.distance), [200, 300, 500]);
+  });
+
+  test('a table with no ammo or no usable rows is refused, not silently saved empty', async () => {
+    const win = await ready(loadApp());
+    const rifle = demoRifle(win);
+    const before = rifle.dope.length;
+    let alerts = 0;
+    win.alert = () => { alerts++; };
+
+    win.openDope(rifle.id);            // blank row, no ammo
+    win.saveDope();
+    setAmmo(win, 'Ammo But No Rows');  // ammo set, rows still blank
+    win.saveDope();
+    assert.strictEqual(alerts, 2, 'both refusals should say why rather than fail quietly');
+
+    setAmmo(win, 'Actually Complete');
+    setRows(win, [[200, 1.1]]);
+    win.saveDope();
+
+    const dope = storedDope(win, rifle.id);
+    assert.strictEqual(dope.length, before + 1, 'only the complete table reached storage');
+    assert.strictEqual(dope.some(t => t.ammo === 'Ammo But No Rows'), false);
+  });
+
+  test('viewing a table disables its fields rather than merely styling them', async () => {
+    const win = await ready(loadApp());
+    const rifle = demoRifle(win);
+    win.openViewDope(rifle.id, rifle.dope[0].id);
+
+    assert.ok(win.document.getElementById('modal-dope').classList.contains('viewing'));
+    ['dope-ammo-select', 'dope-unit', 'dope-zero-distance', 'dope-conditions'].forEach(f => {
+      assert.strictEqual(win.document.getElementById(f).disabled, true, `${f} should be inert`);
+    });
+    const inputs = win.document.querySelectorAll('#dope-entries .entry-row input');
+    assert.ok(inputs.length > 0, 'the come-ups are still shown');
+    assert.ok([...inputs].every(i => i.disabled), 'a stray tap must not alter a saved table');
+    assert.strictEqual(win.document.querySelectorAll('#dope-entries .entry-del').length, 0,
+      'the delete column is dropped entirely when viewing, not disabled');
+
+    win.dopeEnterEdit();
+    assert.strictEqual(win.document.getElementById('modal-dope').classList.contains('viewing'), false);
+    assert.strictEqual(win.document.getElementById('dope-unit').disabled, false);
+    assert.ok(win.document.querySelectorAll('#dope-entries .entry-del').length > 0);
+  });
+
+  test('a new table inherits the firearm turret unit instead of asking again', async () => {
+    const win = await ready(loadApp());
+    const fresh = win.buildDefaultData();
+    const mil = fresh.firearms.find(g => g.opticUnit === 'mrad');
+    const noOptic = fresh.firearms.find(g => !g.opticUnit);
+    assert.ok(mil && noOptic, 'demo data should cover both cases');
+
+    win.openDope(mil.id);
+    assert.strictEqual(win.document.getElementById('dope-unit').value, 'mrad');
+    win.openDope(noOptic.id);
+    assert.strictEqual(win.document.getElementById('dope-unit').value, 'moa',
+      'MOA is the fallback when no turret unit is recorded');
+  });
+
+  test('the Details card caps its distances and says how many are hidden', async () => {
+    const win = await ready(loadApp());
+    const rifle = demoRifle(win);
+
+    win.openDope(rifle.id, rifle.dope[0].id);
+    setRows(win, [200, 300, 400, 500, 600, 700, 800, 900].map((d, i) => [d, 0.6 + i]));
+    win.saveDope();
+    win.renderGunHistory(rifle.id);
+
+    const list = win.document.getElementById('history-dope-list');
+    assert.strictEqual(list.querySelectorAll('.dope-row:not(.more)').length, 6,
+      'a long table must not push the rest of Details off screen');
+    assert.match(list.querySelector('.dope-row.more').textContent, /\+2 more/);
+  });
+
+  test('deleting a table leaves the firearm and its groups intact', async () => {
+    const win = await ready(loadApp());
+    const rifle = demoRifle(win);
+    const doomed = rifle.dope[0].id;
+
+    win.deleteDope(rifle.id, doomed);
+
+    const gun = JSON.parse(win.localStorage.getItem('rangeLogData')).firearms
+      .find(g => g.id === rifle.id);
+    assert.strictEqual((gun.dope || []).some(t => t.id === doomed), false);
+    assert.strictEqual(gun.groups.length, rifle.groups.length, 'groups are untouched');
   });
 });
 

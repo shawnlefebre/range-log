@@ -7,6 +7,7 @@ A simple, private tracker for your range sessions — built as a lightweight web
 - 🧼 Cleaning history — quick / deep / detail-strip, with automatic round-count resets
 - 🎯 Zeros — distance, ammo, optic, and notes per firearm
 - 🎯 Target groups — photograph a target, mark the shots, get group size in inches, MOA and MRAD
+- 📐 Dope tables — come-ups per firearm and load, entered by hand and editable, in MOA or mils
 - 💵 Ammo purchases — cost per round, seller, stock status, with running averages
 - 📊 Stats — rounds fired, range trips, and ammo spend over time, filterable by firearm, caliber, and location
 
@@ -78,6 +79,30 @@ Photos are downscaled before storing, so each one lands around 30–100 KB — a
 **Settings → Target Photos** shows exactly what's stored: how many photos, their total size, and how much room the app has. If any photos are no longer attached to a group — which can happen after importing a backup — it offers to reclaim that space.
 
 Because photos are left out of the JSON backup, moving them to another device is a separate step: **Export photos** writes a bundle you import on the new device *after* restoring the JSON backup. Importing a bundle only restores images that some group actually refers to.
+
+## Dope Tables
+
+Open a firearm's **View Details → Dope → + Add Table** to record the come-ups for a load.
+
+A dope table is one ammo, one zero distance, and a list of distances with the elevation to
+dial for each. Tap a card to read the whole table; the pencil opens it for editing.
+
+**The app does not calculate ballistics.** The numbers come from whatever solver you already
+trust — this stores them and, more to the point, lets you correct them once you've actually
+shot the distance. Nothing here second-guesses your table, and logged group data never
+adjusts it.
+
+A few things worth knowing:
+
+- **The unit is per table, and switching it converts the numbers.** 6.0 MOA becomes 1.75 mil,
+  not 6.0 mil. A new table starts in whatever unit you set as the firearm's turret unit.
+- **The distance unit is set once** at the top, so each row is just two numbers — four
+  controls per row would be unusable at phone width.
+- **Conditions are a note to yourself**, not a model. Dope drifts with altitude and
+  temperature, and recording that these came from 900 ft at 70°F is what stops you trusting
+  them somewhere they don't apply.
+- **The card shows six distances**, then a count of the rest, so a long table doesn't push
+  everything below it off screen.
 
 ## Screenshots
 ![Home](images/home.png)

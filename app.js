@@ -23,7 +23,11 @@
 // v12: gun.opticUnit added — 'moa' | 'mrad' | null. Chooses which angular unit leads the
 //      point-of-aim offsets, so they match the turret you actually dial. Group size stays
 //      MOA regardless, since that figure is compared across firearms.
-const SCHEMA_VERSION = 12;
+// v13: gun.dope array added — manually entered come-up tables, one per ammo, each
+//      {id, ammo, unit, zeroDistance, distanceUnit, conditions, entries[{distance, come}]}.
+//      The app never computes ballistics; numbers come from whatever solver the user
+//      trusts and are edited by hand.
+const SCHEMA_VERSION = 13;
 
 const CLEANING_TYPES = {
   quick: { label: 'Quick', resetsDeep: false },
@@ -84,10 +88,10 @@ function generateDemoData() {
   const s1 = 'ds1', s2 = 'ds2';
 
   const firearms = [
-    { id: g1, name: 'Example Rifle', type: 'rifle', calibers: ['.223 Rem', '5.56 NATO'], opticUnit: 'mrad', cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], groups: [], notes: 'Action screws: 65 in-lbs, front then rear.' },
-    { id: g2, name: 'Example Pistol', type: 'pistol', calibers: ['9mm'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], groups: [], notes: '' },
-    { id: g3, name: 'Example Revolver', type: 'revolver', calibers: ['.357 Mag', '.38 Special'], cleanThreshold: 300, totalRounds: 0, cleanings: [], zeros: [], groups: [], notes: '' },
-    { id: g4, name: 'Example Shotgun', type: 'shotgun', calibers: ['12 Gauge'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], groups: [], notes: '' },
+    { id: g1, name: 'Example Rifle', type: 'rifle', calibers: ['.223 Rem', '5.56 NATO'], opticUnit: 'mrad', cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], groups: [], dope: [], notes: 'Action screws: 65 in-lbs, front then rear.' },
+    { id: g2, name: 'Example Pistol', type: 'pistol', calibers: ['9mm'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], groups: [], dope: [], notes: '' },
+    { id: g3, name: 'Example Revolver', type: 'revolver', calibers: ['.357 Mag', '.38 Special'], cleanThreshold: 300, totalRounds: 0, cleanings: [], zeros: [], groups: [], dope: [], notes: '' },
+    { id: g4, name: 'Example Shotgun', type: 'shotgun', calibers: ['12 Gauge'], cleanThreshold: 500, totalRounds: 0, cleanings: [], zeros: [], groups: [], dope: [], notes: '' },
   ];
   const locations = [
     { id: l1, name: 'Example Range North' },
@@ -253,6 +257,24 @@ function generateDemoData() {
     });
   }
 
+  // A sample dope table on the rifle, in mils to match its opticUnit. Numbers are
+  // illustrative — the app never calculates these, they're always entered by hand.
+  firearms[0].dope.push({
+    id: 'ddope_1',
+    ammo: 'Example Ammo Co 55gr FMJ',
+    unit: 'mrad',
+    zeroDistance: 100,
+    distanceUnit: 'yd',
+    conditions: 'trued at 900 ft, 70\u00b0F',
+    entries: [
+      { distance: 200, come: 0.6 },
+      { distance: 300, come: 1.5 },
+      { distance: 400, come: 2.7 },
+      { distance: 500, come: 4.1 },
+      { distance: 600, come: 5.8 },
+    ],
+  });
+
   firearms.forEach(gun => {
     gun.totalRounds = sessions.reduce((sum, s) => sum + (s.rounds[gun.id] || 0), 0);
   });
@@ -357,6 +379,7 @@ function migrateData(d) {
   if (d.schemaVersion === 8) {
     d.firearms.forEach(gun => {
       if (!Array.isArray(gun.groups)) gun.groups = [];
+    if (!Array.isArray(gun.dope)) gun.dope = [];
     });
     d.schemaVersion = 9;
   }
@@ -388,6 +411,12 @@ function migrateData(d) {
   if (d.schemaVersion === 11) {
     d.firearms.forEach(gun => { if (gun.opticUnit === undefined) gun.opticUnit = null; });
     d.schemaVersion = 12;
+  }
+
+  // v12 -> v13: add the dope array
+  if (d.schemaVersion === 12) {
+    d.firearms.forEach(gun => { if (!Array.isArray(gun.dope)) gun.dope = []; });
+    d.schemaVersion = 13;
   }
 
   // Defensive: ensure every gun has cleanings + zeros + calibers arrays, and ammo + sellers exist
@@ -1009,7 +1038,7 @@ function saveGun() {
     const gun = data.firearms.find(g => g.id === id);
     if (gun) { gun.name = name; gun.type = type; gun.calibers = calibers; gun.cleanThreshold = threshold; gun.notes = notes; gun.opticUnit = opticUnit; delete gun.caliber; }
   } else {
-    data.firearms.push({ id: uid(), name, type, calibers, cleanThreshold: threshold, notes, opticUnit, totalRounds: 0, cleanings: [], zeros: [], groups: [] });
+    data.firearms.push({ id: uid(), name, type, calibers, cleanThreshold: threshold, notes, opticUnit, totalRounds: 0, cleanings: [], zeros: [], groups: [], dope: [] });
   }
   save(data);
   closeModal('modal-gun');
@@ -1174,6 +1203,8 @@ function renderGunHistory(gunId) {
     }).join('');
   }
 
+  renderDopeCards(gunId);
+
   // Groups list — sizes recomputed from the marked points on every render.
   const groups = [...(gun.groups || [])].sort((a, b) => b.date.localeCompare(a.date));
   const grList = document.getElementById('history-groups-list');
@@ -1242,7 +1273,7 @@ function populateAmmoDropdown(gun, selectedAmmoText, selectId, customId) {
   const purchaseLabels = new Set((data.ammo || []).map(a => ammoDisplayLabel(a)));
   const textOnlySet = new Set();
   (data.firearms || []).forEach(g => {
-    [...(g.zeros || []), ...(g.groups || [])].forEach(entry => {
+    [...(g.zeros || []), ...(g.groups || []), ...(g.dope || [])].forEach(entry => {
       if (entry.ammo && !purchaseLabels.has(entry.ammo)) textOnlySet.add(entry.ammo);
     });
   });
@@ -1424,6 +1455,258 @@ function deleteZero(gunId, zeroId) {
   const gun = data.firearms.find(g => g.id === gunId);
   if (!gun) return;
   gun.zeros = (gun.zeros || []).filter(z => z.id !== zeroId);
+  save(data);
+  if (currentHistoryGunId === gunId) renderGunHistory(gunId);
+}
+
+// ── DOPE TABLES ───────────────────────────────────────────────────
+// Come-ups entered by hand from whatever ballistic solver the shooter trusts. This app
+// deliberately computes no trajectory and never adjusts these numbers from logged group
+// data — storing and tweaking them is the part an external solver won't let you do.
+
+const MOA_PER_MRAD = 3.437746;
+
+// A come-up is an angle, so switching the unit has to convert it. Reinterpreting 6.0 MOA
+// as 6.0 mil instead would silently turn a good table into a wrong one.
+function convertCome(v, from, to) {
+  if (v == null || !isFinite(v) || from === to) return v;
+  return from === 'moa' ? v / MOA_PER_MRAD : v * MOA_PER_MRAD;
+}
+
+function dopeUnitLabel(u) { return u === 'mrad' ? 'mil' : 'MOA'; }
+
+// Come-ups are read to the tenth in mils and the quarter in MOA; more decimals than the
+// turret can actually dial is false precision.
+function dopeFmt(v) {
+  if (v == null || !isFinite(v)) return '—';
+  return (Math.round(v * 100) / 100).toString();
+}
+
+// Editor state. The rows live here rather than being read back out of the DOM each time,
+// because a unit switch has to rewrite every value and the DOM is only a view of them.
+let dopeRows = [];
+let dopeUnit = 'moa';
+let dopeReadOnly = false;
+
+function renderDopeCards(gunId) {
+  const gun = data.firearms.find(g => g.id === gunId);
+  const list = document.getElementById('history-dope-list');
+  if (!list || !gun) return;
+  const tables = gun.dope || [];
+  if (!tables.length) {
+    list.innerHTML = '<div class="empty-state" style="padding:16px;">No dope tables yet.</div>';
+    return;
+  }
+  const CAP = 6;
+  list.innerHTML = tables.map(t => {
+    const unit = t.unit === 'mrad' ? 'mrad' : 'moa';
+    const du = t.distanceUnit || 'yd';
+    const entries = [...(t.entries || [])].sort((a, b) => (a.distance || 0) - (b.distance || 0));
+    const meta = [unit.toUpperCase()];
+    if (t.zeroDistance) meta.push(`zero ${t.zeroDistance} ${du}`);
+    meta.push(`${entries.length} distance${entries.length === 1 ? '' : 's'}`);
+    const shown = entries.slice(0, CAP).map(e => `
+      <div class="dope-row">
+        <div class="dope-dist">${e.distance} ${du.toUpperCase()}</div>
+        <div class="dope-come">${dopeFmt(e.come)}<span> ${dopeUnitLabel(unit)}</span></div>
+      </div>`).join('');
+    const more = entries.length > CAP
+      ? `<div class="dope-row more">+${entries.length - CAP} more</div>` : '';
+    return `
+      <div class="dope-card tappable" onclick="openViewDope('${gunId}','${t.id}')"
+           role="button" tabindex="0" title="View this table">
+        <div class="dope-head">
+          <div>
+            <div class="dope-ammo">${t.ammo || '(no ammo)'}</div>
+            <div class="dope-meta">${meta.join(' · ')}</div>
+            <div class="dope-conditions">${t.conditions || 'no conditions recorded'}</div>
+          </div>
+          <div style="display:flex;gap:4px;">
+            <button class="btn-icon" onclick="event.stopPropagation(); openDope('${gunId}','${t.id}')" title="Edit">✏️</button>
+            <button class="btn-icon" onclick="event.stopPropagation(); deleteDope('${gunId}','${t.id}')" title="Delete">🗑</button>
+          </div>
+        </div>
+        ${entries.length ? `<div class="dope-rows">${shown}${more}</div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function populateDopeAmmoDropdown(gun, selected) {
+  populateAmmoDropdown(gun, selected, 'dope-ammo-select', 'dope-ammo-custom');
+}
+function handleDopeAmmoChange() {
+  handleAmmoSelectChange('dope-ammo-select', 'dope-ammo-custom');
+}
+function getSelectedDopeAmmo() {
+  return getSelectedAmmo('dope-ammo-select', 'dope-ammo-custom');
+}
+
+function renderDopeEntries() {
+  const wrap = document.getElementById('dope-entries');
+  if (!wrap) return;
+  const du = document.getElementById('dope-distance-unit').value || 'yd';
+  const cls = dopeReadOnly ? ' view' : '';
+  const dis = dopeReadOnly ? ' disabled' : '';
+  let html = `<div class="entry-head${cls}"><span>Distance (${du})</span>` +
+             `<span>Come-up (${dopeUnitLabel(dopeUnit)})</span>${dopeReadOnly ? '' : '<span></span>'}</div>`;
+  html += dopeRows.map((r, i) => `
+    <div class="entry-row${cls}">
+      <input type="number" step="any" min="0" value="${r.distance != null ? r.distance : ''}"
+             onchange="setDopeCell(${i},'distance',this.value)"${dis}>
+      <input type="number" step="any" value="${r.come != null ? r.come : ''}"
+             onchange="setDopeCell(${i},'come',this.value)"${dis}>
+      ${dopeReadOnly ? '' : `<button class="entry-del" onclick="removeDopeRow(${i})" title="Remove">×</button>`}
+    </div>`).join('');
+  if (!dopeRows.length) {
+    html += '<div class="group-hint">No distances yet — add one below.</div>';
+  }
+  wrap.innerHTML = html;
+}
+
+function setDopeCell(i, field, value) {
+  if (!dopeRows[i]) return;
+  const n = parseFloat(value);
+  dopeRows[i][field] = isFinite(n) ? n : null;
+}
+
+function addDopeRow() {
+  dopeRows.push({ distance: null, come: null });
+  renderDopeEntries();
+  // Land the caret in the new distance field — adding a row is always followed by typing.
+  const inputs = document.querySelectorAll('#dope-entries .entry-row input');
+  const first = inputs[(dopeRows.length - 1) * 2];
+  if (first) first.focus();
+}
+
+function removeDopeRow(i) {
+  dopeRows.splice(i, 1);
+  renderDopeEntries();
+}
+
+function handleDopeUnitChange() {
+  const next = document.getElementById('dope-unit').value === 'mrad' ? 'mrad' : 'moa';
+  if (next === dopeUnit) return;
+  dopeRows = dopeRows.map(r => ({
+    distance: r.distance,
+    come: r.come == null ? null : Math.round(convertCome(r.come, dopeUnit, next) * 100) / 100,
+  }));
+  dopeUnit = next;
+  renderDopeEntries();
+}
+
+function dopeApplyMode() {
+  const modal = document.getElementById('modal-dope');
+  modal.classList.toggle('viewing', dopeReadOnly);
+  ['dope-ammo-select', 'dope-ammo-custom', 'dope-unit', 'dope-zero-distance',
+   'dope-distance-unit', 'dope-conditions'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = dopeReadOnly;
+  });
+  document.getElementById('dope-buttons').innerHTML = dopeReadOnly
+    ? `<button class="btn btn-secondary" onclick="closeModal('modal-dope')">Close</button>
+       <button class="btn btn-primary" onclick="dopeEnterEdit()">Edit</button>`
+    : `<button class="btn btn-secondary" onclick="closeModal('modal-dope')">Cancel</button>
+       <button class="btn btn-primary" onclick="saveDope()">Save</button>`;
+}
+
+function openDope(gunId, dopeId, readOnly) {
+  const gun = data.firearms.find(g => g.id === gunId);
+  if (!gun) return;
+  dopeReadOnly = !!readOnly;
+  document.getElementById('dope-gun-id').value = gunId;
+  document.getElementById('dope-id').value = dopeId || '';
+
+  let ammo = '';
+  const t = dopeId ? (gun.dope || []).find(x => x.id === dopeId) : null;
+  if (t) {
+    dopeUnit = t.unit === 'mrad' ? 'mrad' : 'moa';
+    document.getElementById('dope-unit').value = dopeUnit;
+    document.getElementById('dope-zero-distance').value = t.zeroDistance || '';
+    document.getElementById('dope-distance-unit').value = t.distanceUnit || 'yd';
+    document.getElementById('dope-conditions').value = t.conditions || '';
+    dopeRows = (t.entries || [])
+      .map(e => ({ distance: e.distance, come: e.come }))
+      .sort((a, b) => (a.distance || 0) - (b.distance || 0));
+    ammo = t.ammo || '';
+  } else {
+    // A new table inherits the firearm's turret unit — the whole point of recording
+    // opticUnit is not being asked the same question twice.
+    dopeUnit = gun.opticUnit === 'mrad' ? 'mrad' : 'moa';
+    document.getElementById('dope-unit').value = dopeUnit;
+    document.getElementById('dope-zero-distance').value = '';
+    document.getElementById('dope-distance-unit').value = 'yd';
+    document.getElementById('dope-conditions').value = '';
+    dopeRows = [{ distance: null, come: null }];
+  }
+
+  document.getElementById('dope-modal-title').textContent =
+    (dopeReadOnly ? 'Dope · ' : dopeId ? 'Edit Dope · ' : 'Add Dope · ') + gun.name;
+  populateDopeAmmoDropdown(gun, ammo);
+  dopeApplyMode();
+  renderDopeEntries();
+
+  if (document.getElementById('modal-history').classList.contains('open')) {
+    restoreHistoryGunId = gunId;
+    closeModal('modal-history');
+  }
+  openModal('modal-dope');
+}
+
+function openViewDope(gunId, dopeId) {
+  return openDope(gunId, dopeId, true);
+}
+
+function dopeEnterEdit() {
+  dopeReadOnly = false;
+  const gun = data.firearms.find(x => x.id === document.getElementById('dope-gun-id').value);
+  document.getElementById('dope-modal-title').textContent =
+    'Edit Dope' + (gun ? ' · ' + gun.name : '');
+  dopeApplyMode();
+  renderDopeEntries();
+}
+
+function saveDope() {
+  const gunId = document.getElementById('dope-gun-id').value;
+  const editId = document.getElementById('dope-id').value;
+  const gun = data.firearms.find(g => g.id === gunId);
+  if (!gun) return;
+
+  const ammo = getSelectedDopeAmmo();
+  if (!ammo) { alert('Please select or enter the ammo this dope is for.'); return; }
+
+  // Half-filled rows are dropped rather than saved with a hole in them: a distance with
+  // no come-up is not dope, and reading one back at the range would be worse than nothing.
+  const entries = dopeRows
+    .filter(r => r.distance != null && isFinite(r.distance) && r.come != null && isFinite(r.come))
+    .map(r => ({ distance: r.distance, come: r.come }))
+    .sort((a, b) => a.distance - b.distance);
+  if (!entries.length) { alert('Add at least one distance with a come-up.'); return; }
+
+  const record = {
+    ammo,
+    unit: dopeUnit,
+    zeroDistance: parseFloat(document.getElementById('dope-zero-distance').value) || null,
+    distanceUnit: document.getElementById('dope-distance-unit').value,
+    conditions: document.getElementById('dope-conditions').value.trim(),
+    entries,
+  };
+
+  if (!Array.isArray(gun.dope)) gun.dope = [];
+  if (editId) {
+    const t = gun.dope.find(x => x.id === editId);
+    if (t) Object.assign(t, record);
+  } else {
+    gun.dope.push({ id: uid(), ...record });
+  }
+  save(data);
+  closeModal('modal-dope');
+}
+
+function deleteDope(gunId, dopeId) {
+  if (!confirm('Delete this dope table?')) return;
+  const gun = data.firearms.find(g => g.id === gunId);
+  if (!gun) return;
+  gun.dope = (gun.dope || []).filter(t => t.id !== dopeId);
   save(data);
   if (currentHistoryGunId === gunId) renderGunHistory(gunId);
 }

@@ -25,6 +25,7 @@ const SUITES = [
   ['exif-check', 'EXIF date reading and session auto-linking'],
   ['tags-check', 'group tags: entry, case-insensitive dedup, view mode'],
   ['multigroup-check', 'several groups on one photo, shared calibration and photo'],
+  ['dope-check', 'dope tables: unit conversion, view mode, persistence, card cap'],
 ];
 
 const waitForServer = () => new Promise((resolve, reject) => {
