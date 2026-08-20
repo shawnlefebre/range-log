@@ -1310,7 +1310,7 @@ describe('picking an individual caliber on Money', () => {
     const sel = win.document.getElementById('ammo-caliber-select');
     const known = Array.from(sel.options).find(o => o.value === caliber);
     if (known) { sel.value = caliber; } else {
-      sel.value = '__new__';
+      sel.value = '__custom__';
       win.handleCaliberSelectChange();
       win.document.getElementById('ammo-caliber-custom').value = caliber;
     }
@@ -1394,7 +1394,7 @@ describe('non-range ammo', () => {
       'the common case must be the default, or the flag is a chore');
 
     win.document.getElementById('ammo-date').value = '2026-03-01';
-    win.document.getElementById('ammo-caliber-select').value = '__new__';
+    win.document.getElementById('ammo-caliber-select').value = '__custom__';
     win.handleCaliberSelectChange();
     win.document.getElementById('ammo-caliber-custom').value = '9mm';
     win.document.getElementById('ammo-manufacturer').value = 'Test';
@@ -1674,6 +1674,57 @@ describe('app version', () => {
     const v = js.match(/const APP_VERSION = '([\d.]+)';/)[1];
     assert.match(v, /^\d+\.\d+(\.\d+)?$/,
       `"${v}" is not a version the cache name and badge can both carry`);
+  });
+});
+
+// ── CUSTOM-ENTRY SENTINEL ───────────────────────────────────────────
+// Five pickers offer a "type your own" entry: firearm calibers, ammo calibers, the shared
+// ammo dropdown, optics and tags. They used two different sentinel values, so two forms that
+// look identical behaved differently. One constant now, and this keeps it that way.
+
+describe('custom-entry sentinel', () => {
+  const SOURCE = fs.readFileSync(JS_PATH, 'utf8');
+
+  test('only one sentinel value exists in the source', () => {
+    const literals = new Set((SOURCE.match(/'__[a-z]+__'|"__[a-z]+__"/g) || [])
+      .map(x => x.slice(1, -1)));
+    assert.deepStrictEqual([...literals], ['__custom__'],
+      `found more than one sentinel: ${[...literals].join(', ')}`);
+  });
+
+  test('every "type your own" option carries that value', async () => {
+    const win = await ready(loadApp());
+    const gun = win.buildDefaultData().firearms[0];
+    // Open each form so its dropdown is populated.
+    win.openAddGun();
+    win.openAddAmmo();
+    win.openLogZero(gun.id);
+    await win.openLogGroup(gun.id);
+
+    const offers = [...win.document.querySelectorAll('option')]
+      .filter(o => o.textContent.trim().startsWith('+'));
+    assert.ok(offers.length >= 4, `expected several custom entries, found ${offers.length}`);
+    offers.forEach(o => assert.strictEqual(o.value, '__custom__',
+      `"${o.textContent.trim()}" offers a custom entry under a different value`));
+  });
+
+  test('selecting it reveals the free-text field in each form', async () => {
+    const win = await ready(loadApp());
+    const gun = win.buildDefaultData().firearms[0];
+
+    win.openAddAmmo();
+    win.document.getElementById('ammo-caliber-select').value = '__custom__';
+    win.handleCaliberSelectChange();
+    assert.strictEqual(win.document.getElementById('ammo-caliber-custom').style.display, 'block');
+
+    win.openLogZero(gun.id);
+    win.document.getElementById('zero-ammo-select').value = '__custom__';
+    win.handleZeroAmmoSelectChange();
+    assert.strictEqual(win.document.getElementById('zero-ammo-custom').style.display, 'block');
+
+    win.document.getElementById('zero-optic-select').value = '__custom__';
+    win.handleZeroOpticSelectChange();
+    assert.strictEqual(win.document.getElementById('zero-optic-custom').style.display, 'block');
   });
 });
 

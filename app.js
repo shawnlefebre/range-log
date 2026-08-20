@@ -32,6 +32,14 @@
 //      trusts and are edited by hand.
 const SCHEMA_VERSION = 14;
 
+// The sentinel value for the "type your own" entry in every picker that offers one —
+// calibers, ammo, optics, tags. These once used two different sentinels, so forms that look
+// identical behaved differently and a test that set the wrong one failed for a reason that
+// had nothing to do with what it was testing. Keep it to this one constant; a test asserts
+// no second sentinel appears anywhere in this file. It is never stored — the handlers swap
+// in the typed text before saving.
+const CUSTOM_OPTION = '__custom__';
+
 const CLEANING_TYPES = {
   quick: { label: 'Quick', resetsDeep: false },
   deep: { label: 'Deep', resetsDeep: true },
@@ -1034,7 +1042,7 @@ function renderGunCalibersChips() {
   sel.innerHTML =
     '<option value="">— Add caliber —</option>' +
     known.map(c => `<option value="${c}">${c}</option>`).join('') +
-    '<option value="__new__">+ New caliber...</option>';
+    `<option value="${CUSTOM_OPTION}">+ New caliber...</option>`;
   // Reset custom input
   document.getElementById('gun-caliber-custom').style.display = 'none';
   document.getElementById('gun-caliber-custom').value = '';
@@ -1049,7 +1057,7 @@ function addGunCaliberFromSelect() {
   const sel = document.getElementById('gun-caliber-add-select');
   const custom = document.getElementById('gun-caliber-custom');
   let val = sel.value;
-  if (val === '__new__') {
+  if (val === CUSTOM_OPTION) {
     val = custom.value.trim();
     if (!val) { custom.style.display = 'block'; custom.focus(); return; }
   }
@@ -1063,7 +1071,7 @@ function addGunCaliberFromSelect() {
 document.addEventListener('change', e => {
   if (e.target && e.target.id === 'gun-caliber-add-select') {
     const custom = document.getElementById('gun-caliber-custom');
-    if (e.target.value === '__new__') {
+    if (e.target.value === CUSTOM_OPTION) {
       custom.style.display = 'block';
       custom.focus();
     } else {
@@ -1446,12 +1454,12 @@ function populateAmmoDropdown(gun, selectedAmmoText, selectId, customId) {
     });
     html += '</optgroup>';
   }
-  html += '<option value="__custom__">+ Custom...</option>';
+  html += `<option value="${CUSTOM_OPTION}">+ Custom...</option>`;
   sel.innerHTML = html;
 
   // If selected value doesn't match any option, use custom
   if (selectedAmmoText && sel.value !== selectedAmmoText) {
-    sel.value = '__custom__';
+    sel.value = CUSTOM_OPTION;
     custom.value = selectedAmmoText;
     custom.style.display = 'block';
   } else {
@@ -1463,7 +1471,7 @@ function populateAmmoDropdown(gun, selectedAmmoText, selectId, customId) {
 function handleAmmoSelectChange(selectId, customId) {
   const sel = document.getElementById(selectId);
   const custom = document.getElementById(customId);
-  if (sel.value === '__custom__') {
+  if (sel.value === CUSTOM_OPTION) {
     custom.style.display = 'block';
     custom.focus();
   } else {
@@ -1474,7 +1482,7 @@ function handleAmmoSelectChange(selectId, customId) {
 
 function getSelectedAmmo(selectId, customId) {
   const sel = document.getElementById(selectId);
-  if (sel.value === '__custom__') return document.getElementById(customId).value.trim();
+  if (sel.value === CUSTOM_OPTION) return document.getElementById(customId).value.trim();
   return sel.value.trim();
 }
 
@@ -1499,10 +1507,10 @@ function populateZeroOpticDropdown(gun, selectedOptic) {
     const s = o === selectedOptic ? ' selected' : '';
     html += `<option value="${o.replace(/"/g, '&quot;')}"${s}>${o}</option>`;
   });
-  html += '<option value="__custom__">+ Custom...</option>';
+  html += `<option value="${CUSTOM_OPTION}">+ Custom...</option>`;
   sel.innerHTML = html;
   if (selectedOptic && sel.value !== selectedOptic) {
-    sel.value = '__custom__';
+    sel.value = CUSTOM_OPTION;
     custom.value = selectedOptic;
     custom.style.display = 'block';
   } else {
@@ -1514,7 +1522,7 @@ function populateZeroOpticDropdown(gun, selectedOptic) {
 function handleZeroOpticSelectChange() {
   const sel = document.getElementById('zero-optic-select');
   const custom = document.getElementById('zero-optic-custom');
-  if (sel.value === '__custom__') {
+  if (sel.value === CUSTOM_OPTION) {
     custom.style.display = 'block';
     custom.focus();
   } else {
@@ -1525,7 +1533,7 @@ function handleZeroOpticSelectChange() {
 
 function getSelectedZeroOptic() {
   const sel = document.getElementById('zero-optic-select');
-  if (sel.value === '__custom__') return document.getElementById('zero-optic-custom').value.trim();
+  if (sel.value === CUSTOM_OPTION) return document.getElementById('zero-optic-custom').value.trim();
   return sel.value.trim();
 }
 
@@ -2079,11 +2087,11 @@ function populateAmmoCaliberDropdown(selectedCaliber) {
   sel.innerHTML =
     '<option value="">— Select caliber —</option>' +
     known.map(c => `<option value="${c}"${c === selectedCaliber ? ' selected' : ''}>${c}</option>`).join('') +
-    '<option value="__new__">+ New caliber...</option>';
+    `<option value="${CUSTOM_OPTION}">+ New caliber...</option>`;
 
   if (selectedCaliber && !isKnown) {
     // Editing an entry with a caliber not in the current list — treat as custom
-    sel.value = '__new__';
+    sel.value = CUSTOM_OPTION;
     custom.value = selectedCaliber;
     custom.style.display = 'block';
   } else {
@@ -2095,7 +2103,7 @@ function populateAmmoCaliberDropdown(selectedCaliber) {
 function handleCaliberSelectChange() {
   const sel = document.getElementById('ammo-caliber-select');
   const custom = document.getElementById('ammo-caliber-custom');
-  if (sel.value === '__new__') {
+  if (sel.value === CUSTOM_OPTION) {
     custom.style.display = 'block';
     custom.focus();
   } else {
@@ -2106,7 +2114,7 @@ function handleCaliberSelectChange() {
 
 function getSelectedCaliber() {
   const sel = document.getElementById('ammo-caliber-select');
-  if (sel.value === '__new__') {
+  if (sel.value === CUSTOM_OPTION) {
     return document.getElementById('ammo-caliber-custom').value.trim();
   }
   return sel.value.trim();
@@ -5006,7 +5014,7 @@ function renderGroupTagChips() {
   sel.innerHTML =
     '<option value="">— Add tag —</option>' +
     known.map(t => `<option value="${t.replace(/"/g, '&quot;')}">${t}</option>`).join('') +
-    '<option value="__new__">+ New tag...</option>';
+    `<option value="${CUSTOM_OPTION}">+ New tag...</option>`;
   const custom = document.getElementById('group-tag-custom');
   custom.style.display = 'none';
   custom.value = '';
@@ -5021,7 +5029,7 @@ function addGroupTagFromSelect() {
   const sel = document.getElementById('group-tag-add-select');
   const custom = document.getElementById('group-tag-custom');
   let val = sel.value;
-  if (val === '__new__') {
+  if (val === CUSTOM_OPTION) {
     val = custom.value.trim();
     if (!val) { custom.style.display = 'block'; custom.focus(); return; }
   }
@@ -5038,7 +5046,7 @@ function addGroupTagFromSelect() {
 document.addEventListener('change', e => {
   if (e.target && e.target.id === 'group-tag-add-select') {
     const custom = document.getElementById('group-tag-custom');
-    if (e.target.value === '__new__') { custom.style.display = 'block'; custom.focus(); }
+    if (e.target.value === CUSTOM_OPTION) { custom.style.display = 'block'; custom.focus(); }
     else { custom.style.display = 'none'; custom.value = ''; }
   }
 });
@@ -5185,7 +5193,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.9';
+const APP_VERSION = '7.1.10';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

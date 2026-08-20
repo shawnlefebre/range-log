@@ -57,7 +57,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   await page.evaluate(() => {
     groupModalTags = [];
     renderGroupTagChips();
-    document.getElementById('group-tag-add-select').value = '__new__';
+    document.getElementById('group-tag-add-select').value = '__custom__';
     document.getElementById('group-tag-custom').value = 'PRONE';
     addGroupTagFromSelect();
   });
@@ -68,7 +68,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
 
   // Adding the same tag twice does nothing.
   await page.evaluate(t => {
-    document.getElementById('group-tag-add-select').value = '__new__';
+    document.getElementById('group-tag-add-select').value = '__custom__';
     document.getElementById('group-tag-custom').value = t;
     addGroupTagFromSelect();
   }, added[0]);
@@ -78,7 +78,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
 
   // A brand-new tag is kept as typed, and persists through save.
   await page.evaluate(() => {
-    document.getElementById('group-tag-add-select').value = '__new__';
+    document.getElementById('group-tag-add-select').value = '__custom__';
     document.getElementById('group-tag-custom').value = '  windy   day ';
     addGroupTagFromSelect();
   });
