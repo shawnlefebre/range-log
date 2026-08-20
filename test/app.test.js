@@ -49,6 +49,12 @@ function loadApp(mutateJs) {
   return dom;
 }
 
+// Rendered copy wraps across lines in the source, so matching a phrase against textContent
+// fails on the newline and indentation. Collapse whitespace before asserting on wording.
+function flat(el) {
+  return (typeof el === 'string' ? el : el.textContent).replace(/\s+/g, ' ').trim();
+}
+
 function ready(dom) {
   return new Promise(resolve => {
     dom.window.onload = () => resolve(dom.window);
@@ -891,6 +897,130 @@ describe('stats groups pane', () => {
     pick(win, bare.id);
     assert.match(win.document.getElementById('stats-groups-stats').textContent, /No measurable groups/i);
     assert.strictEqual(win.document.getElementById('stats-groups-trend').innerHTML, '');
+  });
+});
+
+// ── STATS · COMPARE BY ──────────────────────────────────────────────
+// Prone vs bench is the same chart as Norma vs CCI, so it is one view with a grouping
+// control. These guard the grouping itself and the caveats the chart has to state.
+
+describe('group comparison', () => {
+  const gunWithGroups = win => win.buildDefaultData().firearms.find(g => (g.groups || []).length);
+  const open = (win, gunId, dim) => {
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-firearm').value = gunId;
+    win.document.getElementById('stats-range').value = 'all';
+    if (dim) win.document.getElementById('stats-groups-compare-by').value = dim;
+    win.renderStats();
+  };
+  // Target the labelled elements rather than filtering all <text>, which would also scoop
+  // up the x-axis ticks — they are numbers in the same format.
+  const rowLabels = win => [...win.document.querySelectorAll('#stats-groups-compare .cmp-label')]
+    .map(t => t.textContent);
+  const medians = win => [...win.document.querySelectorAll('#stats-groups-compare .cmp-median')]
+    .map(t => Number(t.textContent));
+
+  test('distances are normalised, so 25 ft and 8.333 yd are one bucket', async () => {
+    const win = await ready(loadApp());
+    // Pure helpers, tested directly — building two groups at the same distance expressed
+    // two ways would take more scaffolding than the thing under test.
+    assert.strictEqual(win.groupDistanceLabel({ distance: 25, distanceUnit: 'ft' }), '8.3 yd');
+    assert.strictEqual(win.groupDistanceLabel({ distance: 8.333, distanceUnit: 'yd' }), '8.3 yd');
+    assert.strictEqual(win.groupDistanceLabel({ distance: 50, distanceUnit: 'yd' }), '50 yd');
+    assert.ok(Math.abs(win.groupDistanceYards({ distance: 100, distanceUnit: 'm' }) - 109.361) < 0.01);
+  });
+
+  test('buckets are ranked best-first by median', async () => {
+    const win = await ready(loadApp());
+    // Demo groups all fall on one range day, so tag is the dimension with several buckets.
+    open(win, gunWithGroups(win).id, 'tag');
+    const meds = medians(win);
+    assert.ok(meds.length >= 2, 'demo groups carry more than one tag');
+    meds.forEach((m, i) => {
+      if (i) assert.ok(m >= meds[i - 1], `rows must run best-first (${meds.join(', ')})`);
+    });
+  });
+
+  test('untagged groups get their own bucket rather than vanishing', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    open(win, gun.id, 'tag');
+    const labels = rowLabels(win);
+    const tagged = gun.groups.filter(g => (g.tags || []).length).length;
+    const untagged = gun.groups.length - tagged;
+    if (untagged > 0 && tagged > 0) {
+      assert.ok(labels.includes('Untagged'), 'untagged groups are still counted somewhere');
+    }
+    // Whatever the split, every group must land in at least one bucket.
+    const ns = [...win.document.querySelectorAll('#stats-groups-compare svg text')]
+      .map(t => t.textContent).filter(t => /^n=/.test(t))
+      .map(t => parseInt(t.slice(2), 10));
+    assert.ok(ns.reduce((a, b) => a + b, 0) >= gun.groups.length);
+  });
+
+  test('a dimension with one bucket says so instead of drawing a one-row chart', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    // Demo groups are all at one distance, so this is the real single-bucket case.
+    const distances = new Set(gun.groups.map(g =>
+      win.groupDistanceLabel({ distance: g.distance, distanceUnit: g.distanceUnit })));
+    assert.strictEqual(distances.size, 1, 'precondition: demo groups share a distance');
+    open(win, gun.id, 'distance');
+    const el = win.document.getElementById('stats-groups-compare');
+    assert.match(flat(el), /nothing to compare/i);
+    assert.strictEqual(el.querySelector('svg'), null, 'no chart for a single bucket');
+  });
+
+  test('a bucket drawn from one afternoon is flagged, not presented as a result', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    open(win, gun.id, 'tag');
+    const note = flat(win.document.getElementById('stats-groups-compare'));
+
+    // Whether the warning should fire is a property of the data, so derive it rather than
+    // assuming: it fires only when every bucket sits on a single range day.
+    const byTag = {};
+    gun.groups.forEach(g => ((g.tags || []).length ? g.tags : ['Untagged'])
+      .forEach(t => (byTag[t] = byTag[t] || []).push(g)));
+    const everyBucketOneDay = Object.values(byTag)
+      .every(gs => new Set(gs.map(g => g.date)).size === 1);
+
+    if (everyBucketOneDay) {
+      assert.match(note, /compares afternoons/i,
+        'a bucket from one afternoon is evidence about that afternoon, not about the tag');
+      assert.match(note, /range day/i, 'and it should name the cross-check');
+    } else {
+      assert.doesNotMatch(note, /compares afternoons/i,
+        'the warning must not fire when buckets span several days');
+    }
+  });
+
+  test('comparing by range day never warns about afternoons — that is the axis', async () => {
+    const win = await ready(loadApp());
+    open(win, gunWithGroups(win).id, 'day');
+    assert.doesNotMatch(flat(win.document.getElementById('stats-groups-compare')),
+      /compares afternoons/i);
+  });
+
+  test('the tag view warns that a group can sit in two rows', async () => {
+    const win = await ready(loadApp());
+    open(win, gunWithGroups(win).id, 'tag');
+    assert.match(flat(win.document.getElementById('stats-groups-compare')),
+      /multi-valued/i, 'bucket counts not adding up needs explaining, not hiding');
+    open(win, gunWithGroups(win).id, 'ammo');
+    assert.doesNotMatch(flat(win.document.getElementById('stats-groups-compare')),
+      /multi-valued/i, 'ammo is single-valued, so the caveat would be noise');
+  });
+
+  test('every grouping renders without throwing, including on a firearm with no groups', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    const bare = win.buildDefaultData().firearms.find(g => !(g.groups || []).length);
+    ['ammo', 'tag', 'day', 'distance'].forEach(dim => {
+      assert.doesNotThrow(() => open(win, gun.id, dim), `${dim} threw`);
+      assert.doesNotThrow(() => open(win, bare.id, dim), `${dim} threw on an empty firearm`);
+    });
   });
 });
 

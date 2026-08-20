@@ -15,7 +15,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.1.4</span>
+    <span id="app-version">v7.1.5</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -151,6 +151,19 @@
       <div id="stats-groups-body">
         <div id="stats-groups-stats"></div>
         <div id="stats-groups-trend"></div>
+        <div class="stats-chart-card">
+          <div class="stats-chart-title">Compare</div>
+          <div class="stats-filter-group" style="margin-bottom:10px;">
+            <label class="filter-label" for="stats-groups-compare-by">Compare by</label>
+            <select id="stats-groups-compare-by" onchange="renderStats()">
+              <option value="ammo" selected>Ammo</option>
+              <option value="tag">Tag</option>
+              <option value="day">Range day</option>
+              <option value="distance">Distance</option>
+            </select>
+          </div>
+          <div id="stats-groups-compare"></div>
+        </div>
       </div>
     </div>
 

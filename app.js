@@ -2574,6 +2574,18 @@ function renderStats() {
 
 // Median rather than mean throughout: a single group is a noisy estimate, and two lucky
 // ones shouldn't move a load or a session up the ranking.
+// 25 ft and 8.333 yd are the same distance typed two ways. Anything that buckets by
+// distance normalises first, or one distance shows up as two.
+function groupDistanceYards(g) {
+  const u = g.distanceUnit || 'yd';
+  const d = Number(g.distance) || 0;
+  return u === 'ft' ? d / 3 : u === 'm' ? d * 1.09361 : d;
+}
+function groupDistanceLabel(g) {
+  const y = groupDistanceYards(g);
+  return (Math.abs(y - Math.round(y)) < 0.01 ? Math.round(y) : y.toFixed(1)) + ' yd';
+}
+
 function statsMedian(a) {
   if (!a.length) return null;
   const s = [...a].sort((x, y) => x - y);
@@ -2638,6 +2650,7 @@ function renderGroupsStats() {
       `<div class="empty-state" style="padding:20px 16px;">
         No measurable groups for ${gun.name} in this range.</div>`;
     document.getElementById('stats-groups-trend').innerHTML = '';
+    document.getElementById('stats-groups-compare').innerHTML = '';
     return;
   }
 
@@ -2659,6 +2672,7 @@ function renderGroupsStats() {
       it stays comparable as the number of shots per group changes — extreme spread does not.</div>`;
 
   renderGroupTrend(gun, groups);
+  renderGroupCompare(groups);
 }
 
 // Every group is plotted, dimmed, with the bold line joining session medians. One group is a
@@ -2743,6 +2757,100 @@ function renderGroupTrend(gun, groups) {
         plotted faintly behind it, with the vertical bar showing that day's best to worst.
         ${days.length < 3 ? 'Too few range days for a trend yet — this needs several.' : ''}</div>
     </div>`;
+}
+
+// Prone vs bench is the same chart as Norma vs CCI — one dot per group, a median tick, the
+// spread as a whisker. Only the grouping changes, so it is one view with a control rather
+// than three near-identical views.
+const GROUP_COMPARE_DIMS = {
+  ammo:     { label: 'ammo', of: g => [g.ammo] },
+  // Tags are multi-valued, so a group tagged prone + bipod lands in both buckets and the
+  // bucket counts deliberately don't add up to the group count.
+  tag:      { label: 'tag', of: g => (g.tags.length ? g.tags : ['Untagged']), overlaps: true },
+  day:      { label: 'range day', of: g => [g.date] },
+  distance: { label: 'distance', of: g => [groupDistanceLabel(g.raw)] },
+};
+
+function renderGroupCompare(groups) {
+  const el = document.getElementById('stats-groups-compare');
+  if (!el) return;
+  const key = document.getElementById('stats-groups-compare-by').value;
+  const dim = GROUP_COMPARE_DIMS[key] || GROUP_COMPARE_DIMS.ammo;
+
+  const buckets = {};
+  groups.forEach(g => dim.of(g).forEach(k => (buckets[k] = buckets[k] || []).push(g)));
+  const rows = Object.entries(buckets).map(([k, gs]) => ({
+    key: k,
+    label: key === 'day' ? fmtDate(k) : k,
+    gs,
+    med: statsMedian(gs.map(x => x.mrMOA)),
+    lo: Math.min(...gs.map(x => x.mrMOA)),
+    hi: Math.max(...gs.map(x => x.mrMOA)),
+    days: new Set(gs.map(x => x.date)).size,
+  })).sort((a, b) => a.med - b.med);
+
+  if (rows.length < 2) {
+    el.innerHTML = `<div class="stats-empty">Only one ${dim.label} in this range — nothing to
+      compare against yet.</div>`;
+    return;
+  }
+
+  const W = 440, PL = 132, PR = 26, ROW = 46;
+  const H = 22 + rows.length * ROW;
+  const all = groups.map(g => g.mrMOA);
+  const xmax = Math.max(...all) * 1.12 || 1;
+  const x = v => PL + (v / xmax) * (W - PL - PR);
+  const SERIES = ['#ba8c01', '#1f68bc', '#cf5a93', '#007c59'];
+  const GRIDC = '#2e2e2e', INK = '#888', DIM = '#555';
+
+  let svg = '';
+  const ticks = [0, xmax / 3, (xmax * 2) / 3, xmax];
+  ticks.forEach(t => {
+    svg += `<line x1="${x(t)}" y1="8" x2="${x(t)}" y2="${H - 16}" stroke="${GRIDC}" stroke-width="1"/>
+            <text x="${x(t)}" y="${H - 4}" fill="${DIM}" font-family="IBM Plex Mono"
+                  font-size="7.5" text-anchor="middle">${gFmt(t, 2)}</text>`;
+  });
+
+  rows.forEach((r, i) => {
+    const yy = 24 + i * ROW;
+    const c = SERIES[i % SERIES.length];
+    const label = r.label.length > 18 ? r.label.slice(0, 17) + '…' : r.label;
+    svg += `<text class="cmp-label" x="${PL - 9}" y="${yy + 2}" fill="${INK}"
+                  font-family="IBM Plex Mono" font-size="8.5" text-anchor="end">${label}</text>
+            <text x="${PL - 9}" y="${yy + 12}" fill="${DIM}" font-family="IBM Plex Mono"
+                  font-size="7" text-anchor="end">n=${r.gs.length}${
+                    r.days === 1 && key !== 'day' ? ' · 1 day' : ''}</text>`;
+    svg += `<line x1="${x(r.lo)}" y1="${yy}" x2="${x(r.hi)}" y2="${yy}" stroke="${c}"
+                  stroke-width="2" opacity="0.3" stroke-linecap="round"/>`;
+    r.gs.forEach(g => {
+      svg += `<circle cx="${x(g.mrMOA)}" cy="${yy}" r="3.4" fill="${c}" opacity="0.85"
+                      stroke="var(--surface)" stroke-width="1.1"/>`;
+    });
+    svg += `<line x1="${x(r.med)}" y1="${yy - 10}" x2="${x(r.med)}" y2="${yy + 10}"
+                  stroke="${c}" stroke-width="2.4"/>
+            <text class="cmp-median" x="${x(r.med)}" y="${yy - 13}" fill="${c}"
+                  font-family="IBM Plex Mono" font-size="8" text-anchor="middle">${gFmt(r.med)}</text>`;
+  });
+
+  // A bucket whose groups all come from one afternoon is not evidence about the thing you
+  // grouped by — it is evidence about that afternoon. Say so rather than let the chart imply
+  // a conclusion it cannot support.
+  const confounded = key !== 'day' && rows.every(r => r.days === 1);
+  const notes = [];
+  if (confounded) {
+    notes.push(`Every ${dim.label} here was shot on a single range day, so this compares
+      afternoons as much as it compares ${dim.label}. Check "range day" — if it lands in the
+      same place, that is what you are seeing.`);
+  }
+  if (dim.overlaps) {
+    notes.push('Tags are multi-valued, so a group can appear in more than one row and the counts need not add up.');
+  }
+
+  el.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" role="img"
+         aria-label="Median group size by ${dim.label}">${svg}</svg>
+    <div class="stats-note">Median mean-radius MOA, lower is better. One dot per group, the
+      bar is its spread.${notes.length ? ' ' + notes.join(' ') : ''}</div>`;
 }
 
 // Rounds since the last deep clean against each firearm's own threshold, worst first.
@@ -4821,7 +4929,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.4';
+const APP_VERSION = '7.1.5';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

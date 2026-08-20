@@ -155,6 +155,28 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   });
   ck('the chart keeps its size after switching away and back', again > 100);
 
+  // Compare by — the same chart driven by a grouping control.
+  for (const dim of ['ammo', 'tag', 'day', 'distance']) {
+    await page.selectOption('#stats-groups-compare-by', dim);
+    await page.waitForTimeout(250);
+    const st = await page.evaluate(() => {
+      const el = document.getElementById('stats-groups-compare');
+      const svg = el.querySelector('svg');
+      return { rows: el.querySelectorAll('.cmp-median').length,
+               w: svg ? svg.getBoundingClientRect().width : 0,
+               text: el.textContent.replace(/\s+/g, ' ') };
+    });
+    // Either it draws a real chart, or it explains why it can't. Never a blank box.
+    const ok = (st.rows >= 2 && st.w > 100) || /nothing to compare/i.test(st.text);
+    ck(`compare by ${dim}: chart or explanation, never blank`, ok);
+  }
+
+  await page.selectOption('#stats-groups-compare-by', 'tag');
+  await page.waitForTimeout(250);
+  ck('the tag view warns that a group can sit in two rows',
+    /multi-valued/i.test((await page.locator('#stats-groups-compare').textContent()).replace(/\s+/g,' ')));
+  await page.locator('#statspane-groups').screenshot({ path: path.join(ARTIFACTS,'stats-groups-compare.png') });
+
   let bad=0;
   checks.forEach(([n,ok])=>{ if(!ok) bad++; console.log(`${ok?'ok  ':'FAIL'} ${n}`); });
   if (errs.length) { bad++; console.log('ERRORS '+[...new Set(errs)].join(' | ')); }

@@ -35,6 +35,23 @@ The time range picker offers your zeros as anchors: **Since last zero**, and eac
 Groups dated the same day as a zero count as *after* it, since neither carries a time and you
 zero before you shoot groups.
 
+## Comparing groups
+
+Also under **Stats → Groups**, a single chart with a **Compare by** control: ammo, tag,
+range day, or distance. Prone versus bench is the same question as Norma versus CCI — one dot
+per group, a median tick, the spread as a bar — so it's one view rather than three.
+
+Two things it deliberately tells you:
+
+- **When every bucket comes from one range day**, it says so. Comparing two tags that happen
+  to be from two different afternoons compares the afternoons, not the tags — and switching
+  to "range day" will show you whether that's what you're looking at.
+- **A group can appear in more than one row when comparing tags**, since tags are
+  multi-valued. The counts won't add up to your group total, and the chart says why rather
+  than quietly disagreeing with itself.
+
+Distances are normalised first, so 25 ft and 8.333 yd are one bucket rather than two.
+
 ## A firearm's Details
 
 **View Details** on any firearm gathers its cleaning history, zeros, dope tables and groups
