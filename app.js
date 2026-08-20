@@ -1178,8 +1178,86 @@ function deleteCleaning(gunId, cleaningId) {
 let currentHistoryGunId = null;
 function openGunHistory(gunId) {
   currentHistoryGunId = gunId;
+  // The capped view is the one worth landing on; a section left open from last time
+  // would defeat the point of capping them.
+  historyExpanded = {};
   renderGunHistory(gunId);
   openModal('modal-history');
+  // Whether a panel is scrolled to its end can only be measured once it has a height,
+  // and it has none while the modal is still display:none.
+  Object.values(HISTORY_LIST_EL).forEach(id => {
+    const box = document.getElementById(id);
+    if (box) markHistoryScrollEnd(box);
+  });
+}
+
+// ── CAPPED DETAILS LISTS ──────────────────────────────────────────
+// Every section in Details used to render every record it held, so a firearm with a year
+// of use turned the modal into one long scroll. Each list now shows its most recent few,
+// with the rest one tap away.
+
+// Cleanings gets the smallest cap because the block at the top of Details already reports
+// rounds since each clean and when they were — the list below is history, not status.
+// Dope cards are the tallest thing in here, so two is already a screenful.
+const HISTORY_CAPS = { cleanings: 3, zeros: 3, dope: 2, groups: 5 };
+const HISTORY_LIST_EL = {
+  cleanings: 'history-cleanings-list',
+  zeros: 'history-zeros-list',
+  dope: 'history-dope-list',
+  groups: 'history-groups-list',
+};
+
+let historyExpanded = {};
+// The rendered rows are kept so expanding repaints one section instead of rebuilding the
+// whole modal, which would throw away where you were scrolled to.
+const historyRows = {};
+
+function paintHistorySection(name, rows, emptyHtml) {
+  historyRows[name] = rows;
+  const box = document.getElementById(HISTORY_LIST_EL[name]);
+  const btn = document.getElementById('show-all-' + name);
+  if (!box || !btn) return;
+
+  if (!rows.length) {
+    box.innerHTML = emptyHtml;
+    box.classList.remove('list-scroll', 'at-end');
+    btn.style.display = 'none';
+    return;
+  }
+
+  const cap = HISTORY_CAPS[name];
+  const expanded = !!historyExpanded[name];
+  box.innerHTML = (expanded ? rows : rows.slice(0, cap)).join('');
+
+  // The scroll panel only appears when it earns its keep: expanded, and long enough that
+  // the modal would otherwise stretch. Six rows just render as six rows.
+  const needsPanel = expanded && rows.length > cap;
+  box.classList.toggle('list-scroll', needsPanel);
+  if (!needsPanel) {
+    box.classList.remove('at-end');
+  } else {
+    if (!box.dataset.scrollBound) {
+      box.addEventListener('scroll', () => markHistoryScrollEnd(box), { passive: true });
+      box.dataset.scrollBound = '1';
+    }
+    markHistoryScrollEnd(box);
+  }
+
+  if (rows.length <= cap) { btn.style.display = 'none'; return; }
+  btn.style.display = 'block';
+  btn.innerHTML = expanded ? 'Show fewer ▲' : `Show all ${rows.length} ▼`;
+}
+
+// The bottom fade means "there is more"; it has to lift at the end or it sits over the
+// last row lying about it.
+function markHistoryScrollEnd(box) {
+  if (!box.classList.contains('list-scroll')) return;
+  box.classList.toggle('at-end', box.scrollTop + box.clientHeight >= box.scrollHeight - 2);
+}
+
+function toggleHistorySection(name) {
+  historyExpanded[name] = !historyExpanded[name];
+  paintHistorySection(name, historyRows[name] || [], '');
 }
 
 function renderGunHistory(gunId) {
@@ -1207,11 +1285,7 @@ function renderGunHistory(gunId) {
 
   // Cleanings list
   const cleanings = [...(gun.cleanings || [])].sort((a,b) => b.date.localeCompare(a.date));
-  const cList = document.getElementById('history-cleanings-list');
-  if (!cleanings.length) {
-    cList.innerHTML = '<div class="empty-state" style="padding:16px;">No cleanings logged yet.</div>';
-  } else {
-    cList.innerHTML = cleanings.map(c => {
+  paintHistorySection('cleanings', cleanings.map(c => {
       const typeLabel = CLEANING_TYPES[c.type]?.label || c.type;
       return `
         <div class="cleaning-row">
@@ -1226,16 +1300,11 @@ function renderGunHistory(gunId) {
           </div>
         </div>
       `;
-    }).join('');
-  }
+  }), '<div class="empty-state" style="padding:16px;">No cleanings logged yet.</div>');
 
   // Zeros list
   const zeros = [...(gun.zeros || [])].sort((a,b) => b.date.localeCompare(a.date));
-  const zList = document.getElementById('history-zeros-list');
-  if (!zeros.length) {
-    zList.innerHTML = '<div class="empty-state" style="padding:16px;">No zeros recorded yet.</div>';
-  } else {
-    zList.innerHTML = zeros.map(z => {
+  paintHistorySection('zeros', zeros.map(z => {
       const distLabel = z.distance ? `${z.distance} ${z.distanceUnit || 'yd'}` : '—';
       const subParts = [];
       if (z.ammo) subParts.push(z.ammo);
@@ -1254,18 +1323,13 @@ function renderGunHistory(gunId) {
           </div>
         </div>
       `;
-    }).join('');
-  }
+  }), '<div class="empty-state" style="padding:16px;">No zeros recorded yet.</div>');
 
   renderDopeCards(gunId);
 
   // Groups list — sizes recomputed from the marked points on every render.
   const groups = [...(gun.groups || [])].sort((a, b) => b.date.localeCompare(a.date));
-  const grList = document.getElementById('history-groups-list');
-  if (!groups.length) {
-    grList.innerHTML = '<div class="empty-state" style="padding:16px;">No groups recorded yet.</div>';
-  } else {
-    grList.innerHTML = groups.map(g => {
+  paintHistorySection('groups', groups.map(g => {
       const size = groupSizeInches(g);
       const dIn = groupDistanceInches(g);
       const moa = size != null ? toMOA(size, dIn) : null;
@@ -1298,8 +1362,7 @@ function renderGunHistory(gunId) {
           </div>
         </div>
       `;
-    }).join('');
-  }
+  }), '<div class="empty-state" style="padding:16px;">No groups recorded yet.</div>');
 }
 
 // ── ZERO CRUD ─────────────────────────────────────────────────────
@@ -1577,15 +1640,10 @@ let dopeReadOnly = false;
 
 function renderDopeCards(gunId) {
   const gun = data.firearms.find(g => g.id === gunId);
-  const list = document.getElementById('history-dope-list');
-  if (!list || !gun) return;
+  if (!gun) return;
   const tables = gun.dope || [];
-  if (!tables.length) {
-    list.innerHTML = '<div class="empty-state" style="padding:16px;">No dope tables yet.</div>';
-    return;
-  }
   const CAP = 6;
-  list.innerHTML = tables.map(t => {
+  paintHistorySection('dope', tables.map(t => {
     const unit = t.unit === 'mrad' ? 'mrad' : 'moa';
     const du = t.distanceUnit || 'yd';
     const entries = [...(t.entries || [])].sort((a, b) => (a.distance || 0) - (b.distance || 0));
@@ -1615,7 +1673,7 @@ function renderDopeCards(gunId) {
         </div>
         ${entries.length ? `<div class="dope-rows">${shown}${more}</div>` : ''}
       </div>`;
-  }).join('');
+  }), '<div class="empty-state" style="padding:16px;">No dope tables yet.</div>');
 }
 
 function populateDopeAmmoDropdown(gun, selected) {
@@ -4320,7 +4378,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.0';
+const APP_VERSION = '7.1';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

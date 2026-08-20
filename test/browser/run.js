@@ -28,6 +28,7 @@ const SUITES = [
   ['dope-check', 'dope tables: unit conversion, view mode, persistence, card cap'],
   ['zero-check', 'zeros: tap to view read-only, edit, add without inheriting view mode'],
   ['demo-check', 'load demo data: guard scaling, photo clearing, banner return'],
+  ['details-cap-check', 'capped Details lists: caps, expansion, scroll panel, reset'],
 ];
 
 const waitForServer = () => new Promise((resolve, reject) => {

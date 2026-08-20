@@ -15,7 +15,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.0</span>
+    <span id="app-version">v7.1</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -520,25 +520,33 @@
       <span>Cleaning History</span>
       <button class="btn-mini" onclick="openLogCleaning(currentHistoryGunId)">+ Log Cleaning</button>
     </div>
-    <div id="history-cleanings-list" style="margin-bottom:8px;"></div>
+    <div id="history-cleanings-list"></div>
+    <button class="show-all" id="show-all-cleanings" style="display:none;margin-bottom:8px;"
+            onclick="toggleHistorySection('cleanings')"></button>
 
     <div class="history-subsection">
       <span>Zeros</span>
       <button class="btn-mini" onclick="openLogZero(currentHistoryGunId)">+ Add Zero</button>
     </div>
-    <div id="history-zeros-list" style="margin-bottom:14px;"></div>
+    <div id="history-zeros-list"></div>
+    <button class="show-all" id="show-all-zeros" style="display:none;margin-bottom:14px;"
+            onclick="toggleHistorySection('zeros')"></button>
 
     <div class="history-subsection">
       <span>Dope</span>
       <button class="btn-mini" onclick="openDope(currentHistoryGunId)">+ Add Table</button>
     </div>
-    <div id="history-dope-list" style="margin-bottom:14px;"></div>
+    <div id="history-dope-list"></div>
+    <button class="show-all" id="show-all-dope" style="display:none;margin-bottom:14px;"
+            onclick="toggleHistorySection('dope')"></button>
 
     <div class="history-subsection">
       <span>Groups</span>
       <button class="btn-mini" onclick="openLogGroup(currentHistoryGunId)">+ Add Group</button>
     </div>
-    <div id="history-groups-list" style="margin-bottom:14px;"></div>
+    <div id="history-groups-list"></div>
+    <button class="show-all" id="show-all-groups" style="display:none;margin-bottom:14px;"
+            onclick="toggleHistorySection('groups')"></button>
 
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="closeModal('modal-history')">Close</button>

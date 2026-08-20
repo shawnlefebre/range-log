@@ -81,6 +81,12 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
 
   await page.click('#group-cancel');
   await page.waitForTimeout(500);
+  // The list caps at 5 rows, so expand it before counting — otherwise this measures the
+  // cap rather than whether the groups were written.
+  if (await page.isVisible('#show-all-groups')) {
+    await page.click('#show-all-groups');
+    await page.waitForTimeout(300);
+  }
   const after = await page.locator('#history-groups-list .group-row').count();
   ck('all three appear in the firearm\'s list', after === before + 3);
 

@@ -13,6 +13,20 @@ A simple, private tracker for your range sessions — built as a lightweight web
 
 All data is stored locally in your browser (nothing is sent to a server), and can be exported/imported as JSON for backup or moving between devices.
 
+## A firearm's Details
+
+**View Details** on any firearm gathers its cleaning history, zeros, dope tables and groups
+in one place, above a running count of rounds since each clean.
+
+Each of those lists shows its most recent few with the rest behind a **Show all** count, so
+a rifle with a year of use doesn't turn the screen into one long scroll. Expanding a long
+list scrolls it inside its own panel rather than stretching the modal, and everything
+returns to the capped view when you reopen Details.
+
+Tapping a zero, dope table or group opens it read-only — the fields are genuinely inert, so
+a stray tap can't alter what the rifle is actually zeroed at. The pencil goes straight to
+editing.
+
 ## Group Analysis
 
 Open a firearm's **View Details → Groups → + Add Group** to measure a target from a photo.

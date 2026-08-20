@@ -707,6 +707,91 @@ describe('group tags', () => {
   });
 });
 
+// ── CAPPED DETAILS LISTS ────────────────────────────────────────────
+
+describe('capped Details lists', () => {
+  const rows = n => Array.from({ length: n }, (_, i) => `<div class="cleaning-row">row ${i}</div>`);
+  const shown = win => win.document.querySelectorAll('#history-groups-list > div').length;
+  const btn = win => win.document.getElementById('show-all-groups');
+
+  test('a list longer than its cap renders the cap and offers the rest by count', async () => {
+    const win = await ready(loadApp());
+    win.paintHistorySection('groups', rows(47), '');
+    assert.strictEqual(shown(win), 5, 'groups cap is 5');
+    assert.strictEqual(btn(win).style.display, 'block');
+    assert.match(btn(win).textContent, /Show all 47/,
+      'the count has to be on the button — otherwise you tap to find out how much there is');
+  });
+
+  test('expanding renders everything and offers the way back', async () => {
+    const win = await ready(loadApp());
+    win.paintHistorySection('groups', rows(47), '');
+    win.toggleHistorySection('groups');
+    assert.strictEqual(shown(win), 47);
+    assert.match(btn(win).textContent, /Show fewer/);
+    win.toggleHistorySection('groups');
+    assert.strictEqual(shown(win), 5, 'collapsing returns to the cap');
+    assert.match(btn(win).textContent, /Show all 47/);
+  });
+
+  test('an expanded long list scrolls in its own panel instead of stretching the modal', async () => {
+    const win = await ready(loadApp());
+    const box = win.document.getElementById('history-groups-list');
+    win.paintHistorySection('groups', rows(47), '');
+    assert.strictEqual(box.classList.contains('list-scroll'), false, 'capped needs no panel');
+    win.toggleHistorySection('groups');
+    assert.ok(box.classList.contains('list-scroll'), 'expanded gets the panel');
+    win.toggleHistorySection('groups');
+    assert.strictEqual(box.classList.contains('list-scroll'), false, 'collapsing removes it');
+  });
+
+  test('a list at or under its cap looks exactly as it did before, with no control', async () => {
+    const win = await ready(loadApp());
+    const box = win.document.getElementById('history-groups-list');
+    win.paintHistorySection('groups', rows(5), '');
+    assert.strictEqual(shown(win), 5);
+    assert.strictEqual(btn(win).style.display, 'none');
+    assert.strictEqual(box.classList.contains('list-scroll'), false,
+      'a short section must never become a scroll panel');
+  });
+
+  test('an empty section shows its empty state and no control', async () => {
+    const win = await ready(loadApp());
+    win.paintHistorySection('groups', [], '<div class="empty-state">No groups recorded yet.</div>');
+    assert.match(win.document.getElementById('history-groups-list').textContent, /No groups/);
+    assert.strictEqual(btn(win).style.display, 'none');
+  });
+
+  test('expansion resets when Details is reopened', async () => {
+    const win = await ready(loadApp());
+    // The demo firearms carry 4 cleanings against a cap of 3, so this runs on real data
+    // through the real render path rather than synthetic rows.
+    const gunId = win.buildDefaultData().firearms[0].id;
+    const list = () => win.document.querySelectorAll('#history-cleanings-list > div').length;
+
+    win.openGunHistory(gunId);
+    assert.strictEqual(list(), 3, 'lands capped');
+    assert.match(win.document.getElementById('show-all-cleanings').textContent, /Show all 4/);
+
+    win.toggleHistorySection('cleanings');
+    assert.strictEqual(list(), 4);
+
+    win.closeModal('modal-history');
+    win.openGunHistory(gunId);
+    assert.strictEqual(list(), 3,
+      'a section left open last time would defeat the point of capping it');
+  });
+
+  test('every capped section has a control wired to it', async () => {
+    const win = await ready(loadApp());
+    ['cleanings', 'zeros', 'dope', 'groups'].forEach(name => {
+      const b = win.document.getElementById('show-all-' + name);
+      assert.ok(b, `no control for ${name}`);
+      assert.match(b.getAttribute('onclick'), new RegExp(`toggleHistorySection\\('${name}'\\)`));
+    });
+  });
+});
+
 // ── LOAD DEMO DATA ──────────────────────────────────────────────────
 
 describe('loading demo data from Settings', () => {

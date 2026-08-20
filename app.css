@@ -1477,3 +1477,47 @@
   .entry-row.view,
   .entry-head.view { grid-template-columns: 1fr 1fr; }
   .viewing #dope-add-row { display: none; }
+
+  /* ── Capped Details lists ─────────────────────────────────────────
+     Every section in Details rendered every record it had, so a firearm with a year of
+     use turned the modal into one long scroll. Each list now shows its most recent few
+     with the rest one tap away. */
+  .show-all {
+    display: block;
+    width: 100%;
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    padding: 7px;
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+  .show-all:hover { border-color: var(--accent-dim); color: var(--text-muted); }
+  .show-all:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Expanded, a section scrolls inside itself rather than stretching the modal, so the
+     headers above and below stay in reach.
+
+     overscroll-behavior is what makes a nested scroll tolerable on a phone: reaching the
+     end of this panel doesn't chain the scroll to the modal behind it. */
+  .list-scroll {
+    max-height: 46vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--surface3);
+    border-radius: 4px;
+    padding: 6px;
+    background: rgba(0,0,0,0.18);
+  }
+  /* A row cut off mid-height is ambiguous; a fade isn't. It lifts at the bottom so it
+     never sits over the last row pretending there is more. */
+  .list-scroll:not(.at-end) {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent 100%);
+  }
+  .list-scroll::-webkit-scrollbar { width: 5px; }
+  .list-scroll::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 3px; }
