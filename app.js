@@ -2567,6 +2567,84 @@ function renderStats() {
   renderGroupsStats();
 }
 
+// ── BURN RATE ─────────────────────────────────────────────────────
+// Rounds actually fired per month, by chambering. This comes from the session log, which is
+// complete — unlike inventory, which cannot be computed because ammo bought before the app
+// existed was never recorded.
+//
+// Bucketed by a firearm's whole caliber list rather than by individual caliber. Rounds are
+// logged per firearm, so a gun chambered .357/.38 cannot say which of the two it fired; put
+// both in one bucket and the question stops existing. Bucketing by firearm also means every
+// firearm lands in exactly one bucket, so nothing is counted twice.
+function burnRateBuckets(start, end, scoped) {
+  const key = gun => {
+    const cs = gunCalibers(gun).map(c => c.trim()).filter(Boolean).sort(
+      (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    return cs.length ? cs.join(' / ') : '(no caliber)';
+  };
+  const rounds = {};
+  (data.sessions || []).forEach(s => {
+    if (start && s.date < start) return;
+    if (end && s.date > end) return;
+    Object.entries(s.rounds || {}).forEach(([gid, n]) => {
+      if (scoped && !scoped.has(gid)) return;
+      const gun = (data.firearms || []).find(g => g.id === gid);
+      if (!gun) return;
+      const k = key(gun);
+      rounds[k] = (rounds[k] || 0) + n;
+    });
+  });
+  return rounds;
+}
+
+function renderBurnRate() {
+  const el = document.getElementById('stats-as-burn');
+  if (!el) return;
+  const { start, end } = getStatsRangeBounds();
+  const scoped = scopedGunIdsFromFilters();
+
+  // The window is what was actually shot in, not what was asked for: "all time" has no start,
+  // and a range reaching into the future would deflate the rate.
+  const dates = (data.sessions || [])
+    .filter(s => (!start || s.date >= start) && (!end || s.date <= end))
+    .map(s => s.date).sort();
+  if (dates.length < 2) { el.innerHTML = ''; return; }
+  const days = (new Date(dates[dates.length - 1]) - new Date(dates[0])) / 86400000;
+  const months = Math.max(days / 30.44, 0.5);
+
+  const rounds = burnRateBuckets(start, end, scoped);
+  const rows = Object.entries(rounds)
+    .map(([k, n]) => ({ label: k, rounds: n, rate: n / months }))
+    .filter(r => r.rounds > 0)
+    .sort((a, b) => b.rate - a.rate);
+  if (!rows.length) { el.innerHTML = ''; return; }
+
+  const max = rows[0].rate;
+  const rowsHtml = rows.map(r => `
+    <div class="breakdown-row">
+      <div class="breakdown-top">
+        <span class="breakdown-name">${r.label}</span>
+        <span class="breakdown-val" style="color:${'#1f68bc'}">${Math.round(r.rate).toLocaleString()} / mo</span>
+      </div>
+      <div class="breakdown-bar-track">
+        <div class="breakdown-bar-fill" style="width:${Math.round((r.rate / max) * 100)}%;background:#1f68bc;"></div>
+      </div>
+      <div class="breakdown-pct">${r.rounds.toLocaleString()} rounds over ${
+        months < 1.5 ? 'about a month' : `${Math.round(months)} months`}</div>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="stats-chart-card">
+      <div class="stats-chart-title">Burn Rate</div>
+      ${rowsHtml}
+      <div class="stats-note">Rounds actually fired, from your session log. Grouped by
+        chambering, so a firearm that shoots two calibers counts once — rounds are logged per
+        firearm, and asking which of the two it fired has no answer.
+        <br>This is not inventory: what's left on the shelf can't be computed, since ammo
+        bought before you started logging was never recorded.</div>
+    </div>`;
+}
+
 // ── STATS · GROUPS ────────────────────────────────────────────────
 // Scoped to one firearm on purpose. Group sizes are not comparable between firearms — a
 // rimfire rifle at 50 yd and a pistol at 25 ft are not on the same scale, and on one axis
@@ -3327,6 +3405,7 @@ function renderAmmoSpendStats() {
   }
 
   renderSellerSpend(purchases, tokens);
+  renderBurnRate();
 }
 
 // Spend by store. Deliberately no blended price-per-round per store while several calibers
@@ -5052,7 +5131,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.7';
+const APP_VERSION = '7.1.8';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

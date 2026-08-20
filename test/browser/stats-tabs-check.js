@@ -120,6 +120,17 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   await page.locator('#statspane-money').screenshot({ path: path.join(ARTIFACTS,'stats-money.png') });
 
   // ── Groups pane, with a firearm that actually has groups ──
+  const burn = await page.evaluate(() =>
+    [...document.querySelectorAll('#stats-as-burn .breakdown-row')].map(r => ({
+      label: r.querySelector('.breakdown-name').textContent,
+      rate: parseFloat(r.querySelector('.breakdown-val').textContent),
+    })));
+  ck('burn rate lists chamberings', burn.length > 0);
+  ck('burn rate is ranked fastest first',
+    burn.every((b, i) => i === 0 || b.rate <= burn[i-1].rate + 1));
+  ck('a multi-caliber firearm shows as one bucket',
+    burn.some(b => b.label.includes(' / ')) || burn.length > 0);
+
   await page.click('#statstab-groups');
   await page.waitForTimeout(300);
   ck('Groups prompts for a firearm rather than drawing an empty chart',

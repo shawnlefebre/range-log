@@ -161,7 +161,7 @@ questions and nobody reads past the first:
   this one is always scoped to a single firearm. Pick one in the filter bar to see its
   group-size trend.
 - **Practice** — rounds fired and range trips over time, by firearm, caliber and location.
-- **Money** — ammo spend, cost per round, and spend by store.
+- **Money** — ammo spend, cost per round, spend by store, and how fast you burn each chambering.
 - **Upkeep** — rounds since the last deep clean against each firearm's own threshold, sorted
   by whoever needs it most. Amber past 80%, red past due — always with the number and the
   word beside it, so the state never depends on colour alone.
@@ -181,6 +181,11 @@ Two things there are deliberately careful:
 - **Filtering money by firearm is an inference.** Purchases are logged per caliber and never
   per firearm, so picking a rifle shows spend on the calibers it uses — including ammo you
   actually put through something else chambered the same way. The screen says so.
+- **Burn rate is not inventory.** It's rounds actually fired, from your session log, which
+  is complete. What's *left on the shelf* can't be computed — ammo bought before you started
+  logging was never recorded — so the app doesn't guess. It's grouped by a firearm's whole
+  chambering, so a .357/.38 revolver counts once: rounds are logged per firearm, and asking
+  which of the two it fired has no answer.
 - **Spend by store withholds price per round until one caliber is in scope.** A shop that
   only ever sold you 5.56 would look expensive beside one that sold you bulk .22, and that
   compares products rather than prices.

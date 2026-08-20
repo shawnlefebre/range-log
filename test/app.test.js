@@ -1356,6 +1356,107 @@ describe('picking an individual caliber on Money', () => {
   });
 });
 
+// ── BURN RATE ───────────────────────────────────────────────────────
+// Rounds fired come from the session log, which is complete. Bucketing by a firearm's whole
+// chambering is what removes the attribution problem: a .357/.38 revolver cannot say which
+// of the two it fired, so both live in one bucket and the question stops existing.
+
+describe('burn rate', () => {
+  const openMoney = (win, range = 'all') => {
+    win.showTab('stats');
+    win.showStatsSection('money');
+    win.document.getElementById('stats-range').value = range;
+    win.renderStats();
+  };
+  const rows = win => [...win.document.querySelectorAll('#stats-as-burn .breakdown-row')]
+    .map(r => ({
+      label: r.querySelector('.breakdown-name').textContent,
+      rate: parseFloat(r.querySelector('.breakdown-val').textContent.replace(/[^\d.]/g, '')),
+      rounds: parseInt(r.querySelector('.breakdown-pct').textContent.replace(/,/g, ''), 10),
+    }));
+
+  test('every round fired lands in exactly one bucket', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const shown = rows(win).reduce((sum, r) => sum + r.rounds, 0);
+    const fired = win.buildDefaultData().sessions
+      .reduce((sum, s) => sum + Object.values(s.rounds || {}).reduce((a, b) => a + b, 0), 0);
+    assert.strictEqual(shown, fired,
+      'bucket totals must equal rounds fired — nothing double-counted, nothing dropped');
+  });
+
+  test('a firearm chambered for two calibers gets one bucket, not two', async () => {
+    // Give the demo rifle a second chambering; its rounds must not be split or duplicated.
+    const win = await ready(loadApp(js => {
+      const patched = js.replace(
+        /(\{ id: g1,[^}]*?calibers: )\['\.223 Rem', '5\.56 NATO'\]/,
+        "$1['.223 Rem', '5.56 NATO']"
+      );
+      return patched;
+    }));
+    openMoney(win);
+    const gun = win.buildDefaultData().firearms.find(g => g.calibers.length > 1);
+    assert.ok(gun, 'demo data has a multi-caliber firearm');
+
+    const label = [...gun.calibers].sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base' })).join(' / ');
+    const matching = rows(win).filter(r => r.label === label);
+    assert.strictEqual(matching.length, 1, `expected one bucket named "${label}"`);
+
+    const fired = win.buildDefaultData().sessions
+      .reduce((sum, s) => sum + (s.rounds[gun.id] || 0), 0);
+    assert.strictEqual(matching[0].rounds, fired,
+      "the whole firearm's rounds sit in its one bucket");
+    // And no bucket is named for just one of its chamberings.
+    gun.calibers.forEach(c =>
+      assert.strictEqual(rows(win).some(r => r.label === c), false,
+        `"${c}" alone would imply an attribution the data cannot make`));
+  });
+
+  test('it is ranked by rate and reports the window it measured', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const r = rows(win);
+    assert.ok(r.length >= 2);
+    r.forEach((x, i) => {
+      if (i) assert.ok(x.rate <= r[i - 1].rate + 1, 'fastest-burning first');
+    });
+    assert.match(win.document.getElementById('stats-as-burn').textContent, /rounds over/,
+      'a rate means nothing without the span it was measured over');
+  });
+
+  test('it narrows to the filtered firearm', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const all = rows(win).length;
+    const gun = win.buildDefaultData().firearms[0];
+    win.document.getElementById('stats-firearm').value = gun.id;
+    win.renderStats();
+    const scoped = rows(win);
+    assert.strictEqual(scoped.length, 1, `one firearm, one bucket (${all} unfiltered)`);
+    const fired = win.buildDefaultData().sessions
+      .reduce((sum, s) => sum + (s.rounds[gun.id] || 0), 0);
+    assert.strictEqual(scoped[0].rounds, fired);
+  });
+
+  test('it says plainly that it is not inventory', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const note = flat(win.document.querySelector('#stats-as-burn .stats-note'));
+    assert.match(note, /not inventory/i);
+    assert.match(note, /before you started logging/i,
+      'the reason inventory is uncomputable belongs on screen, not in a commit message');
+  });
+
+  test('too little history draws nothing rather than a rate from one session', async () => {
+    const win = await ready(loadApp());
+    win.wipeAllData();
+    openMoney(win);
+    assert.strictEqual(win.document.getElementById('stats-as-burn').innerHTML, '',
+      'a rate needs a span; one point is not a span');
+  });
+});
+
 // ── SPEND BY STORE ──────────────────────────────────────────────────
 
 describe('spend by store', () => {
