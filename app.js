@@ -895,8 +895,10 @@ function renderSessions() {
     return;
   }
   const sorted = [...data.sessions].sort((a,b) => b.date.localeCompare(a.date));
+  const priced = rangePricePerCaliber();
   el.innerHTML = sorted.map(s => {
     const loc = data.locations.find(l => l.id === s.locationId);
+    const money = sessionCost(s, priced);
     const rounds = s.rounds && typeof s.rounds === 'object' ? s.rounds : {};
     const pills = Object.entries(rounds).map(([gid, r]) => {
       const gun = data.firearms.find(g => g.id === gid);
@@ -907,7 +909,9 @@ function renderSessions() {
         <div class="session-header">
           <div class="session-date">${fmtDate(s.date)}</div>
           <div style="display:flex;align-items:center;gap:10px;">
-            <div class="session-total">${s.totalRounds} rds</div>
+            <div class="session-total">${s.totalRounds} rds${
+              money.cost > 0 ? ` <span class="session-cost" title="Estimated from the average price of range ammo for each firearm's chambering">~$${money.cost.toFixed(2)}</span>` : ''
+            }</div>
             <button class="btn-icon" onclick="openEditSession('${s.id}')" title="Edit">✏️</button>
             <button class="btn-icon" onclick="deleteSession('${s.id}')" title="Delete">🗑</button>
           </div>
@@ -2638,21 +2642,18 @@ function renderStats() {
   renderGroupsStats();
 }
 
-// ── COST OF SHOOTING ──────────────────────────────────────────────
-// What you have actually put downrange, as money. Total spend is what left your wallet;
-// this is what got fired, which is the figure you would quote to someone.
+// ── AMMO PRICING ──────────────────────────────────────────────────
+// Shared by the session cards and the Money views, so a trip cannot be priced one way in one
+// place and another way somewhere else.
 //
-// It is an estimate and says so: rounds are logged per firearm and purchases per caliber, so
-// there is no way to know which specific box a given round came from. Each firearm's rounds
-// are priced at the average of the range ammo bought for its chambering — which is exactly
-// what the "not range ammo" flag is for. A 20-round box of carry ammo at five times the
-// price would otherwise inflate every round that firearm has ever fired.
-function rangePricePerRound(start, end) {
+// Rounds are logged per firearm and purchases per caliber, so nothing can say which box a
+// given round came from. A firearm's rounds are priced at the average of the range ammo
+// bought for its chambering — carry ammo excluded, or one 20-round box at five times the
+// price would inflate every round that firearm ever fired.
+function rangePricePerCaliber() {
   const per = {};
   (data.ammo || []).forEach(a => {
-    if (a.rangeAmmo === false) return;              // carry ammo does not price practice
-    if (start && a.date < start) return;
-    if (end && a.date > end) return;
+    if (a.rangeAmmo === false) return;
     const c = (a.caliber || '').trim();
     if (!c) return;
     if (!per[c]) per[c] = { spend: 0, rounds: 0 };
@@ -2662,6 +2663,42 @@ function rangePricePerRound(start, end) {
   return per;
 }
 
+// Price per round for one firearm, or null when nothing has been logged for its chambering.
+function firearmPricePerRound(gun, priced) {
+  const per = priced || rangePricePerCaliber();
+  const cals = gunCalibers(gun).map(c => c.trim()).filter(c => per[c] && per[c].rounds);
+  if (!cals.length) return null;
+  const spend = cals.reduce((x, c) => x + per[c].spend, 0);
+  const qty = cals.reduce((x, c) => x + per[c].rounds, 0);
+  return spend / qty;
+}
+
+// What one range trip cost. `unpriced` is rounds whose chambering has no logged ammo — they
+// are reported rather than folded into the total as if they were free.
+function sessionCost(session, priced, scoped) {
+  const per = priced || rangePricePerCaliber();
+  let cost = 0, rounds = 0, unpriced = 0;
+  Object.entries(session.rounds || {}).forEach(([gid, n]) => {
+    if (scoped && !scoped.has(gid)) return;
+    const gun = (data.firearms || []).find(g => g.id === gid);
+    if (!gun) return;
+    const cpr = firearmPricePerRound(gun, per);
+    if (cpr == null) { unpriced += n; return; }
+    cost += n * cpr;
+    rounds += n;
+  });
+  return { cost, rounds, unpriced, cpr: rounds ? cost / rounds : null };
+}
+
+// ── COST OF SHOOTING ──────────────────────────────────────────────
+// What you have actually put downrange, as money. Total spend is what left your wallet;
+// this is what got fired, which is the figure you would quote to someone.
+//
+// It is an estimate and says so: rounds are logged per firearm and purchases per caliber, so
+// there is no way to know which specific box a given round came from. Each firearm's rounds
+// are priced at the average of the range ammo bought for its chambering — which is exactly
+// what the "not range ammo" flag is for. A 20-round box of carry ammo at five times the
+// price would otherwise inflate every round that firearm has ever fired.
 function renderCostToShoot() {
   const el = document.getElementById('stats-as-cost');
   if (!el) return;
@@ -2670,7 +2707,7 @@ function renderCostToShoot() {
 
   // Price from every purchase on record, not just the filtered window: narrowing to "this
   // month" should narrow what was shot, not leave the ammo unpriced.
-  const price = rangePricePerRound(null, null);
+  const price = rangePricePerCaliber();
 
   const fired = {};
   const sessions = (data.sessions || []).filter(s =>
@@ -2685,11 +2722,8 @@ function renderCostToShoot() {
   Object.entries(fired).forEach(([gid, rounds]) => {
     const gun = (data.firearms || []).find(g => g.id === gid);
     if (!gun || !rounds) return;
-    const cals = gunCalibers(gun).map(c => c.trim()).filter(c => price[c] && price[c].rounds);
-    if (!cals.length) { unpriced += rounds; return; }
-    const spend = cals.reduce((x, c) => x + price[c].spend, 0);
-    const qty = cals.reduce((x, c) => x + price[c].rounds, 0);
-    const cpr = spend / qty;
+    const cpr = firearmPricePerRound(gun, price);
+    if (cpr == null) { unpriced += rounds; return; }
     rows.push({ name: gun.name, rounds, cpr, cost: rounds * cpr });
   });
   if (!rows.length) { el.innerHTML = ''; return; }
@@ -2730,6 +2764,56 @@ function renderCostToShoot() {
         round that firearm ever fired.${
         unpriced ? ` ${unpriced.toLocaleString()} rounds aren't priced here: no ammo logged
         for their chambering.` : ''}</div>
+    </div>`;
+}
+
+// The average trip cost hides a lot: on real data the dearest range day runs nearly ten
+// times the cheapest, and it is driven by what got shot rather than how much. Ranking the
+// trips shows which ones were expensive, and the per-round rate beside each says why.
+function renderCostPerTrip() {
+  const el = document.getElementById('stats-as-trips');
+  if (!el) return;
+  const { start, end } = getStatsRangeBounds();
+  const scoped = scopedGunIdsFromFilters();
+  const priced = rangePricePerCaliber();
+
+  const rows = (data.sessions || [])
+    .filter(s => (!start || s.date >= start) && (!end || s.date <= end))
+    .map(s => ({ s, ...sessionCost(s, priced, scoped) }))
+    .filter(r => r.cost > 0)
+    .sort((a, b) => b.cost - a.cost);
+  if (rows.length < 2) { el.innerHTML = ''; return; }
+
+  const max = rows[0].cost;
+  const CAP = 8;
+  const shown = rows.slice(0, CAP);
+  const rowsHtml = shown.map(r => {
+    const loc = data.locations.find(l => l.id === r.s.locationId);
+    return `
+      <div class="breakdown-row">
+        <div class="breakdown-top">
+          <span class="breakdown-name">${fmtDate(r.s.date)}</span>
+          <span class="breakdown-val">$${r.cost.toFixed(2)}</span>
+        </div>
+        <div class="breakdown-bar-track">
+          <div class="breakdown-bar-fill" style="width:${Math.round((r.cost / max) * 100)}%"></div>
+        </div>
+        <div class="breakdown-pct">${r.rounds.toLocaleString()} rounds at $${r.cpr.toFixed(3)}/rd${
+          loc ? ` · ${loc.name}` : ''}</div>
+      </div>`;
+  }).join('');
+
+  const costs = rows.map(r => r.cost);
+  const cheapest = Math.min(...costs), dearest = Math.max(...costs);
+  return el.innerHTML = `
+    <div class="stats-chart-card">
+      <div class="stats-chart-title">Cost Per Trip</div>
+      ${rowsHtml}
+      ${rows.length > CAP
+        ? `<div class="stats-note">Showing the ${CAP} dearest of ${rows.length} trips.</div>` : ''}
+      <div class="stats-note">Dearest trip ran ${(dearest / cheapest).toFixed(1)}× the cheapest.
+        The per-round rate is the tell: a rimfire afternoon and a centrefire one cost very
+        different money for the same round count. Estimated the same way as above.</div>
     </div>`;
 }
 
@@ -3586,6 +3670,7 @@ function renderAmmoSpendStats() {
 
   renderSellerSpend(purchases, tokens, rangeOnly);
   renderCostToShoot();
+  renderCostPerTrip();
   renderBurnRate();
 }
 
@@ -5325,7 +5410,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.12';
+const APP_VERSION = '7.1.13';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

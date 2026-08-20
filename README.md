@@ -182,6 +182,10 @@ Two things there are deliberately careful:
 - **Filtering money by firearm is an inference.** Purchases are logged per caliber and never
   per firearm, so picking a rifle shows spend on the calibers it uses — including ammo you
   actually put through something else chambered the same way. The screen says so.
+- **Each range trip carries its estimated cost**, on the session card and ranked dearest-first
+  under Money. The spread is wider than an average suggests — the per-round rate beside each
+  trip is what explains it, since a rimfire afternoon and a centrefire one cost very different
+  money for the same round count.
 - **Cost of shooting is not total spend.** Total spend is what left your wallet; this is
   what actually went downrange — rounds fired times the average price of range ammo for that
   firearm's chambering, ranked by firearm, with a per-range-trip figure. It's explicitly an

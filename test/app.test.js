@@ -1702,6 +1702,122 @@ describe('cost of shooting', () => {
   });
 });
 
+// ── PER-SESSION COST ────────────────────────────────────────────────
+// The average trip cost hides that the dearest range day can run ten times the cheapest,
+// because it is driven by what got shot rather than how much.
+
+describe('per-session cost', () => {
+  const openMoney = (win, range = 'all') => {
+    win.showTab('stats');
+    win.showStatsSection('money');
+    win.document.getElementById('stats-range').value = range;
+    win.renderStats();
+  };
+  const tripRows = win => [...win.document.querySelectorAll('#stats-as-trips .breakdown-row')]
+    .map(r => ({
+      date: r.querySelector('.breakdown-name').textContent,
+      cost: parseFloat(r.querySelector('.breakdown-val').textContent.replace('$', '')),
+      cpr: parseFloat(r.querySelector('.breakdown-pct').textContent.match(/\$([\d.]+)\/rd/)[1]),
+    }));
+
+  test('a session is priced from its own firearms, not an average trip', async () => {
+    const win = await ready(loadApp());
+    const d = win.buildDefaultData();
+    const priced = win.rangePricePerCaliber();
+
+    d.sessions.forEach(sess => {
+      const expected = Object.entries(sess.rounds || {}).reduce((sum, [gid, n]) => {
+        const gun = d.firearms.find(g => g.id === gid);
+        const cpr = gun ? win.firearmPricePerRound(gun, priced) : null;
+        return cpr == null ? sum : sum + n * cpr;
+      }, 0);
+      const got = win.sessionCost(sess, priced).cost;
+      assert.ok(Math.abs(got - expected) < 0.005,
+        `${sess.date}: ${got.toFixed(2)} vs ${expected.toFixed(2)}`);
+    });
+  });
+
+  test('two trips with the same round count can cost very different money', async () => {
+    const win = await ready(loadApp());
+    const d = win.buildDefaultData();
+    const priced = win.rangePricePerCaliber();
+    const costed = d.sessions.map(s => ({ ...win.sessionCost(s, priced), date: s.date }))
+      .filter(x => x.rounds > 0);
+    const rates = costed.map(x => x.cpr);
+    assert.ok(Math.max(...rates) > Math.min(...rates) * 1.2,
+      'the per-round rate must vary with what was shot, or the figure adds nothing');
+  });
+
+  test('the session card shows the estimate beside the round count', async () => {
+    const win = await ready(loadApp());
+    win.showTab('sessions');
+    const card = win.document.querySelector('.session-card');
+    const cost = card.querySelector('.session-cost');
+    assert.ok(cost, 'the card carries a cost');
+    assert.match(cost.textContent, /^~\$\d/, 'marked as approximate');
+    assert.match(cost.getAttribute('title') || '', /estimated/i,
+      'and says so on hover, since rounds are fact and money is inferred');
+
+    const d = win.buildDefaultData();
+    const newest = [...d.sessions].sort((a, b) => b.date.localeCompare(a.date))[0];
+    const expected = win.sessionCost(newest, win.rangePricePerCaliber()).cost;
+    assert.ok(Math.abs(parseFloat(cost.textContent.replace('~$', '')) - expected) < 0.02);
+  });
+
+  test('trips are ranked dearest first, with the rate that explains it', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const rows = tripRows(win);
+    assert.ok(rows.length >= 2);
+    rows.forEach((r, i) => {
+      if (i) assert.ok(r.cost <= rows[i - 1].cost + 0.01, 'dearest first');
+      assert.ok(r.cpr > 0, 'each row carries its per-round rate');
+    });
+  });
+
+  test('the card and the Money list agree on a trip', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const top = tripRows(win)[0];
+    win.showTab('sessions');
+    const card = [...win.document.querySelectorAll('.session-card')]
+      .find(c => c.querySelector('.session-date').textContent === top.date);
+    assert.ok(card, 'the dearest trip appears in the list too');
+    const shown = parseFloat(card.querySelector('.session-cost').textContent.replace('~$', ''));
+    assert.ok(Math.abs(shown - top.cost) < 0.02,
+      'one pricing helper feeds both, so they cannot drift apart');
+  });
+
+  test('it narrows to the filtered firearm', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const before = tripRows(win)[0].cost;
+    const gun = win.buildDefaultData().firearms[0];
+    win.document.getElementById('stats-firearm').value = gun.id;
+    win.renderStats();
+    const after = tripRows(win);
+    assert.ok(after.length, 'that firearm was shot on some trips');
+    assert.ok(after[0].cost <= before + 0.01, 'one firearm cannot cost more than the whole trip');
+  });
+
+  test('rounds with no priceable ammo are left out of the cost, not counted as free', async () => {
+    const win = await ready(loadApp());
+    const d = win.buildDefaultData();
+    win.confirm = () => true;
+    d.ammo.forEach(a => win.deleteAmmo(a.id));      // nothing is priceable now
+
+    const sess = d.sessions[0];
+    const out = win.sessionCost(sess, win.rangePricePerCaliber());
+    assert.strictEqual(out.cost, 0);
+    assert.strictEqual(out.rounds, 0, 'no rounds were priced');
+    assert.ok(out.unpriced > 0, 'and the unpriced ones are counted, not silently discarded');
+
+    win.showTab('sessions');
+    assert.strictEqual(win.document.querySelector('.session-cost'), null,
+      'no price, no figure — better blank than a confident zero');
+  });
+});
+
 // ── BURN RATE ───────────────────────────────────────────────────────
 // Rounds fired come from the session log, which is complete. Bucketing by a firearm's whole
 // chambering is what removes the attribution problem: a .357/.38 revolver cannot say which
