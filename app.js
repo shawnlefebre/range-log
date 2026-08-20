@@ -2259,8 +2259,8 @@ function firstOfYearISO() {
   return `${new Date().getFullYear()}-01-01`;
 }
 
-function getStatsRangeBounds(prefix) {
-  const key = document.getElementById(`stats-${prefix}-range`).value;
+function getStatsRangeBounds() {
+  const key = document.getElementById('stats-range').value;
   const end = today();
   switch (key) {
     case 'month': return { start: firstOfMonthISO(0), end };
@@ -2269,22 +2269,22 @@ function getStatsRangeBounds(prefix) {
     case 'year': return { start: firstOfYearISO(), end };
     case 'all': return { start: null, end: null };
     case 'custom': {
-      const s = document.getElementById(`stats-${prefix}-start`).value || null;
-      const e = document.getElementById(`stats-${prefix}-end`).value || null;
+      const s = document.getElementById('stats-start').value || null;
+      const e = document.getElementById('stats-end').value || null;
       return { start: s, end: e };
     }
     default: return { start: firstOfMonthISO(11), end };
   }
 }
 
-function handleStatsRangeChange(prefix) {
-  const key = document.getElementById(`stats-${prefix}-range`).value;
-  const customDiv = document.getElementById(`stats-${prefix}-custom-range`);
+function handleStatsRangeChange() {
+  const key = document.getElementById('stats-range').value;
+  const customDiv = document.getElementById('stats-custom-range');
   const isCustom = key === 'custom';
   customDiv.style.display = isCustom ? 'flex' : 'none';
   if (isCustom) {
-    const startEl = document.getElementById(`stats-${prefix}-start`);
-    const endEl = document.getElementById(`stats-${prefix}-end`);
+    const startEl = document.getElementById('stats-start');
+    const endEl = document.getElementById('stats-end');
     if (!startEl.value) startEl.value = firstOfMonthISO(11);
     if (!endEl.value) endEl.value = today();
   }
@@ -2292,33 +2292,85 @@ function handleStatsRangeChange(prefix) {
 }
 
 function populateStatsFilterDropdowns() {
-  const allCals = allKnownCalibers();
+  const loc = document.getElementById('stats-location');
+  const curLoc = loc.value;
+  loc.innerHTML = '<option value="">All Locations</option>' +
+    data.locations.map(l => `<option value="${l.id}"${l.id === curLoc ? ' selected' : ''}>${l.name}</option>`).join('');
 
-  const rfLoc = document.getElementById('stats-rf-location');
-  const curRfLoc = rfLoc.value;
-  rfLoc.innerHTML = '<option value="">All Locations</option>' +
-    data.locations.map(l => `<option value="${l.id}"${l.id === curRfLoc ? ' selected' : ''}>${l.name}</option>`).join('');
+  const gun = document.getElementById('stats-firearm');
+  const curGun = gun.value;
+  gun.innerHTML = '<option value="">All Firearms</option>' +
+    data.firearms.map(g => `<option value="${g.id}"${g.id === curGun ? ' selected' : ''}>${g.name}</option>`).join('');
 
-  const rfGun = document.getElementById('stats-rf-firearm');
-  const curRfGun = rfGun.value;
-  rfGun.innerHTML = '<option value="">All Firearms</option>' +
-    data.firearms.map(g => `<option value="${g.id}"${g.id === curRfGun ? ' selected' : ''}>${g.name}</option>`).join('');
+  // Merged caliber groups throughout, including Ammo Spend, which used to list raw caliber
+  // strings. Selecting ".223 / 5.56" now covers both tokens, which is what a firearm
+  // chambered for both actually consumes.
+  const cal = document.getElementById('stats-caliber');
+  const curCal = cal.value;
+  cal.innerHTML = '<option value="">All Calibers</option>' +
+    getMergedFirearmCalibers().map(g =>
+      `<option value="${g.value}"${g.value === curCal ? ' selected' : ''}>${g.label}</option>`).join('');
+}
 
-  const rfCal = document.getElementById('stats-rf-caliber');
-  const curRfCal = rfCal.value;
-  const mergedGroups = getMergedFirearmCalibers();
-  rfCal.innerHTML = '<option value="">All Calibers</option>' +
-    mergedGroups.map(g => `<option value="${g.value}"${g.value === curRfCal ? ' selected' : ''}>${g.label}</option>`).join('');
+// Which filters mean anything in which pane. A control that cannot apply is dimmed and
+// explained rather than silently ignored — otherwise you set a firearm, watch a number not
+// move, and have no way to tell whether that is the answer or the filter.
+const STATS_FILTER_APPLIES = {
+  groups:   { range: true,  location: true,  firearm: true, caliber: false },
+  practice: { range: true,  location: true,  firearm: true, caliber: true },
+  money:    { range: true,  location: false, firearm: true, caliber: true },
+  upkeep:   { range: false, location: false, firearm: true, caliber: true },
+};
+const STATS_FILTER_WHY = {
+  groups:   { caliber: 'caliber follows from the firearm you pick' },
+  money:    { location: 'purchases record a seller, not a range' },
+  upkeep:   { range: 'rounds since clean is a state now, not a period',
+              location: 'cleaning is not tied to a range' },
+};
 
-  const rtLoc = document.getElementById('stats-rt-location');
-  const curRtLoc = rtLoc.value;
-  rtLoc.innerHTML = '<option value="">All Locations</option>' +
-    data.locations.map(l => `<option value="${l.id}"${l.id === curRtLoc ? ' selected' : ''}>${l.name}</option>`).join('');
+function applyStatsFilterAvailability() {
+  const applies = STATS_FILTER_APPLIES[currentStatsSection] || STATS_FILTER_APPLIES.practice;
+  const why = STATS_FILTER_WHY[currentStatsSection] || {};
+  const notes = [];
+  ['range', 'location', 'firearm', 'caliber'].forEach(key => {
+    const group = document.getElementById('statsf-' + key);
+    if (!group) return;
+    const on = !!applies[key];
+    group.classList.toggle('na', !on);
+    const sel = group.querySelector('select');
+    if (sel) sel.disabled = !on;
+    if (!on && why[key]) notes.push(`${key} ignored here — ${why[key]}`);
+  });
+  // The custom date row goes with the range control.
+  const custom = document.getElementById('stats-custom-range');
+  if (custom && !applies.range) custom.style.display = 'none';
+  else if (custom && document.getElementById('stats-range').value === 'custom') custom.style.display = 'flex';
 
-  const asCal = document.getElementById('stats-as-caliber');
-  const curAsCal = asCal.value;
-  asCal.innerHTML = '<option value="">All Calibers</option>' +
-    allCals.map(c => `<option value="${c}"${c === curAsCal ? ' selected' : ''}>${c}</option>`).join('');
+  const noteEl = document.getElementById('stats-filter-note');
+  if (noteEl) noteEl.textContent = notes.join(' · ');
+}
+
+// A caliber selection is a merged group (tokens joined by '||'). Returns the token set, or
+// null for "all".
+function selectedCaliberTokens() {
+  const v = document.getElementById('stats-caliber').value;
+  return v ? new Set(v.split('||')) : null;
+}
+
+// Firearms in scope given the firearm and caliber chips together. Returns null for "all".
+function scopedGunIdsFromFilters() {
+  const gunId = document.getElementById('stats-firearm').value;
+  const caliberValue = document.getElementById('stats-caliber').value;
+  if (!gunId && !caliberValue) return null;
+  const group = caliberValue
+    ? getMergedFirearmCalibers().find(g => g.value === caliberValue) : null;
+  if (gunId && caliberValue) {
+    // Both set — intersect. A firearm not chambered for the selected caliber genuinely has
+    // nothing to show, rather than falling back to the firearm-only total.
+    return group && group.gunIds.has(gunId) ? new Set([gunId]) : new Set();
+  }
+  if (gunId) return new Set([gunId]);
+  return group ? group.gunIds : new Set();
 }
 
 // Builds an ordered list of calendar-month buckets spanning start..end (inclusive).
@@ -2451,6 +2503,7 @@ function showStatsSection(name) {
 
 function renderStats() {
   populateStatsFilterDropdowns();
+  applyStatsFilterAvailability();
   renderRoundsFiredStats();
   renderRangeTripsStats();
   renderAmmoSpendStats();
@@ -2462,14 +2515,17 @@ function renderStats() {
 function renderUpkeepStats() {
   const el = document.getElementById('stats-upkeep-cleaning');
   if (!el) return;
-  const rows = (data.firearms || []).map(gun => {
+  const scoped = scopedGunIdsFromFilters();
+  const rows = (data.firearms || []).filter(g => !scoped || scoped.has(g.id)).map(gun => {
     const since = computeRoundsSinceClean(gun);
     const thr = gun.cleanThreshold || 0;
     return { gun, since, thr, pct: thr ? since / thr : 0 };
   }).sort((a, b) => b.pct - a.pct);
 
   if (!rows.length) {
-    el.innerHTML = '<div class="empty-state" style="padding:16px;">No firearms yet.</div>';
+    el.innerHTML = `<div class="empty-state" style="padding:16px;">${
+      (data.firearms || []).length ? 'No firearms match the current filter.' : 'No firearms yet.'
+    }</div>`;
     return;
   }
   // Reuses the breakdown-row pattern from Rounds Fired and Ammo Spend rather than inventing
@@ -2500,10 +2556,10 @@ function renderUpkeepStats() {
 }
 
 function renderRoundsFiredStats() {
-  const { start, end } = getStatsRangeBounds('rf');
-  const locId = document.getElementById('stats-rf-location').value;
-  const gunId = document.getElementById('stats-rf-firearm').value;
-  const caliberValue = document.getElementById('stats-rf-caliber').value; // merged-group value, tokens joined by '||'
+  const { start, end } = getStatsRangeBounds();
+  const locId = document.getElementById('stats-location').value;
+  const gunId = document.getElementById('stats-firearm').value;
+  const caliberValue = document.getElementById('stats-caliber').value; // merged-group value, tokens joined by '||'
 
   const sessions = data.sessions.filter(s => {
     if (start && s.date < start) return false;
@@ -2638,18 +2694,27 @@ function renderRoundsFiredStats() {
 }
 
 function renderRangeTripsStats() {
-  const { start, end } = getStatsRangeBounds('rt');
-  const locId = document.getElementById('stats-rt-location').value;
+  const { start, end } = getStatsRangeBounds();
+  const locId = document.getElementById('stats-location').value;
 
+  // A trip counts when an in-scope firearm was shot on it, and its round total is scoped to
+  // those firearms — otherwise "avg rounds per trip" would divide the whole trip's rounds by
+  // trips selected for one rifle.
+  const scoped = scopedGunIdsFromFilters();
   const sessions = data.sessions.filter(s => {
     if (start && s.date < start) return false;
     if (end && s.date > end) return false;
     if (locId && s.locationId !== locId) return false;
+    if (scoped && ![...Object.keys(s.rounds || {})].some(id => scoped.has(id))) return false;
     return true;
   });
 
+  const roundsIn = s => scoped
+    ? Object.entries(s.rounds || {}).reduce((sum, [id, n]) => sum + (scoped.has(id) ? n : 0), 0)
+    : (s.totalRounds || 0);
+
   const totalTrips = sessions.length;
-  const totalRounds = sessions.reduce((sum, s) => sum + (s.totalRounds || 0), 0);
+  const totalRounds = sessions.reduce((sum, s) => sum + roundsIn(s), 0);
   const avgRounds = totalTrips ? Math.round(totalRounds / totalTrips) : 0;
 
   document.getElementById('stats-rt-stats').innerHTML = `
@@ -2676,15 +2741,35 @@ function renderRangeTripsStats() {
 }
 
 function renderAmmoSpendStats() {
-  const { start, end } = getStatsRangeBounds('as');
-  const caliber = document.getElementById('stats-as-caliber').value;
+  const { start, end } = getStatsRangeBounds();
+  // Purchases are logged per caliber and never per firearm, so a firearm filter resolves to
+  // the calibers that firearm uses. That is a weaker claim than "what this firearm cost" and
+  // the note under the figures says so rather than letting the number imply otherwise.
+  let tokens = selectedCaliberTokens();
+  const gunId = document.getElementById('stats-firearm').value;
+  const gun = gunId ? data.firearms.find(g => g.id === gunId) : null;
+  if (gun) {
+    const gunTokens = new Set(gunCalibers(gun).map(c => c.trim()));
+    tokens = tokens ? new Set([...tokens].filter(t => gunTokens.has(t))) : gunTokens;
+  }
 
   const purchases = (data.ammo || []).filter(a => {
     if (start && a.date < start) return false;
     if (end && a.date > end) return false;
-    if (caliber && a.caliber !== caliber) return false;
+    if (tokens && !tokens.has((a.caliber || '').trim())) return false;
     return true;
   });
+
+  const scopeNote = document.getElementById('stats-as-scope-note');
+  if (scopeNote) {
+    scopeNote.innerHTML = gun
+      ? `<div class="caliber-disclaimer"><span>&#9432;</span><div>Showing
+           <strong>${[...tokens].join(' / ') || '—'}</strong> — the calibers ${gun.name} uses.
+           Purchases aren't tied to a firearm, so this covers any other firearm chambered the
+           same way. It is what you spent on ammo this one <em>can</em> use, not what it
+           consumed.</div></div>`
+      : '';
+  }
 
   const totalSpend = purchases.reduce((sum, a) => sum + (a.totalPrice || 0), 0);
   const totalRoundsBought = purchases.reduce((sum, a) => sum + (a.quantity || 0), 0);
@@ -2715,8 +2800,9 @@ function renderAmmoSpendStats() {
 
   const spendBreakdownEl = document.getElementById('stats-as-breakdown');
   const roundsBreakdownEl = document.getElementById('stats-as-rounds-breakdown');
-  if (caliber) {
-    // Already filtered to one caliber — a breakdown of a single item is redundant.
+  // A breakdown of a single item is redundant. A merged group with two tokens (.223 / 5.56)
+  // still has something to break down, so only collapse when the scope is truly one caliber.
+  if (tokens && tokens.size <= 1) {
     spendBreakdownEl.innerHTML = '';
     roundsBreakdownEl.innerHTML = '';
   } else {
@@ -2773,6 +2859,64 @@ function renderAmmoSpendStats() {
       </div>
     ` : '';
   }
+
+  renderSellerSpend(purchases, tokens);
+}
+
+// Spend by store. Deliberately no blended price-per-round per store while several calibers
+// are in scope: a shop that only ever sold you 5.56 would look expensive next to one that
+// sold you bulk .22, and the comparison would be between products, not prices. Filter to a
+// single caliber and the per-round figures become comparable, so they appear then.
+function renderSellerSpend(purchases, tokens) {
+  const el = document.getElementById('stats-as-seller-breakdown');
+  if (!el) return;
+
+  const per = {};
+  purchases.forEach(a => {
+    const seller = (data.sellers || []).find(x => x.id === a.sellerId);
+    const key = seller ? seller.name : '(no store recorded)';
+    if (!per[key]) per[key] = { spend: 0, rounds: 0, buys: 0, cals: new Set() };
+    per[key].spend += (a.totalPrice || 0);
+    per[key].rounds += (a.quantity || 0);
+    per[key].buys++;
+    if (a.caliber) per[key].cals.add(a.caliber);
+  });
+
+  const rows = Object.entries(per)
+    .map(([name, v]) => ({ name, ...v, cpr: v.rounds ? v.spend / v.rounds : null }))
+    .sort((a, b) => b.spend - a.spend);
+  if (!rows.length) { el.innerHTML = ''; return; }
+
+  const total = rows.reduce((sum, r) => sum + r.spend, 0);
+  const max = rows[0].spend || 1;
+  // One caliber in scope means every store is being compared on the same product.
+  const comparable = !!tokens && tokens.size <= 1;
+
+  const html = rows.map(r => {
+    const pct = total > 0 ? Math.round((r.spend / total) * 100) : 0;
+    const sub = comparable && r.cpr != null
+      ? `${pct}% of spend · $${r.cpr.toFixed(3)}/rd · ${r.rounds.toLocaleString()} rds`
+      : `${pct}% of spend · ${r.buys} purchase${r.buys === 1 ? '' : 's'} · ${[...r.cals].join(', ') || '—'}`;
+    return `
+      <div class="breakdown-row">
+        <div class="breakdown-top">
+          <span class="breakdown-name">${r.name}</span>
+          <span class="breakdown-val">$${r.spend.toFixed(2)}</span>
+        </div>
+        <div class="breakdown-bar-track">
+          <div class="breakdown-bar-fill" style="width:${Math.round((r.spend / max) * 100)}%"></div>
+        </div>
+        <div class="breakdown-pct">${sub}</div>
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="stats-chart-card">
+      <div class="stats-chart-title">Spend by Store</div>
+      ${html}
+      ${comparable ? '' : `<div class="stats-note">Pick a single caliber to compare
+        price per round between stores — across calibers it would compare products, not prices.</div>`}
+    </div>`;
 }
 
 // ── GROUP ANALYSIS ────────────────────────────────────────────────
@@ -4442,7 +4586,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.1';
+const APP_VERSION = '7.1.2';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

@@ -103,10 +103,25 @@ questions and nobody reads past the first:
   meaningful (a rimfire rifle at 50 yd and a pistol at 25 ft aren't on the same scale), so
   this one is always scoped to a single firearm.
 - **Practice** — rounds fired and range trips over time, by firearm, caliber and location.
-- **Money** — ammo spend and cost per round.
+- **Money** — ammo spend, cost per round, and spend by store.
 - **Upkeep** — rounds since the last deep clean against each firearm's own threshold, sorted
   by whoever needs it most. Amber past 80%, red past due — always with the number and the
   word beside it, so the state never depends on colour alone.
+
+One filter bar — time range, location, firearm, caliber — drives all four panes, so the whole
+screen answers the same question. A filter that can't apply to the pane you're on is dimmed
+and disabled with a line saying why, rather than silently ignored: purchases record a *seller*
+rather than a range, so Location is inert on Money, and "rounds since clean" is a fact about
+now, so Time Range is inert on Upkeep.
+
+Two things there are deliberately careful:
+
+- **Filtering money by firearm is an inference.** Purchases are logged per caliber and never
+  per firearm, so picking a rifle shows spend on the calibers it uses — including ammo you
+  actually put through something else chambered the same way. The screen says so.
+- **Spend by store withholds price per round until one caliber is in scope.** A shop that
+  only ever sold you 5.56 would look expensive beside one that sold you bulk .22, and that
+  compares products rather than prices.
 
 ## Dope Tables
 

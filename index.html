@@ -15,7 +15,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.1.1</span>
+    <span id="app-version">v7.1.2</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -106,6 +106,46 @@
       <button id="statstab-upkeep"   role="tab" onclick="showStatsSection('upkeep')">Upkeep</button>
     </div>
 
+    <!-- One filter bar for all four panes. Each pane applies what it can and visibly dims
+         what it cannot, rather than silently ignoring a control the user just set. -->
+    <div class="stats-filter-grid" id="stats-filters">
+      <div class="stats-filter-group" id="statsf-range">
+        <label class="filter-label">Time Range</label>
+        <select id="stats-range" onchange="handleStatsRangeChange()">
+          <option value="month">This Month</option>
+          <option value="3months">Last 3 Months</option>
+          <option value="12months" selected>Last 12 Months</option>
+          <option value="year">This Year</option>
+          <option value="all">All Time</option>
+          <option value="custom">Custom...</option>
+        </select>
+      </div>
+      <div class="stats-filter-group" id="statsf-location">
+        <label class="filter-label">Location</label>
+        <select id="stats-location" onchange="renderStats()">
+          <option value="">All Locations</option>
+        </select>
+      </div>
+      <div class="stats-filter-group" id="statsf-firearm">
+        <label class="filter-label">Firearm</label>
+        <select id="stats-firearm" onchange="renderStats()">
+          <option value="">All Firearms</option>
+        </select>
+      </div>
+      <div class="stats-filter-group" id="statsf-caliber">
+        <label class="filter-label">Caliber</label>
+        <select id="stats-caliber" onchange="renderStats()">
+          <option value="">All Calibers</option>
+        </select>
+      </div>
+    </div>
+    <div id="stats-custom-range" class="stats-custom-range" style="display:none;">
+      <input type="date" id="stats-start" onchange="renderStats()">
+      <span class="range-sep">to</span>
+      <input type="date" id="stats-end" onchange="renderStats()">
+    </div>
+    <div id="stats-filter-note" class="stats-filter-note"></div>
+
     <div id="statspane-groups" class="stats-pane">
       <div class="empty-state" style="padding:26px 16px;">
         Group analysis lands here next.<br>
@@ -117,72 +157,12 @@
 
     <div id="statspane-practice" class="stats-pane">
     <div class="stats-section-title">Rounds Fired</div>
-    <div class="stats-filter-grid">
-      <div class="stats-filter-group">
-        <label class="filter-label">Time Range</label>
-        <select id="stats-rf-range" onchange="handleStatsRangeChange('rf')">
-          <option value="month">This Month</option>
-          <option value="3months">Last 3 Months</option>
-          <option value="12months" selected>Last 12 Months</option>
-          <option value="year">This Year</option>
-          <option value="all">All Time</option>
-          <option value="custom">Custom...</option>
-        </select>
-      </div>
-      <div class="stats-filter-group">
-        <label class="filter-label">Location</label>
-        <select id="stats-rf-location" onchange="renderStats()">
-          <option value="">All Locations</option>
-        </select>
-      </div>
-      <div class="stats-filter-group">
-        <label class="filter-label">Firearm</label>
-        <select id="stats-rf-firearm" onchange="renderStats()">
-          <option value="">All Firearms</option>
-        </select>
-      </div>
-      <div class="stats-filter-group">
-        <label class="filter-label">Caliber</label>
-        <select id="stats-rf-caliber" onchange="renderStats()">
-          <option value="">All Calibers</option>
-        </select>
-      </div>
-    </div>
-    <div id="stats-rf-custom-range" class="stats-custom-range" style="display:none;">
-      <input type="date" id="stats-rf-start" onchange="renderStats()">
-      <span>to</span>
-      <input type="date" id="stats-rf-end" onchange="renderStats()">
-    </div>
     <div id="stats-rf-disclaimer"></div>
     <div id="stats-rf-stats"></div>
     <div id="stats-rf-chart"></div>
     <div id="stats-rf-breakdown"></div>
 
     <div class="stats-section-title">Range Trips</div>
-    <div class="stats-filter-grid two">
-      <div class="stats-filter-group">
-        <label class="filter-label">Time Range</label>
-        <select id="stats-rt-range" onchange="handleStatsRangeChange('rt')">
-          <option value="month">This Month</option>
-          <option value="3months">Last 3 Months</option>
-          <option value="12months" selected>Last 12 Months</option>
-          <option value="year">This Year</option>
-          <option value="all">All Time</option>
-          <option value="custom">Custom...</option>
-        </select>
-      </div>
-      <div class="stats-filter-group">
-        <label class="filter-label">Location</label>
-        <select id="stats-rt-location" onchange="renderStats()">
-          <option value="">All Locations</option>
-        </select>
-      </div>
-    </div>
-    <div id="stats-rt-custom-range" class="stats-custom-range" style="display:none;">
-      <input type="date" id="stats-rt-start" onchange="renderStats()">
-      <span>to</span>
-      <input type="date" id="stats-rt-end" onchange="renderStats()">
-    </div>
     <div id="stats-rt-stats"></div>
     <div id="stats-rt-chart"></div>
 
@@ -190,34 +170,12 @@
 
     <div id="statspane-money" class="stats-pane">
     <div class="stats-section-title">Ammo Spend</div>
-    <div class="stats-filter-grid two">
-      <div class="stats-filter-group">
-        <label class="filter-label">Time Range</label>
-        <select id="stats-as-range" onchange="handleStatsRangeChange('as')">
-          <option value="month">This Month</option>
-          <option value="3months">Last 3 Months</option>
-          <option value="12months" selected>Last 12 Months</option>
-          <option value="year">This Year</option>
-          <option value="all">All Time</option>
-          <option value="custom">Custom...</option>
-        </select>
-      </div>
-      <div class="stats-filter-group">
-        <label class="filter-label">Caliber</label>
-        <select id="stats-as-caliber" onchange="renderStats()">
-          <option value="">All Calibers</option>
-        </select>
-      </div>
-    </div>
-    <div id="stats-as-custom-range" class="stats-custom-range" style="display:none;">
-      <input type="date" id="stats-as-start" onchange="renderStats()">
-      <span>to</span>
-      <input type="date" id="stats-as-end" onchange="renderStats()">
-    </div>
+    <div id="stats-as-scope-note"></div>
     <div id="stats-as-stats"></div>
     <div id="stats-as-chart"></div>
     <div id="stats-as-breakdown"></div>
     <div id="stats-as-rounds-breakdown"></div>
+    <div id="stats-as-seller-breakdown"></div>
     </div>
 
     <div id="statspane-upkeep" class="stats-pane">

@@ -216,7 +216,7 @@ describe('caliber merge and disclaimer', () => {
   test('tokens with identical firearm signatures merge into one group', async () => {
     const win = await ready(loadApp());
     win.showTab('stats');
-    const options = Array.from(win.document.getElementById('stats-rf-caliber').options).map(o => o.textContent);
+    const options = Array.from(win.document.getElementById('stats-caliber').options).map(o => o.textContent);
     // Demo data: Example Rifle is the only gun with .223 Rem AND 5.56 NATO, so they must merge.
     assert.ok(options.includes('.223 Rem / 5.56 NATO'), 'shared-signature calibers should merge into one option');
     assert.ok(!options.includes('.223 Rem'), 'merged tokens should not also appear as separate options');
@@ -225,10 +225,10 @@ describe('caliber merge and disclaimer', () => {
   test('selecting a merged caliber group returns the same total as the firearm-only filter', async () => {
     const win = await ready(loadApp());
     win.showTab('stats');
-    win.document.getElementById('stats-rf-range').value = '12months';
+    win.document.getElementById('stats-range').value = '12months';
 
-    const gunSelect = win.document.getElementById('stats-rf-firearm');
-    const calSelect = win.document.getElementById('stats-rf-caliber');
+    const gunSelect = win.document.getElementById('stats-firearm');
+    const calSelect = win.document.getElementById('stats-caliber');
     const rifleOpt = Array.from(gunSelect.options).find(o => o.textContent === 'Example Rifle');
     const mergedOpt = Array.from(calSelect.options).find(o => o.textContent === '.223 Rem / 5.56 NATO');
 
@@ -258,7 +258,7 @@ describe('caliber merge and disclaimer', () => {
     }));
 
     win.showTab('stats');
-    const calSelect = win.document.getElementById('stats-rf-caliber');
+    const calSelect = win.document.getElementById('stats-caliber');
     const mergedOpt = Array.from(calSelect.options).find(o => o.textContent === '.223 Rem / 5.56 NATO');
     calSelect.value = mergedOpt.value;
     win.renderStats();
@@ -271,7 +271,7 @@ describe('caliber merge and disclaimer', () => {
   test('no disclaimer when no firearm in scope has extra calibers', async () => {
     const win = await ready(loadApp());
     win.showTab('stats');
-    const calSelect = win.document.getElementById('stats-rf-caliber');
+    const calSelect = win.document.getElementById('stats-caliber');
     const mergedOpt = Array.from(calSelect.options).find(o => o.textContent === '.223 Rem / 5.56 NATO');
     calSelect.value = mergedOpt.value;
     win.renderStats();
@@ -286,10 +286,10 @@ describe('firearm + caliber filter intersection', () => {
   test('incompatible firearm+caliber combo returns zero, not the firearm-only total', async () => {
     const win = await ready(loadApp());
     win.showTab('stats');
-    win.document.getElementById('stats-rf-range').value = '12months';
+    win.document.getElementById('stats-range').value = '12months';
 
-    const gunSelect = win.document.getElementById('stats-rf-firearm');
-    const calSelect = win.document.getElementById('stats-rf-caliber');
+    const gunSelect = win.document.getElementById('stats-firearm');
+    const calSelect = win.document.getElementById('stats-caliber');
     const rifleOpt = Array.from(gunSelect.options).find(o => o.textContent === 'Example Rifle');
     const gaugeOpt = Array.from(calSelect.options).find(o => o.textContent === '12 Gauge');
 
@@ -304,10 +304,10 @@ describe('firearm + caliber filter intersection', () => {
   test('compatible firearm+caliber combo still returns real data', async () => {
     const win = await ready(loadApp());
     win.showTab('stats');
-    win.document.getElementById('stats-rf-range').value = '12months';
+    win.document.getElementById('stats-range').value = '12months';
 
-    const gunSelect = win.document.getElementById('stats-rf-firearm');
-    const calSelect = win.document.getElementById('stats-rf-caliber');
+    const gunSelect = win.document.getElementById('stats-firearm');
+    const calSelect = win.document.getElementById('stats-caliber');
     const shotgunOpt = Array.from(gunSelect.options).find(o => o.textContent === 'Example Shotgun');
     const gaugeOpt = Array.from(calSelect.options).find(o => o.textContent === '12 Gauge');
 
@@ -327,12 +327,12 @@ describe('stats chart bucket granularity', () => {
     const win = await ready(loadApp());
     win.showTab('stats');
 
-    win.document.getElementById('stats-rf-range').value = 'month';
+    win.document.getElementById('stats-range').value = 'month';
     win.renderStats();
     let title = win.document.getElementById('stats-rf-chart').innerHTML.match(/stats-chart-title">([^<]+)</)[1];
     assert.strictEqual(title, 'Rounds per Week');
 
-    win.document.getElementById('stats-rf-range').value = '12months';
+    win.document.getElementById('stats-range').value = '12months';
     win.renderStats();
     title = win.document.getElementById('stats-rf-chart').innerHTML.match(/stats-chart-title">([^<]+)</)[1];
     assert.strictEqual(title, 'Rounds per Month');
@@ -344,15 +344,15 @@ describe('stats chart bucket granularity', () => {
     const isoMinusDays = d => { const dt = new Date(); dt.setDate(dt.getDate() - d); return dt.toISOString().slice(0, 10); };
     const todayStr = new Date().toISOString().slice(0, 10);
 
-    win.document.getElementById('stats-rf-range').value = 'custom';
-    win.handleStatsRangeChange('rf');
-    win.document.getElementById('stats-rf-start').value = isoMinusDays(100);
-    win.document.getElementById('stats-rf-end').value = todayStr;
+    win.document.getElementById('stats-range').value = 'custom';
+    win.handleStatsRangeChange();
+    win.document.getElementById('stats-start').value = isoMinusDays(100);
+    win.document.getElementById('stats-end').value = todayStr;
     win.renderStats();
     let title = win.document.getElementById('stats-rf-chart').innerHTML.match(/stats-chart-title">([^<]+)</)[1];
     assert.strictEqual(title, 'Rounds per Week');
 
-    win.document.getElementById('stats-rf-start').value = isoMinusDays(101);
+    win.document.getElementById('stats-start').value = isoMinusDays(101);
     win.renderStats();
     title = win.document.getElementById('stats-rf-chart').innerHTML.match(/stats-chart-title">([^<]+)</)[1];
     assert.strictEqual(title, 'Rounds per Month');
@@ -362,14 +362,14 @@ describe('stats chart bucket granularity', () => {
     const win = await ready(loadApp());
     win.showTab('stats');
 
-    win.document.getElementById('stats-rf-range').value = '3months';
+    win.document.getElementById('stats-range').value = '3months';
     win.renderStats();
     let chartHtml = win.document.getElementById('stats-rf-chart').innerHTML;
     const barCount = (chartHtml.match(/stats-bar-col/g) || []).length;
     const hiddenCount = (chartHtml.match(/hidden-label/g) || []).length;
     if (barCount > 8) assert.ok(hiddenCount > 0, 'dense weekly charts should thin out labels');
 
-    win.document.getElementById('stats-rf-range').value = '12months';
+    win.document.getElementById('stats-range').value = '12months';
     win.renderStats();
     chartHtml = win.document.getElementById('stats-rf-chart').innerHTML;
     assert.strictEqual((chartHtml.match(/hidden-label/g) || []).length, 0, 'monthly charts (max 12 bars) should never hide labels');
@@ -378,10 +378,10 @@ describe('stats chart bucket granularity', () => {
   test('"Avg / Month" reflects a true calendar-month average regardless of chart bucket granularity', async () => {
     const win = await ready(loadApp());
     win.showTab('stats');
-    win.document.getElementById('stats-rf-range').value = 'month';
-    win.document.getElementById('stats-rf-location').value = '';
-    win.document.getElementById('stats-rf-firearm').value = '';
-    win.document.getElementById('stats-rf-caliber').value = '';
+    win.document.getElementById('stats-range').value = 'month';
+    win.document.getElementById('stats-location').value = '';
+    win.document.getElementById('stats-firearm').value = '';
+    win.document.getElementById('stats-caliber').value = '';
     win.renderStats();
     const stats = [...win.document.getElementById('stats-rf-stats').innerHTML.matchAll(/stats-stat-num">([^<]+)</g)].map(m => m[1]);
     const total = parseInt(stats[0].replace(/,/g, ''), 10);
@@ -704,6 +704,171 @@ describe('group tags', () => {
     const sets = gun.groups.map(g => (g.tags || []).join(','));
     assert.ok(sets.every(s => s.length), 'every demo group is tagged');
     assert.ok(new Set(sets).size > 1, 'not all demo groups share the same tags');
+  });
+});
+
+// ── SHARED STATS FILTER BAR ─────────────────────────────────────────
+// Stats used to carry three independent filter sets, so setting a firearm in Rounds Fired
+// left Ammo Spend reporting every caliber you own with nothing on screen saying so. One bar
+// now drives all four panes; these guard the parts that were previously unfiltered.
+
+describe('shared stats filter bar', () => {
+  const setFilter = (win, id, value) => {
+    const el = win.document.getElementById(id);
+    el.value = value;
+    win.renderStats();
+  };
+  const num = (win, id) => {
+    const el = win.document.getElementById(id);
+    const box = el.querySelector('.stats-stat-num');
+    return box ? box.textContent.replace(/[$,]/g, '') : null;
+  };
+
+  test('there is exactly one of each filter control', async () => {
+    const win = await ready(loadApp());
+    ['stats-range', 'stats-location', 'stats-firearm', 'stats-caliber'].forEach(id => {
+      assert.ok(win.document.getElementById(id), `${id} missing`);
+    });
+    ['stats-rf-range', 'stats-rt-range', 'stats-as-range', 'stats-rf-caliber', 'stats-as-caliber']
+      .forEach(id => assert.strictEqual(win.document.getElementById(id), null,
+        `${id} should be gone — a leftover control means two sources of truth`));
+  });
+
+  test('a firearm filter now reaches Range Trips, which previously ignored it', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    setFilter(win, 'stats-range', 'all');
+    const allTrips = Number(num(win, 'stats-rt-stats'));
+    assert.ok(allTrips > 0);
+
+    const gun = win.buildDefaultData().firearms.find(g => g.name === 'Example Shotgun');
+    setFilter(win, 'stats-firearm', gun.id);
+    const scoped = Number(num(win, 'stats-rt-stats'));
+    assert.ok(scoped < allTrips,
+      `trips should narrow to the ones this firearm was shot on (${scoped} vs ${allTrips})`);
+    assert.ok(scoped > 0, 'the demo shotgun is shot on some trips');
+  });
+
+  test('a firearm filter reaches Ammo Spend, scoped to that firearm\'s calibers', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    setFilter(win, 'stats-range', 'all');
+    const allSpend = Number(num(win, 'stats-as-stats'));
+
+    const gun = win.buildDefaultData().firearms.find(g => g.name === 'Example Shotgun');
+    setFilter(win, 'stats-firearm', gun.id);
+    const scoped = Number(num(win, 'stats-as-stats'));
+    assert.ok(scoped < allSpend, 'spend narrows to the calibers this firearm uses');
+
+    // And it must say what it did, because the number is weaker than it looks. Collapse
+    // whitespace first — the copy wraps in the source and would otherwise defeat the match.
+    const note = win.document.getElementById('stats-as-scope-note')
+      .textContent.replace(/\s+/g, ' ');
+    assert.match(note, /calibers/i);
+    assert.match(note, /not what it consumed/i,
+      'the limit of the inference has to be on screen, not just in a comment');
+  });
+
+  test('clearing the firearm filter removes the scope note', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    const gun = win.buildDefaultData().firearms[0];
+    setFilter(win, 'stats-firearm', gun.id);
+    assert.ok(win.document.getElementById('stats-as-scope-note').textContent.length > 0);
+    setFilter(win, 'stats-firearm', '');
+    assert.strictEqual(win.document.getElementById('stats-as-scope-note').textContent.trim(), '');
+  });
+
+  test('filters that cannot apply are disabled and explained, not silently ignored', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+
+    win.showStatsSection('practice');
+    ['range', 'location', 'firearm', 'caliber'].forEach(k =>
+      assert.strictEqual(win.document.getElementById('stats-' + k).disabled, false,
+        `${k} should be live on Practice`));
+
+    win.showStatsSection('money');
+    assert.strictEqual(win.document.getElementById('stats-location').disabled, true,
+      'purchases have a seller, not a location');
+    assert.ok(win.document.getElementById('statsf-location').classList.contains('na'));
+    assert.match(win.document.getElementById('stats-filter-note').textContent, /seller/);
+
+    win.showStatsSection('upkeep');
+    assert.strictEqual(win.document.getElementById('stats-range').disabled, true,
+      'rounds since clean is a state now, not a period');
+    assert.match(win.document.getElementById('stats-filter-note').textContent, /state now/);
+  });
+
+  test('the caliber filter uses merged groups everywhere, including Money', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    const opts = [...win.document.getElementById('stats-caliber').options].map(o => o.value);
+    // A merged group's value joins its tokens; a raw single caliber has no separator.
+    assert.ok(opts.some(v => v.includes('||')),
+      'demo data has a firearm with two calibers, so a merged option must exist');
+  });
+
+  test('Upkeep narrows to the filtered firearm', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    win.showStatsSection('upkeep');
+    const count = () => win.document.querySelectorAll('#stats-upkeep-cleaning .breakdown-row').length;
+    const all = count();
+    const gun = win.buildDefaultData().firearms[0];
+    setFilter(win, 'stats-firearm', gun.id);
+    assert.strictEqual(count(), 1, `one firearm selected, ${all} shown before`);
+  });
+});
+
+// ── SPEND BY STORE ──────────────────────────────────────────────────
+
+describe('spend by store', () => {
+  test('purchases are grouped by seller and sorted by spend', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    win.document.getElementById('stats-range').value = 'all';
+    win.renderStats();
+    const el = win.document.getElementById('stats-as-seller-breakdown');
+    const vals = [...el.querySelectorAll('.breakdown-val')]
+      .map(v => parseFloat(v.textContent.replace('$', '')));
+    assert.ok(vals.length > 0, 'demo purchases carry sellers');
+    vals.forEach((v, i) => {
+      if (i) assert.ok(v <= vals[i - 1] + 1e-9, 'stores are ranked by spend');
+    });
+  });
+
+  test('price per round is withheld until a single caliber is in scope', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    win.document.getElementById('stats-range').value = 'all';
+    win.renderStats();
+    const el = () => win.document.getElementById('stats-as-seller-breakdown');
+
+    // Mixed calibers: comparing $/rd between stores would compare products, not prices.
+    assert.doesNotMatch(el().textContent, /\/rd/,
+      'a blended per-round price across calibers is not a price comparison');
+    assert.match(el().textContent, /single caliber/i, 'and it should say why');
+
+    const merged = [...win.document.getElementById('stats-caliber').options]
+      .find(o => o.value && !o.value.includes('||'));
+    win.document.getElementById('stats-caliber').value = merged.value;
+    win.renderStats();
+    assert.match(el().textContent, /\/rd/,
+      'one caliber in scope makes the stores comparable, so show it');
+  });
+
+  test('purchases with no seller are still counted, under a named bucket', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    win.document.getElementById('stats-range').value = 'all';
+    win.renderStats();
+    const total = [...win.document.querySelectorAll('#stats-as-seller-breakdown .breakdown-val')]
+      .reduce((s, v) => s + parseFloat(v.textContent.replace('$', '')), 0);
+    const headline = parseFloat(win.document.querySelector('#stats-as-stats .stats-stat-num')
+      .textContent.replace(/[$,]/g, ''));
+    assert.ok(Math.abs(total - headline) < 0.02,
+      `store spend (${total.toFixed(2)}) must add up to total spend (${headline.toFixed(2)})`);
   });
 });
 

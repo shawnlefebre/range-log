@@ -86,6 +86,39 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   await page.waitForTimeout(300);
   ck('returning to Stats restores a visible pane', (await visible()).length === 1);
 
+  // The shared bar must stay put across panes rather than each pane owning one.
+  ck('there is exactly one filter bar', await page.locator('#stats-filters').count() === 1);
+  ck('the filter bar sits above the panes, not inside one', await page.evaluate(() =>
+    document.getElementById('stats-filters').closest('.stats-pane') === null));
+
+  await page.click('#statstab-money');
+  await page.waitForTimeout(300);
+  const moneyBar = await page.evaluate(() => ({
+    locDim: getComputedStyle(document.getElementById('statsf-location')).opacity,
+    locDisabled: document.getElementById('stats-location').disabled,
+    note: document.getElementById('stats-filter-note').textContent,
+    visible: document.getElementById('stats-filters').offsetParent !== null,
+  }));
+  ck('Money dims the location filter rather than hiding it',
+    parseFloat(moneyBar.locDim) < 0.6 && moneyBar.visible);
+  ck('Money disables it for real', moneyBar.locDisabled);
+  ck('Money says why it is off', /seller/.test(moneyBar.note));
+
+  // Spend by store, with a real seller list.
+  await page.selectOption('#stats-range', 'all');
+  await page.waitForTimeout(300);
+  const stores = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#stats-as-seller-breakdown .breakdown-row')];
+    return { n: rows.length,
+      vals: rows.map(r => parseFloat(r.querySelector('.breakdown-val').textContent.replace('$',''))),
+      text: document.getElementById('stats-as-seller-breakdown').textContent };
+  });
+  ck('spend by store lists the demo sellers', stores.n > 0);
+  ck('stores are ranked by spend',
+    stores.vals.every((v, i) => i === 0 || v <= stores.vals[i-1] + 0.001));
+  ck('no blended per-round price while calibers are mixed', !/\/rd/.test(stores.text));
+  await page.locator('#statspane-money').screenshot({ path: path.join(ARTIFACTS,'stats-money.png') });
+
   let bad=0;
   checks.forEach(([n,ok])=>{ if(!ok) bad++; console.log(`${ok?'ok  ':'FAIL'} ${n}`); });
   if (errs.length) { bad++; console.log('ERRORS '+[...new Set(errs)].join(' | ')); }

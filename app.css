@@ -1557,3 +1557,26 @@
   .stats-pane { display: none; }
   .stats-pane.active { display: block; }
   .stats-pane > .stats-section-title:first-child { margin-top: 0; }
+
+  /* A filter that cannot apply to the current pane is dimmed and disabled rather than
+     hidden. A control that vanishes is harder to reason about than one visibly switched
+     off — and the note underneath says why it is off. */
+  .stats-filter-group.na { opacity: 0.38; }
+  .stats-filter-group.na select { cursor: not-allowed; }
+  .stats-filter-note {
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    line-height: 1.5;
+    color: var(--text-dim);
+    margin: -4px 0 12px;
+  }
+  .stats-filter-note:empty { display: none; }
+  .stats-note {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    line-height: 1.55;
+    color: var(--text-dim);
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid var(--surface3);
+  }
