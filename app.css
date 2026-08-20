@@ -1683,3 +1683,53 @@
     font-weight: 400;
     margin-left: 2px;
   }
+
+  /* Cost Per Trip rows. Tappable, and the list scrolls in place past a handful of trips
+     rather than being truncated — same panel treatment the Details lists use. */
+  .trip-list.list-scroll { max-height: 46vh; padding: 6px 8px 6px 6px; }
+  .trip-row.tappable { cursor: pointer; border-radius: 4px; padding: 6px; margin: 0 -6px 4px; }
+  .trip-row.tappable:hover { background: var(--surface2); }
+  .trip-row.tappable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .trip-guns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+    margin-top: 5px;
+  }
+  .trip-guns span {
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    color: var(--text-muted);
+    background: var(--surface2);
+    border-radius: 3px;
+    padding: 2px 6px;
+  }
+  .trip-guns b { color: var(--text); font-weight: 600; }
+
+  .session-card.tappable { cursor: pointer; }
+  .session-card.tappable:hover { background: var(--surface2); }
+  .session-card.tappable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* A ranked list with a direction control. The toggle sits in the title row rather than
+     above the list, so it reads as a property of the ranking. */
+  .stats-chart-title.sortable {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .sort-toggle {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    text-transform: none;
+    white-space: nowrap;
+  }
+  .sort-toggle:hover { border-color: var(--accent-dim); color: var(--text); }
+  .sort-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

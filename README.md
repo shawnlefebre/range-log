@@ -50,20 +50,20 @@ Two things it deliberately tells you:
   multi-valued. The counts won't add up to your group total, and the chart says why rather
   than quietly disagreeing with itself.
 
-Distances are normalised first, so 25 ft and 8.333 yd are one bucket rather than two.
+Distances are normalized first, so 25 ft and 8.333 yd are one bucket rather than two.
 
 ## Point of impact
 
 The last chart under **Stats → Groups**. Group size tells you what the firearm can do; this
-tells you whether it's pointed where you think — each dot is one group's *centre* relative to
+tells you whether it's pointed where you think — each dot is one group's *center* relative to
 your aim, with rings at whole MOA.
 
-It's coloured by whatever **Compare by** is set to, so the two charts read together, with a
-cross marking each row's median. Beyond four rows it stops colouring: the palette is
+It's colored by whatever **Compare by** is set to, so the two charts read together, with a
+cross marking each row's median. Beyond four rows it stops coloring: the palette is
 validated for four series against the dark background, and a fifth can't be added without
-failing colourblind separation.
+failing colorblind separation.
 
-Underneath, it says in words where things actually sit — *"typical centre is 0.74 MOA high
+Underneath, it says in words where things actually sit — *"typical center is 0.74 MOA high
 and 0.48 MOA right of aim across 15 groups"* — which is usually the sentence you wanted.
 
 **If a re-zero falls inside the range you're looking at, it says so.** Point of impact before
@@ -91,7 +91,7 @@ Open a firearm's **View Details → Groups → + Add Group** to measure a target
 
 1. Take or choose a photo of the target
 2. Mark a **known distance** on it — one square of a 1-inch grid, say — so the app knows the scale
-3. Mark your **point of aim**, then the **centre of each hole**
+3. Mark your **point of aim**, then the **center of each hole**
 
 You get group size (extreme spread), mean radius, width and height, and how far the group sits from your point of aim — in inches, MOA and MRAD. The reticle is drawn at your bullet's true diameter as you mark, so it sits over the hole like a lid.
 
@@ -108,13 +108,13 @@ You get group size (extreme spread), mean radius, width and height, and how far 
 The app reports several measurements because they answer different questions.
 
 **Group size (extreme spread)** is the conventional figure — the distance between the two
-farthest holes, centre to centre. It's what most people quote, but it uses only two shots
+farthest holes, center to center. It's what most people quote, but it uses only two shots
 and ignores the rest, so it grows with how many rounds you fired. From the same rifle, a
 5-shot group runs roughly 25% larger than a 3-shot, and a 10-shot roughly 55% larger.
 Comparing groups of different shot counts by this number flatters whichever had fewer
 shots.
 
-**Mean radius** is the average distance of each hole from the centre of the group. It uses
+**Mean radius** is the average distance of each hole from the center of the group. It uses
 every shot and doesn't drift with sample size, which makes it the fair way to compare
 groups — and the number to trust when your shot counts aren't consistent.
 
@@ -125,7 +125,7 @@ the headline figures are MOA for this reason.
 
 **Elevation and windage offsets** describe where the group sat relative to your point of
 aim — a zeroing question, not an accuracy one. A tight group in the wrong place and a loose
-group centred on your aim are different problems, and the offsets separate them.
+group centered on your aim are different problems, and the offsets separate them.
 
 Set a firearm's **optic adjustment unit** (MOA or MRAD) and its offsets lead with that
 unit, so they read in whatever your turret is marked in; all three units are shown either
@@ -165,7 +165,7 @@ questions and nobody reads past the first:
 - **Money** — ammo spend, cost per round, spend by store, what shooting actually costs, and how fast you burn each chambering.
 - **Upkeep** — rounds since the last deep clean against each firearm's own threshold, sorted
   by whoever needs it most. Amber past 80%, red past due — always with the number and the
-  word beside it, so the state never depends on colour alone.
+  word beside it, so the state never depends on color alone.
 
 One filter bar — time range, location, firearm, caliber — drives all four panes, so the whole
 screen answers the same question. A filter that can't apply to the pane you're on is dimmed
@@ -182,9 +182,10 @@ Two things there are deliberately careful:
 - **Filtering money by firearm is an inference.** Purchases are logged per caliber and never
   per firearm, so picking a rifle shows spend on the calibers it uses — including ammo you
   actually put through something else chambered the same way. The screen says so.
-- **Each range trip carries its estimated cost**, on the session card and ranked dearest-first
-  under Money. The spread is wider than an average suggests — the per-round rate beside each
-  trip is what explains it, since a rimfire afternoon and a centrefire one cost very different
+- **Each range trip carries its estimated cost**, on the session card and ranked under Money
+  — most expensive first, or flip it to see what a cheap afternoon looks like. Each row lists
+  the firearms and round counts that explain the figure, and tapping one opens that session. The spread is wider than an average suggests — the per-round rate beside each
+  trip is what explains it, since a rimfire afternoon and a centerfire one cost very different
   money for the same round count.
 - **Cost of shooting is not total spend.** Total spend is what left your wallet; this is
   what actually went downrange — rounds fired times the average price of range ammo for that

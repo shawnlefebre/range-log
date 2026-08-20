@@ -12,7 +12,7 @@
 // v9: gun.groups array added — target group analyses, each
 //     {id, date, distance, distanceUnit, ammo, bulletDia, calMode, calInches, calInchesH,
 //      calPts[], poa, impacts[], photoId}
-//     Marked points are normalised by image WIDTH on both axes (so aspect is preserved
+//     Marked points are normalized by image WIDTH on both axes (so aspect is preserved
 //     and they stay valid at any resolution, with or without the photo). Group size,
 //     mean radius, W/H and offsets are always recomputed, never stored.
 // v10: group.sessionId added — links a group to the range session it was shot at, or
@@ -55,7 +55,7 @@ const FIREARM_TYPES = {
 
 // Bullet diameters in inches, used to draw impact marks at true size while marking a
 // group. Calibers in this app are free text, so this is a best-effort lookup with a
-// manual override in the group form for anything it doesn't recognise.
+// manual override in the group form for anything it doesn't recognize.
 const CALIBER_DIAMETERS = {
   '.22 lr': 0.223, '.22lr': 0.223, '22 lr': 0.223,
   '.223 rem': 0.224, '.223': 0.224, '5.56 nato': 0.224, '5.56': 0.224, '5.56x45': 0.224,
@@ -76,7 +76,7 @@ const CALIBER_DIAMETERS = {
   '28 gauge': 0.550, '20 gauge': 0.615, '16 gauge': 0.663, '12 gauge': 0.729, '10 gauge': 0.775,
 };
 
-// Resolves a caliber string to a bullet diameter, or null when it isn't recognised.
+// Resolves a caliber string to a bullet diameter, or null when it isn't recognized.
 function caliberDiameter(caliber) {
   if (!caliber) return null;
   const key = String(caliber).trim().toLowerCase();
@@ -84,7 +84,7 @@ function caliberDiameter(caliber) {
 }
 
 // Best guess for a group's bullet diameter: the chosen ammo's caliber first, then the
-// firearm's primary caliber. Returns null when neither is recognised, leaving it to
+// firearm's primary caliber. Returns null when neither is recognized, leaving it to
 // the manual field rather than inventing a number.
 function guessBulletDiameter(gun, ammoLabel) {
   const match = (data.ammo || []).find(a => ammoDisplayLabel(a) === ammoLabel);
@@ -239,7 +239,7 @@ function generateDemoData() {
 
   // Sample groups so the feature is discoverable on a fresh load. They hang off a real
   // session — one the rifle actually shot at — so the session scorecard has something to
-  // show. Points are normalised by image width; 0.01 unit == 1 inch at this scale.
+  // show. Points are normalized by image width; 0.01 unit == 1 inch at this scale.
   {
     // Hang them off the most recent session the rifle shot at — sessions list newest
     // first, so a recent one is what you actually see.
@@ -254,7 +254,7 @@ function generateDemoData() {
     const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
     const gauss = () => (rnd() + rnd() + rnd() + rnd() - 2) / 2;
 
-    // 0.10 normalised units == 1 inch at this scale; these land around 1-1.5 MOA at 50 yd.
+    // 0.10 normalized units == 1 inch at this scale; these land around 1-1.5 MOA at 50 yd.
     const spreads = [0.085, 0.075, 0.060];
     spreads.forEach((sd, gi) => {
       const impacts = [0, 1, 2, 3, 4].map(() => ({
@@ -905,15 +905,16 @@ function renderSessions() {
       return `<div class="session-gun-pill">${gun ? gun.name : 'Unknown'} <span>${r}</span></div>`;
     }).join('');
     return `
-      <div class="session-card">
+      <div class="session-card tappable" onclick="openViewSession('${s.id}')"
+           role="button" tabindex="0" title="View this session">
         <div class="session-header">
           <div class="session-date">${fmtDate(s.date)}</div>
           <div style="display:flex;align-items:center;gap:10px;">
             <div class="session-total">${s.totalRounds} rds${
               money.cost > 0 ? ` <span class="session-cost" title="Estimated from the average price of range ammo for each firearm's chambering">~$${money.cost.toFixed(2)}</span>` : ''
             }</div>
-            <button class="btn-icon" onclick="openEditSession('${s.id}')" title="Edit">✏️</button>
-            <button class="btn-icon" onclick="deleteSession('${s.id}')" title="Delete">🗑</button>
+            <button class="btn-icon" onclick="event.stopPropagation(); openEditSession('${s.id}')" title="Edit">✏️</button>
+            <button class="btn-icon" onclick="event.stopPropagation(); deleteSession('${s.id}')" title="Delete">🗑</button>
           </div>
         </div>
         ${s.locationId ? `<div class="session-location">${loc ? loc.name : 'Unknown location'}</div>` : ''}
@@ -1892,10 +1893,45 @@ function deleteDope(gunId, dopeId) {
 }
 
 // ── SESSION EDIT / DELETE ─────────────────────────────────────────
-function openEditSession(id) {
+// Reading a trip and changing one are different intentions — the same argument that put
+// zeros, groups, dope tables and ammo purchases behind a read-only view.
+let sessionReadOnly = false;
+
+function sessionApplyMode() {
+  const modal = document.getElementById('modal-session');
+  modal.classList.toggle('viewing', sessionReadOnly);
+  ['session-edit-date', 'session-edit-location', 'session-edit-notes'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = sessionReadOnly;
+  });
+  // The per-firearm round inputs are rebuilt on every open, so they are disabled here.
+  modal.querySelectorAll('#session-edit-gun-inputs input').forEach(el => {
+    el.disabled = sessionReadOnly;
+  });
+  document.getElementById('session-buttons').innerHTML = sessionReadOnly
+    ? `<button class="btn btn-secondary" onclick="closeModal('modal-session')">Close</button>
+       <button class="btn btn-primary" onclick="sessionEnterEdit()">Edit</button>`
+    : `<button class="btn btn-secondary" onclick="closeModal('modal-session')">Cancel</button>
+       <button class="btn btn-primary" onclick="saveSessionEdit()">Save</button>`;
+}
+
+function openViewSession(id) {
+  return openEditSession(id, true);
+}
+
+function sessionEnterEdit() {
+  sessionReadOnly = false;
+  document.getElementById('session-modal-title').textContent = 'Edit Session';
+  sessionApplyMode();
+}
+
+function openEditSession(id, readOnly) {
+  sessionReadOnly = !!readOnly;
   const s = data.sessions.find(s => s.id === id);
   if (!s) return;
 
+  document.getElementById('session-modal-title').textContent =
+    sessionReadOnly ? 'Range Session' : 'Edit Session';
   document.getElementById('session-edit-id').value = id;
   document.getElementById('session-edit-date').value = s.date;
   document.getElementById('session-edit-notes').value = s.notes || '';
@@ -1916,6 +1952,7 @@ function openEditSession(id) {
     </div>
   `).join('');
 
+  sessionApplyMode();
   openModal('modal-session');
 }
 
@@ -2767,9 +2804,19 @@ function renderCostToShoot() {
     </div>`;
 }
 
-// The average trip cost hides a lot: on real data the dearest range day runs nearly ten
-// times the cheapest, and it is driven by what got shot rather than how much. Ranking the
-// trips shows which ones were expensive, and the per-round rate beside each says why.
+// The average trip cost hides a lot: on real data the most expensive range day runs nearly
+// ten times the cheapest, and it is driven by what got shot rather than how much. Ranking the
+// trips shows which ones ran high, and the per-round rate beside each says why.
+// Which end of the ranking you care about depends on the question: "what did I splurge on"
+// reads from the top, "what does a cheap afternoon look like" reads from the bottom. Cheaper
+// to offer both than to make someone scroll to the end of 22 trips.
+let tripSortDesc = true;
+
+function toggleTripSort() {
+  tripSortDesc = !tripSortDesc;
+  renderCostPerTrip();
+}
+
 function renderCostPerTrip() {
   const el = document.getElementById('stats-as-trips');
   if (!el) return;
@@ -2781,16 +2828,26 @@ function renderCostPerTrip() {
     .filter(s => (!start || s.date >= start) && (!end || s.date <= end))
     .map(s => ({ s, ...sessionCost(s, priced, scoped) }))
     .filter(r => r.cost > 0)
-    .sort((a, b) => b.cost - a.cost);
+    .sort((a, b) => tripSortDesc ? b.cost - a.cost : a.cost - b.cost);
   if (rows.length < 2) { el.innerHTML = ''; return; }
 
-  const max = rows[0].cost;
-  const CAP = 8;
-  const shown = rows.slice(0, CAP);
-  const rowsHtml = shown.map(r => {
+  // Bar width stays relative to the most expensive trip whichever way the list is sorted,
+  // so reversing the order rearranges the rows without redrawing every bar full-width.
+  const max = Math.max(...rows.map(r => r.cost));
+  const rowsHtml = rows.map(r => {
     const loc = data.locations.find(l => l.id === r.s.locationId);
+    // What was actually shot, which is the thing that explains the cost.
+    const guns = Object.entries(r.s.rounds || {})
+      .filter(([gid]) => !scoped || scoped.has(gid))
+      .map(([gid, n]) => {
+        const gun = (data.firearms || []).find(g => g.id === gid);
+        return gun ? { name: gun.name, n } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.n - a.n);
     return `
-      <div class="breakdown-row">
+      <div class="breakdown-row trip-row tappable" onclick="openViewSession('${r.s.id}')"
+           role="button" tabindex="0" title="View this session">
         <div class="breakdown-top">
           <span class="breakdown-name">${fmtDate(r.s.date)}</span>
           <span class="breakdown-val">$${r.cost.toFixed(2)}</span>
@@ -2800,21 +2857,41 @@ function renderCostPerTrip() {
         </div>
         <div class="breakdown-pct">${r.rounds.toLocaleString()} rounds at $${r.cpr.toFixed(3)}/rd${
           loc ? ` · ${loc.name}` : ''}</div>
+        <div class="trip-guns">${guns.map(g =>
+          `<span>${g.name} <b>${g.n}</b></span>`).join('')}</div>
       </div>`;
   }).join('');
 
   const costs = rows.map(r => r.cost);
-  const cheapest = Math.min(...costs), dearest = Math.max(...costs);
-  return el.innerHTML = `
+  const cheapest = Math.min(...costs), priciest = Math.max(...costs);
+  // Scrolls inside itself past a handful of trips rather than capping the list — the same
+  // treatment the Details lists get, so a long record stays browsable without pushing
+  // everything below it off screen.
+  const panel = rows.length > 5 ? ' list-scroll' : '';
+  el.innerHTML = `
     <div class="stats-chart-card">
-      <div class="stats-chart-title">Cost Per Trip</div>
-      ${rowsHtml}
-      ${rows.length > CAP
-        ? `<div class="stats-note">Showing the ${CAP} dearest of ${rows.length} trips.</div>` : ''}
-      <div class="stats-note">Dearest trip ran ${(dearest / cheapest).toFixed(1)}× the cheapest.
-        The per-round rate is the tell: a rimfire afternoon and a centrefire one cost very
-        different money for the same round count. Estimated the same way as above.</div>
+      <div class="stats-chart-title sortable">
+        <span>Cost Per Trip</span>
+        <button class="sort-toggle" onclick="toggleTripSort()"
+                aria-label="Sort by cost, ${tripSortDesc ? 'ascending' : 'descending'}">
+          ${tripSortDesc ? 'Most first ▾' : 'Least first ▴'}
+        </button>
+      </div>
+      <div class="trip-list${panel}" id="stats-trip-list">${rowsHtml}</div>
+      <div class="stats-note">${rows.length} trips — tap one to open it. The most expensive ran
+        ${(priciest / cheapest).toFixed(1)}× the cheapest. The per-round rate is the tell: a
+        rimfire afternoon and a centerfire one cost very different money for the same round
+        count. Estimated the same way as above.</div>
     </div>`;
+
+  const list = document.getElementById('stats-trip-list');
+  if (list && panel) {
+    if (!list.dataset.scrollBound) {
+      list.addEventListener('scroll', () => markHistoryScrollEnd(list), { passive: true });
+      list.dataset.scrollBound = '1';
+    }
+    markHistoryScrollEnd(list);
+  }
 }
 
 // ── BURN RATE ─────────────────────────────────────────────────────
@@ -2903,7 +2980,7 @@ function renderBurnRate() {
 // Median rather than mean throughout: a single group is a noisy estimate, and two lucky
 // ones shouldn't move a load or a session up the ranking.
 // 25 ft and 8.333 yd are the same distance typed two ways. Anything that buckets by
-// distance normalises first, or one distance shows up as two.
+// distance normalizes first, or one distance shows up as two.
 function groupDistanceYards(g) {
   const u = g.distanceUnit || 'yd';
   const d = Number(g.distance) || 0;
@@ -2964,7 +3041,7 @@ function groupsInScope() {
       mrMOA: m && distIn ? toMOA(m.meanRadius, distIn) : null,
       mrIn: m ? m.meanRadius : null,
       esMOA: m && distIn ? toMOA(m.es, distIn) : null,
-      // Group centre relative to point of aim. +x right, +y up.
+      // Group center relative to point of aim. +x right, +y up.
       offXMOA: m && distIn ? toMOA(m.cx, distIn) : null,
       offYMOA: m && distIn ? toMOA(m.cy, distIn) : null,
       distance: g.distance, distanceUnit: g.distanceUnit || 'yd',
@@ -3214,7 +3291,7 @@ function renderGroupPOI(gun, groups) {
   const usable = groups.filter(g => g.offXMOA != null && g.offYMOA != null);
   if (usable.length < 2) { el.innerHTML = ''; return; }
 
-  // Coloured by whatever the comparison is grouped by, so the two charts read together.
+  // Colored by whatever the comparison is grouped by, so the two charts read together.
   const key = document.getElementById('stats-groups-compare-by').value;
   const dim = GROUP_COMPARE_DIMS[key] || GROUP_COMPARE_DIMS.ammo;
   const buckets = {};
@@ -3223,8 +3300,8 @@ function renderGroupPOI(gun, groups) {
   const SERIES = ['#ba8c01', '#1f68bc', '#cf5a93', '#007c59'];
   const ACCENT = '#c8a84b';
   // The palette is validated for four series against this surface; a fifth cannot be added
-  // without failing colour-blind separation, so beyond four everything goes one colour.
-  const coloured = names.length >= 2 && names.length <= SERIES.length;
+  // without failing color-blind separation, so beyond four everything goes one color.
+  const colored = names.length >= 2 && names.length <= SERIES.length;
 
   const W = 300, H = 300, C = W / 2, PAD = 26;
   const reach = Math.max(
@@ -3249,20 +3326,20 @@ function renderGroupPOI(gun, groups) {
                 font-size="8.5">up</text>`;
 
   names.forEach((n, i) => {
-    const c = coloured ? SERIES[i % SERIES.length] : ACCENT;
+    const c = colored ? SERIES[i % SERIES.length] : ACCENT;
     buckets[n].forEach(g => {
       svg += `<circle cx="${px(g.offXMOA)}" cy="${py(g.offYMOA)}" r="4" fill="${c}"
                       opacity="0.82" stroke="var(--surface)" stroke-width="1.2"/>`;
     });
-    if (coloured) {
+    if (colored) {
       const mx = statsMedian(buckets[n].map(g => g.offXMOA));
       const my = statsMedian(buckets[n].map(g => g.offYMOA));
-      svg += `<path class="poi-centre" d="M${px(mx) - 7} ${py(my)}h14M${px(mx)} ${py(my) - 7}v14"
+      svg += `<path class="poi-center" d="M${px(mx) - 7} ${py(my)}h14M${px(mx)} ${py(my) - 7}v14"
                     stroke="${c}" stroke-width="2" fill="none"/>`;
     }
   });
 
-  const legend = coloured
+  const legend = colored
     ? `<div class="poi-legend">${names.map((n, i) =>
         `<span><i style="background:${SERIES[i % SERIES.length]}"></i>${
           key === 'day' ? fmtDate(n) : shortLoadName(n)}</span>`).join('')}</div>`
@@ -3272,7 +3349,7 @@ function renderGroupPOI(gun, groups) {
   const my = statsMedian(usable.map(g => g.offYMOA));
   const dirX = Math.abs(mx) < 0.05 ? '' : `${gFmt(Math.abs(mx))} MOA ${mx > 0 ? 'right' : 'left'}`;
   const dirY = Math.abs(my) < 0.05 ? '' : `${gFmt(Math.abs(my))} MOA ${my > 0 ? 'high' : 'low'}`;
-  const centred = !dirX && !dirY;
+  const centered = !dirX && !dirY;
 
   // A re-zero inside the visible range means these dots are not one measurement. Point of
   // impact before and after a zero change are different questions, and averaging across one
@@ -3288,13 +3365,13 @@ function renderGroupPOI(gun, groups) {
       <div class="stats-chart-title">Point of Impact</div>
       <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet"
            style="max-width:340px;margin:0 auto;" role="img"
-           aria-label="Group centres relative to point of aim">${svg}</svg>
+           aria-label="Group centers relative to point of aim">${svg}</svg>
       ${legend}
-      <div class="stats-note">Each dot is one group's <b>centre</b> against your aim${
-        coloured ? ', the cross its median per row' : ''}. ${
-        centred
-          ? `Typical centre sits on aim.`
-          : `Typical centre is ${[dirY, dirX].filter(Boolean).join(' and ')} of aim across
+      <div class="stats-note">Each dot is one group's <b>center</b> against your aim${
+        colored ? ', the cross its median per row' : ''}. ${
+        centered
+          ? `Typical center sits on aim.`
+          : `Typical center is ${[dirY, dirX].filter(Boolean).join(' and ')} of aim across
              ${usable.length} groups.`}
         ${spanning.length
           ? `<br><b>A re-zero falls inside this range</b> (${spanning.map(z => fmtDate(z.date)).join(', ')}),
@@ -3325,8 +3402,8 @@ function renderUpkeepStats() {
   // Reuses the breakdown-row pattern from Rounds Fired and Ammo Spend rather than inventing
   // a third bar style.
   const rowsHtml = rows.map(r => {
-    // Status colour is legitimate here — this is a state, not a series — and it is always
-    // paired with the number, so it never depends on colour alone.
+    // Status color is legitimate here — this is a state, not a series — and it is always
+    // paired with the number, so it never depends on color alone.
     const state = r.pct >= 1 ? 'danger' : r.pct >= 0.8 ? 'warn' : 'ok';
     const label = r.pct >= 1 ? 'past due' : r.pct >= 0.8 ? 'due soon' : 'ok';
     const lastDeep = lastDeepCleanDate(r.gun);
@@ -3744,7 +3821,7 @@ function renderSellerSpend(purchases, tokens, rangeOnly) {
 }
 
 // ── GROUP ANALYSIS ────────────────────────────────────────────────
-// Marked points are stored normalised by image WIDTH on both axes, so aspect ratio is
+// Marked points are stored normalized by image WIDTH on both axes, so aspect ratio is
 // preserved and the numbers stay meaningful at any resolution — and, critically, with
 // or without the photo. Every metric below is derived on demand; nothing is stored.
 
@@ -3857,12 +3934,12 @@ function groupToInches(g) {
   }
 
   if (!g.calPts || g.calPts.length < 2) return null;
-  const per = gDist(g.calPts[0], g.calPts[1]) / calW;   // normalised units per inch
+  const per = gDist(g.calPts[0], g.calPts[1]) / calW;   // normalized units per inch
   if (!isFinite(per) || per <= 0) return null;
   return g.impacts.map(p => ({ x: (p.x - g.poa.x) / per, y: -(p.y - g.poa.y) / per }));
 }
 
-// Normalised units per inch, for drawing impact marks at true bullet size.
+// Normalized units per inch, for drawing impact marks at true bullet size.
 function groupUnitsPerInch(g) {
   const calW = Number(g.calInches);
   if (!(calW > 0)) return null;
@@ -3972,7 +4049,7 @@ function parseExifTiff(dv, start) {
 }
 
 /* ---- canvas view ---- */
-// Points live in normalised units (x/imgW, y/imgW); these map to and from screen pixels.
+// Points live in normalized units (x/imgW, y/imgW); these map to and from screen pixels.
 function gCanvas() { return document.getElementById('group-canvas'); }
 function gNormToScreen(p) {
   return { x: p.x * G.imgW * G.view.scale + G.view.ox, y: p.y * G.imgW * G.view.scale + G.view.oy };
@@ -5410,7 +5487,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.13';
+const APP_VERSION = '7.1.14';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

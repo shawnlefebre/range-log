@@ -1136,7 +1136,7 @@ describe('point of impact map', () => {
     open(win, gun.id, 'ammo');   // demo groups share one ammo → a single bucket
     const oneBucket = poi(win).querySelectorAll('.poi-legend span').length;
     assert.strictEqual(oneBucket, 0, 'one bucket needs no legend');
-    assert.strictEqual(poi(win).querySelectorAll('.poi-centre').length, 0,
+    assert.strictEqual(poi(win).querySelectorAll('.poi-center').length, 0,
       'and no per-row median cross');
 
     open(win, gun.id, 'tag');    // demo groups carry several tags
@@ -1146,7 +1146,7 @@ describe('point of impact map', () => {
     const legend = poi(win).querySelectorAll('.poi-legend span').length;
     if (names.size >= 2 && names.size <= 4) {
       assert.strictEqual(legend, names.size, 'each bucket is named beside its colour');
-      assert.strictEqual(poi(win).querySelectorAll('.poi-centre').length, names.size);
+      assert.strictEqual(poi(win).querySelectorAll('.poi-center').length, names.size);
     } else {
       assert.strictEqual(legend, 0,
         'beyond four buckets the palette cannot separate them, so it stops colouring');
@@ -1702,6 +1702,183 @@ describe('cost of shooting', () => {
   });
 });
 
+// ── VIEWING A SESSION ───────────────────────────────────────────────
+
+describe('viewing a session', () => {
+  const newest = win => [...win.buildDefaultData().sessions]
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+
+  test('tapping a session opens it inert, with Edit rather than Save', async () => {
+    const win = await ready(loadApp());
+    win.openViewSession(newest(win).id);
+    assert.ok(win.document.getElementById('modal-session').classList.contains('viewing'));
+    ['session-edit-date', 'session-edit-location', 'session-edit-notes'].forEach(id =>
+      assert.strictEqual(win.document.getElementById(id).disabled, true, `${id} should be inert`));
+
+    const rounds = [...win.document.querySelectorAll('#session-edit-gun-inputs input')];
+    assert.ok(rounds.length, 'the per-firearm round inputs are shown');
+    assert.ok(rounds.every(i => i.disabled),
+      'the round counts are rebuilt on open, so they must be disabled after that');
+
+    const buttons = flat(win.document.getElementById('session-buttons'));
+    assert.match(buttons, /Edit/);
+    assert.doesNotMatch(buttons, /Save/);
+    assert.match(win.document.getElementById('session-modal-title').textContent, /^Range Session$/);
+  });
+
+  test('Edit unlocks it, including the round inputs', async () => {
+    const win = await ready(loadApp());
+    win.openViewSession(newest(win).id);
+    win.sessionEnterEdit();
+    assert.strictEqual(win.document.getElementById('modal-session').classList.contains('viewing'), false);
+    assert.strictEqual(win.document.getElementById('session-edit-date').disabled, false);
+    assert.ok([...win.document.querySelectorAll('#session-edit-gun-inputs input')]
+      .every(i => !i.disabled));
+    assert.match(flat(win.document.getElementById('session-buttons')), /Save/);
+  });
+
+  test('the pencil goes straight to editing', async () => {
+    const win = await ready(loadApp());
+    win.openEditSession(newest(win).id);
+    assert.strictEqual(win.document.getElementById('modal-session').classList.contains('viewing'), false);
+    assert.match(flat(win.document.getElementById('session-buttons')), /Save/);
+  });
+
+  test('session cards are tappable and their buttons stay independent', async () => {
+    const win = await ready(loadApp());
+    win.showTab('sessions');
+    const card = win.document.querySelector('.session-card');
+    assert.ok(card.classList.contains('tappable'));
+    [...card.querySelectorAll('.session-header .btn-icon')].forEach(b =>
+      assert.match(b.getAttribute('onclick'), /event\.stopPropagation\(\)/,
+        'a control inside a tappable card must not also trigger the card'));
+  });
+});
+
+// ── COST PER TRIP, THE LIST ─────────────────────────────────────────
+
+describe('cost per trip list', () => {
+  const open = win => {
+    win.showTab('stats');
+    win.showStatsSection('money');
+    win.document.getElementById('stats-range').value = 'all';
+    win.renderStats();
+  };
+
+  test('each row opens its own session, read-only', async () => {
+    const win = await ready(loadApp());
+    open(win);
+    const rows = [...win.document.querySelectorAll('#stats-trip-list .trip-row')];
+    assert.ok(rows.length >= 2);
+    rows.forEach(r => assert.match(r.getAttribute('onclick'), /openViewSession\('[^']+'\)/,
+      'tapping a trip should read it, not edit it'));
+
+    const id = rows[0].getAttribute('onclick').match(/openViewSession\('([^']+)'\)/)[1];
+    win.openViewSession(id);
+    assert.ok(win.document.getElementById('modal-session').classList.contains('viewing'));
+    assert.strictEqual(win.document.getElementById('session-edit-id').value, id,
+      'and it opens the trip that was tapped');
+  });
+
+  test('each row lists what was shot, biggest count first', async () => {
+    const win = await ready(loadApp());
+    open(win);
+    const row = win.document.querySelector('#stats-trip-list .trip-row');
+    const guns = [...row.querySelectorAll('.trip-guns span')];
+    assert.ok(guns.length, 'the firearms are named, since they explain the cost');
+
+    const counts = guns.map(g => parseInt(g.querySelector('b').textContent, 10));
+    counts.forEach((n, i) => {
+      if (i) assert.ok(n <= counts[i - 1], 'listed heaviest-used first');
+    });
+
+    const id = row.getAttribute('onclick').match(/openViewSession\('([^']+)'\)/)[1];
+    const sess = win.buildDefaultData().sessions.find(x => x.id === id);
+    const total = Object.values(sess.rounds || {}).reduce((a, b) => a + b, 0);
+    assert.strictEqual(counts.reduce((a, b) => a + b, 0), total,
+      'the per-firearm counts add up to the trip');
+  });
+
+  test('a long list scrolls in place rather than being truncated', async () => {
+    const win = await ready(loadApp());
+    open(win);
+    const list = win.document.getElementById('stats-trip-list');
+    const rows = list.querySelectorAll('.trip-row').length;
+    const trips = win.buildDefaultData().sessions.length;
+    assert.strictEqual(rows, trips, 'every trip is present, none cut off');
+    assert.ok(list.classList.contains('list-scroll'),
+      'past a handful of trips the list gets its own scroll panel');
+  });
+
+  test('a short list gets no scroll panel', async () => {
+    const win = await ready(loadApp());
+    open(win);
+    // Narrow to a window with only a couple of trips.
+    win.document.getElementById('stats-range').value = 'month';
+    win.renderStats();
+    const list = win.document.getElementById('stats-trip-list');
+    if (list && list.querySelectorAll('.trip-row').length <= 5) {
+      assert.strictEqual(list.classList.contains('list-scroll'), false,
+        'a few rows should not become a scroll box');
+    }
+  });
+
+  test('the ranking direction can be flipped', async () => {
+    const win = await ready(loadApp());
+    open(win);
+    const costs = () => [...win.document.querySelectorAll('#stats-trip-list .breakdown-val')]
+      .map(v => parseFloat(v.textContent.replace('$', '')));
+
+    const desc = costs();
+    assert.ok(desc.length >= 2);
+    desc.forEach((c, i) => { if (i) assert.ok(c <= desc[i - 1] + 0.01, 'starts most-expensive first'); });
+    assert.match(flat(win.document.querySelector('.sort-toggle')), /Most first/i);
+
+    win.toggleTripSort();
+    const asc = costs();
+    asc.forEach((c, i) => { if (i) assert.ok(c >= asc[i - 1] - 0.01, 'flips to least-expensive first'); });
+    assert.match(flat(win.document.querySelector('.sort-toggle')), /Least first/i);
+    assert.deepStrictEqual([...asc].reverse(), desc, 'same trips, opposite order');
+
+    win.toggleTripSort();
+    assert.deepStrictEqual(costs(), desc, 'and back again');
+  });
+
+  test('bar widths stay relative to the most expensive trip either way round', async () => {
+    const win = await ready(loadApp());
+    open(win);
+    const widths = () => [...win.document.querySelectorAll('#stats-trip-list .breakdown-bar-fill')]
+      .map(b => parseFloat(b.style.width));
+
+    const desc = widths();
+    assert.strictEqual(Math.max(...desc), 100, 'the priciest trip fills the bar');
+    win.toggleTripSort();
+    const asc = widths();
+    assert.strictEqual(Math.max(...asc), 100,
+      'reversing must not redraw the cheapest trip as a full bar');
+    assert.ok(asc[0] < 100, 'the cheapest is now first, and it is short');
+  });
+
+  test('the sort control says which way it will go', async () => {
+    const win = await ready(loadApp());
+    open(win);
+    const btn = () => win.document.querySelector('.sort-toggle');
+    assert.match(btn().getAttribute('aria-label'), /ascending/i,
+      'the label describes the action, not the current state');
+    win.toggleTripSort();
+    assert.match(btn().getAttribute('aria-label'), /descending/i);
+  });
+
+  test('it reads as plain American English', async () => {
+    const win = await ready(loadApp());
+    open(win);
+    const text = flat(win.document.getElementById('stats-as-trips'));
+    assert.doesNotMatch(text, /dearest/i, '"dearest" is not how this is said');
+    assert.doesNotMatch(text, /centre|colour|behaviour/i);
+    assert.match(text, /most expensive/i);
+  });
+});
+
 // ── PER-SESSION COST ────────────────────────────────────────────────
 // The average trip cost hides that the dearest range day can run ten times the cheapest,
 // because it is driven by what got shot rather than how much.
@@ -1967,6 +2144,54 @@ describe('spend by store', () => {
       .textContent.replace(/[$,]/g, ''));
     assert.ok(Math.abs(total - headline) < 0.02,
       `store spend (${total.toFixed(2)}) must add up to total spend (${headline.toFixed(2)})`);
+  });
+});
+
+// ── SPELLING ────────────────────────────────────────────────────────
+// The app is American English. British spellings crept in repeatedly, so this checks the
+// rendered text rather than relying on noticing them by eye.
+
+describe('spelling', () => {
+  const BRITISH = /\b(centre|centres|centred|centrefire|colour|colours|coloured|colourblind|behaviour|favour|neighbour|normalise[sd]?|organise[sd]?|recognise[sd]?|analyse|analysed|summarise[sd]?|metre|metres|litre|practising)\b/i;
+
+  // The suite splices app.js into a <script> inside the document, so body.textContent would
+  // include the entire source — comments and all — and report code as if it were on screen.
+  const visibleText = win => {
+    const clone = win.document.body.cloneNode(true);
+    clone.querySelectorAll('script, style').forEach(n => n.remove());
+    return clone.textContent;
+  };
+
+  test('no British spelling reaches the screen', async () => {
+    const win = await ready(loadApp());
+    const seen = [];
+    // Walk every tab and the Stats panes, since most copy is rendered rather than static.
+    ['dashboard', 'log', 'sessions', 'ammo', 'stats', 'settings'].forEach(tab => {
+      win.showTab(tab);
+      if (tab === 'stats') {
+        ['groups', 'practice', 'money', 'upkeep'].forEach(sec => {
+          win.showStatsSection(sec);
+          const m = visibleText(win).match(BRITISH);
+          if (m) seen.push(`${tab}/${sec}: ${m[0]}`);
+        });
+      } else {
+        const m = visibleText(win).match(BRITISH);
+        if (m) seen.push(`${tab}: ${m[0]}`);
+      }
+    });
+    assert.deepStrictEqual(seen, [], 'British spellings found in rendered text');
+  });
+
+  test('nor into the markup or the source strings', () => {
+    [['index.html', APP_PATH], ['app.js', JS_PATH]].forEach(([label, file]) => {
+      const src = fs.readFileSync(file, 'utf8');
+      const hits = src.split('\n')
+        .map((line, i) => ({ line, n: i + 1 }))
+        .filter(x => BRITISH.test(x.line))
+        // "analyses" as a noun plural is correct in American English too.
+        .filter(x => !/\banalyses\b/.test(x.line) || /\banalyse\b|\banalysed\b/.test(x.line));
+      assert.deepStrictEqual(hits.map(h => `${label}:${h.n} ${h.line.trim().slice(0, 60)}`), []);
+    });
   });
 });
 

@@ -15,7 +15,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.1.13</span>
+    <span id="app-version">v7.1.14</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -340,7 +340,7 @@
 
 <div class="modal-overlay" id="modal-session">
   <div class="modal">
-    <div class="modal-title">Edit Session</div>
+    <div class="modal-title" id="session-modal-title">Edit Session</div>
     <input type="hidden" id="session-edit-id">
     <div class="form-group">
       <label>Date</label>
@@ -358,10 +358,7 @@
       <label>Notes (optional)</label>
       <textarea id="session-edit-notes" placeholder="Anything worth remembering..."></textarea>
     </div>
-    <div class="btn-row">
-      <button class="btn btn-secondary" onclick="closeModal('modal-session')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveEditSession()">Save Changes</button>
-    </div>
+    <div class="btn-row" id="session-buttons"></div>
   </div>
 </div>
 
