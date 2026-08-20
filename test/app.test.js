@@ -1024,6 +1024,129 @@ describe('group comparison', () => {
   });
 });
 
+// ── STATS · POINT OF IMPACT ─────────────────────────────────────────
+// Group size says what the firearm can do; this says whether it is pointed where you think.
+// The sign convention is the thing most worth guarding: getting it backwards would tell you
+// to dial the wrong way.
+
+describe('point of impact map', () => {
+  const gunWithGroups = win => win.buildDefaultData().firearms.find(g => (g.groups || []).length);
+  const open = (win, gunId, dim) => {
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-firearm').value = gunId;
+    win.document.getElementById('stats-range').value = 'all';
+    if (dim) win.document.getElementById('stats-groups-compare-by').value = dim;
+    win.renderStats();
+  };
+  const poi = win => win.document.getElementById('stats-groups-poi');
+
+  test('up is up and right is right', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    open(win, gun.id, 'ammo');
+    const svg = poi(win).querySelector('svg');
+    assert.ok(svg, 'the map renders');
+
+    const { groups } = win.groupsInScope();
+    const dots = [...svg.querySelectorAll('circle')].filter(c => c.getAttribute('r') === '4');
+    assert.strictEqual(dots.length, groups.length, 'one dot per group');
+
+    // The viewBox is square and centred on point of aim.
+    const [, , vw] = svg.getAttribute('viewBox').split(' ').map(Number);
+    const C = vw / 2;
+    const highest = groups.reduce((a, b) => (a.offYMOA > b.offYMOA ? a : b));
+    const rightmost = groups.reduce((a, b) => (a.offXMOA > b.offXMOA ? a : b));
+
+    const ys = dots.map(d => Number(d.getAttribute('cy')));
+    const xs = dots.map(d => Number(d.getAttribute('cx')));
+    if (highest.offYMOA > 0) {
+      assert.ok(Math.min(...ys) < C,
+        'a group above aim must plot above centre — screen y is inverted');
+    }
+    if (rightmost.offXMOA > 0) {
+      assert.ok(Math.max(...xs) > C, 'a group right of aim must plot right of centre');
+    }
+  });
+
+  test('the summary names the direction the data actually shows', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    open(win, gun.id, 'ammo');
+    const { groups } = win.groupsInScope();
+    const my = win.statsMedian(groups.map(g => g.offYMOA));
+    const mx = win.statsMedian(groups.map(g => g.offXMOA));
+    const note = flat(poi(win).querySelector('.stats-note'));
+
+    if (Math.abs(my) >= 0.05) {
+      assert.match(note, my > 0 ? /high/ : /low/,
+        `median elevation ${my} should be described as ${my > 0 ? 'high' : 'low'}`);
+      assert.doesNotMatch(note, my > 0 ? /\blow\b/ : /\bhigh\b/);
+    }
+    if (Math.abs(mx) >= 0.05) {
+      assert.match(note, mx > 0 ? /right/ : /left/);
+    }
+  });
+
+  test('fewer than two groups draws nothing rather than a lone dot', async () => {
+    const win = await ready(loadApp());
+    const bare = win.buildDefaultData().firearms.find(g => !(g.groups || []).length);
+    open(win, bare.id, 'ammo');
+    assert.strictEqual(poi(win).innerHTML, '');
+  });
+
+  test('colour is capped at the four the palette was validated for', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+
+    open(win, gun.id, 'ammo');   // demo groups share one ammo → a single bucket
+    const oneBucket = poi(win).querySelectorAll('.poi-legend span').length;
+    assert.strictEqual(oneBucket, 0, 'one bucket needs no legend');
+    assert.strictEqual(poi(win).querySelectorAll('.poi-centre').length, 0,
+      'and no per-row median cross');
+
+    open(win, gun.id, 'tag');    // demo groups carry several tags
+    const names = new Set();
+    win.groupsInScope().groups.forEach(g =>
+      (g.tags.length ? g.tags : ['Untagged']).forEach(t => names.add(t)));
+    const legend = poi(win).querySelectorAll('.poi-legend span').length;
+    if (names.size >= 2 && names.size <= 4) {
+      assert.strictEqual(legend, names.size, 'each bucket is named beside its colour');
+      assert.strictEqual(poi(win).querySelectorAll('.poi-centre').length, names.size);
+    } else {
+      assert.strictEqual(legend, 0,
+        'beyond four buckets the palette cannot separate them, so it stops colouring');
+    }
+  });
+
+  test('a re-zero inside the visible range is called out', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    const dates = [...new Set(gun.groups.map(g => g.date))].sort();
+
+    open(win, gun.id, 'ammo');
+    assert.doesNotMatch(flat(poi(win)), /re-zero falls inside/i,
+      'no zeros logged yet, so nothing to warn about');
+
+    // A zero dated after the earliest group and on or before the latest sits inside the span.
+    const inside = dates[dates.length - 1];
+    win.openLogZero(gun.id);
+    win.document.getElementById('zero-date').value = inside;
+    win.document.getElementById('zero-distance').value = '50';
+    win.saveZero();
+    open(win, gun.id, 'ammo');
+
+    const spans = inside > dates[0];
+    if (spans) {
+      assert.match(flat(poi(win)), /re-zero falls inside/i,
+        'averaging point of impact across a zero change describes neither side');
+    } else {
+      assert.doesNotMatch(flat(poi(win)), /re-zero falls inside/i,
+        'a zero on or before the first group does not split the data');
+    }
+  });
+});
+
 // ── SHARED STATS FILTER BAR ─────────────────────────────────────────
 // Stats used to carry three independent filter sets, so setting a firearm in Rounds Fired
 // left Ammo Spend reporting every caliber you own with nothing on screen saying so. One bar

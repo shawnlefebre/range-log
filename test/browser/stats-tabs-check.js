@@ -177,6 +177,26 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
     /multi-valued/i.test((await page.locator('#stats-groups-compare').textContent()).replace(/\s+/g,' ')));
   await page.locator('#statspane-groups').screenshot({ path: path.join(ARTIFACTS,'stats-groups-compare.png') });
 
+  // Point of impact — needs a real browser for size, and the map is square by construction.
+  await page.selectOption('#stats-groups-compare-by', 'tag');
+  await page.waitForTimeout(300);
+  const poi = await page.evaluate(() => {
+    const svg = document.querySelector('#stats-groups-poi svg');
+    if (!svg) return null;
+    const r = svg.getBoundingClientRect();
+    return { w: r.width, h: r.height,
+             dots: svg.querySelectorAll('circle[r="4"]').length,
+             legend: document.querySelectorAll('#stats-groups-poi .poi-legend span').length,
+             note: document.querySelector('#stats-groups-poi .stats-note').textContent.replace(/\s+/g,' ') };
+  });
+  ck('the point-of-impact map renders', !!poi && poi.dots > 0);
+  ck('it is square and a usable size', poi && poi.w > 150 && Math.abs(poi.w - poi.h) < 2);
+  ck('it never leaves colour to carry identity alone',
+    poi && (poi.legend === 0 || poi.legend >= 2));
+  ck('it states where the groups sit relative to aim',
+    poi && /(of aim|on aim)/i.test(poi.note));
+  await page.locator('#stats-groups-poi').screenshot({ path: path.join(ARTIFACTS,'stats-groups-poi.png') });
+
   let bad=0;
   checks.forEach(([n,ok])=>{ if(!ok) bad++; console.log(`${ok?'ok  ':'FAIL'} ${n}`); });
   if (errs.length) { bad++; console.log('ERRORS '+[...new Set(errs)].join(' | ')); }

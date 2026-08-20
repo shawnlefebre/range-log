@@ -1580,3 +1580,20 @@
     padding-top: 9px;
     border-top: 1px solid var(--surface3);
   }
+
+  /* Point-of-impact legend. Identity never rests on colour alone — the row name sits beside
+     the swatch, and the same buckets are labelled in the comparison chart above it. */
+  .poi-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 10px;
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    color: var(--text-muted);
+  }
+  .poi-legend i {
+    display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+    margin-right: 5px; vertical-align: baseline;
+  }

@@ -52,6 +52,24 @@ Two things it deliberately tells you:
 
 Distances are normalised first, so 25 ft and 8.333 yd are one bucket rather than two.
 
+## Point of impact
+
+The last chart under **Stats → Groups**. Group size tells you what the firearm can do; this
+tells you whether it's pointed where you think — each dot is one group's *centre* relative to
+your aim, with rings at whole MOA.
+
+It's coloured by whatever **Compare by** is set to, so the two charts read together, with a
+cross marking each row's median. Beyond four rows it stops colouring: the palette is
+validated for four series against the dark background, and a fifth can't be added without
+failing colourblind separation.
+
+Underneath, it says in words where things actually sit — *"typical centre is 0.74 MOA high
+and 0.48 MOA right of aim across 15 groups"* — which is usually the sentence you wanted.
+
+**If a re-zero falls inside the range you're looking at, it says so.** Point of impact before
+and after a zero change aren't the same measurement, and averaging across one gives a number
+describing neither. Anchor the time range to a zero to read them as one.
+
 ## A firearm's Details
 
 **View Details** on any firearm gathers its cleaning history, zeros, dope tables and groups

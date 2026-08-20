@@ -2620,6 +2620,9 @@ function groupsInScope() {
       mrMOA: m && distIn ? toMOA(m.meanRadius, distIn) : null,
       mrIn: m ? m.meanRadius : null,
       esMOA: m && distIn ? toMOA(m.es, distIn) : null,
+      // Group centre relative to point of aim. +x right, +y up.
+      offXMOA: m && distIn ? toMOA(m.cx, distIn) : null,
+      offYMOA: m && distIn ? toMOA(m.cy, distIn) : null,
       distance: g.distance, distanceUnit: g.distanceUnit || 'yd',
     };
   }).filter(g => g.mrMOA != null).sort((a, b) => a.date.localeCompare(b.date));
@@ -2651,6 +2654,7 @@ function renderGroupsStats() {
         No measurable groups for ${gun.name} in this range.</div>`;
     document.getElementById('stats-groups-trend').innerHTML = '';
     document.getElementById('stats-groups-compare').innerHTML = '';
+    document.getElementById('stats-groups-poi').innerHTML = '';
     return;
   }
 
@@ -2673,6 +2677,7 @@ function renderGroupsStats() {
 
   renderGroupTrend(gun, groups);
   renderGroupCompare(groups);
+  renderGroupPOI(gun, groups);
 }
 
 // Every group is plotted, dimmed, with the bold line joining session medians. One group is a
@@ -2851,6 +2856,105 @@ function renderGroupCompare(groups) {
          aria-label="Median group size by ${dim.label}">${svg}</svg>
     <div class="stats-note">Median mean-radius MOA, lower is better. One dot per group, the
       bar is its spread.${notes.length ? ' ' + notes.join(' ') : ''}</div>`;
+}
+
+// Where the groups landed, rather than how tight they were. Group size says what the firearm
+// can do; this says whether it is pointed where you think, which is the question your zeros
+// are really about.
+function renderGroupPOI(gun, groups) {
+  const el = document.getElementById('stats-groups-poi');
+  if (!el) return;
+  const usable = groups.filter(g => g.offXMOA != null && g.offYMOA != null);
+  if (usable.length < 2) { el.innerHTML = ''; return; }
+
+  // Coloured by whatever the comparison is grouped by, so the two charts read together.
+  const key = document.getElementById('stats-groups-compare-by').value;
+  const dim = GROUP_COMPARE_DIMS[key] || GROUP_COMPARE_DIMS.ammo;
+  const buckets = {};
+  usable.forEach(g => dim.of(g).forEach(k => (buckets[k] = buckets[k] || []).push(g)));
+  const names = Object.keys(buckets);
+  const SERIES = ['#ba8c01', '#1f68bc', '#cf5a93', '#007c59'];
+  const ACCENT = '#c8a84b';
+  // The palette is validated for four series against this surface; a fifth cannot be added
+  // without failing colour-blind separation, so beyond four everything goes one colour.
+  const coloured = names.length >= 2 && names.length <= SERIES.length;
+
+  const W = 300, H = 300, C = W / 2, PAD = 26;
+  const reach = Math.max(
+    ...usable.map(g => Math.hypot(g.offXMOA, g.offYMOA)), 0.5) * 1.2;
+  const px = v => C + (v / reach) * (C - PAD);
+  const py = v => C - (v / reach) * (C - PAD);
+
+  const GRIDC = '#2e2e2e', AXIS = '#555', DIM = '#555';
+  let svg = '';
+  // Rings at whole MOA, as many as fit.
+  for (let r = 1; r <= Math.floor(reach); r++) {
+    svg += `<circle cx="${C}" cy="${C}" r="${(C - PAD) * r / reach}" fill="none"
+                    stroke="${GRIDC}" stroke-width="1"/>
+            <text x="${C + (C - PAD) * r / reach - 3}" y="${C - 4}" fill="${DIM}"
+                  font-family="IBM Plex Mono" font-size="7" text-anchor="end">${r}</text>`;
+  }
+  svg += `<line x1="${PAD}" y1="${C}" x2="${W - PAD}" y2="${C}" stroke="${AXIS}" stroke-width="1"/>
+          <line x1="${C}" y1="${PAD}" x2="${C}" y2="${H - PAD}" stroke="${AXIS}" stroke-width="1"/>
+          <text x="${W - 4}" y="${C - 5}" fill="${DIM}" font-family="IBM Plex Mono"
+                font-size="7.5" text-anchor="end">right</text>
+          <text x="${C + 5}" y="${PAD - 6}" fill="${DIM}" font-family="IBM Plex Mono"
+                font-size="7.5">up</text>`;
+
+  names.forEach((n, i) => {
+    const c = coloured ? SERIES[i % SERIES.length] : ACCENT;
+    buckets[n].forEach(g => {
+      svg += `<circle cx="${px(g.offXMOA)}" cy="${py(g.offYMOA)}" r="4" fill="${c}"
+                      opacity="0.82" stroke="var(--surface)" stroke-width="1.2"/>`;
+    });
+    if (coloured) {
+      const mx = statsMedian(buckets[n].map(g => g.offXMOA));
+      const my = statsMedian(buckets[n].map(g => g.offYMOA));
+      svg += `<path class="poi-centre" d="M${px(mx) - 7} ${py(my)}h14M${px(mx)} ${py(my) - 7}v14"
+                    stroke="${c}" stroke-width="2" fill="none"/>`;
+    }
+  });
+
+  const legend = coloured
+    ? `<div class="poi-legend">${names.map((n, i) =>
+        `<span><i style="background:${SERIES[i % SERIES.length]}"></i>${
+          n.length > 22 ? n.slice(0, 21) + '…' : (key === 'day' ? fmtDate(n) : n)}</span>`).join('')}</div>`
+    : '';
+
+  const mx = statsMedian(usable.map(g => g.offXMOA));
+  const my = statsMedian(usable.map(g => g.offYMOA));
+  const dirX = Math.abs(mx) < 0.05 ? '' : `${gFmt(Math.abs(mx))} MOA ${mx > 0 ? 'right' : 'left'}`;
+  const dirY = Math.abs(my) < 0.05 ? '' : `${gFmt(Math.abs(my))} MOA ${my > 0 ? 'high' : 'low'}`;
+  const centred = !dirX && !dirY;
+
+  // A re-zero inside the visible range means these dots are not one measurement. Point of
+  // impact before and after a zero change are different questions, and averaging across one
+  // produces a number describing neither.
+  const { start, end } = getStatsRangeBounds();
+  const dates = usable.map(g => g.date).sort();
+  const spanning = (gun.zeros || []).filter(z =>
+    (!start || z.date >= start) && (!end || z.date <= end) &&
+    z.date > dates[0] && z.date <= dates[dates.length - 1]);
+
+  el.innerHTML = `
+    <div class="stats-chart-card">
+      <div class="stats-chart-title">Point of Impact</div>
+      <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet"
+           style="max-width:340px;margin:0 auto;" role="img"
+           aria-label="Group centres relative to point of aim">${svg}</svg>
+      ${legend}
+      <div class="stats-note">Each dot is one group's <b>centre</b> against your aim${
+        coloured ? ', the cross its median per row' : ''}. ${
+        centred
+          ? `Typical centre sits on aim.`
+          : `Typical centre is ${[dirY, dirX].filter(Boolean).join(' and ')} of aim across
+             ${usable.length} groups.`}
+        ${spanning.length
+          ? `<br><b>A re-zero falls inside this range</b> (${spanning.map(z => fmtDate(z.date)).join(', ')}),
+             so these dots are not one measurement — anchor the range to a zero to read them
+             as one.`
+          : ''}</div>
+    </div>`;
 }
 
 // Rounds since the last deep clean against each firearm's own threshold, worst first.
@@ -4929,7 +5033,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.5';
+const APP_VERSION = '7.1.6';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
