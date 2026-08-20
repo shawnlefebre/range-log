@@ -213,13 +213,37 @@ describe('schema migration', () => {
 // ── CALIBER MERGE + DISCLAIMER ──────────────────────────────────────
 
 describe('caliber merge and disclaimer', () => {
-  test('tokens with identical firearm signatures merge into one group', async () => {
+  test('shared-signature calibers get a merged entry, without losing the individual ones', async () => {
     const win = await ready(loadApp());
     win.showTab('stats');
-    const options = Array.from(win.document.getElementById('stats-caliber').options).map(o => o.textContent);
-    // Demo data: Example Rifle is the only gun with .223 Rem AND 5.56 NATO, so they must merge.
-    assert.ok(options.includes('.223 Rem / 5.56 NATO'), 'shared-signature calibers should merge into one option');
-    assert.ok(!options.includes('.223 Rem'), 'merged tokens should not also appear as separate options');
+    const sel = win.document.getElementById('stats-caliber');
+    const options = Array.from(sel.options).map(o => o.textContent);
+
+    // Demo data: Example Rifle is the only gun with .223 Rem AND 5.56 NATO, so they merge.
+    // The merged entry exists because rounds fired through that rifle cannot be attributed to
+    // one token or the other.
+    assert.ok(options.includes('.223 Rem / 5.56 NATO'), 'the merged option should exist');
+
+    // But the individual tokens stay, because a purchase always names exactly one caliber and
+    // .223 match is a different product from bulk 5.56. Merging them on Money would compare
+    // products rather than prices.
+    assert.ok(options.includes('.223 Rem'), 'individual calibers must remain selectable');
+    assert.ok(options.includes('5.56 NATO'), 'individual calibers must remain selectable');
+
+    const mergedOpt = Array.from(sel.options).find(o => o.textContent === '.223 Rem / 5.56 NATO');
+    assert.strictEqual(mergedOpt.parentElement.tagName, 'OPTGROUP',
+      'the merged entries are grouped so they read as a different kind of choice');
+    assert.strictEqual(mergedOpt.parentElement.label, 'Shared chambers');
+  });
+
+  test('a caliber that shares no chamber is listed once, not twice', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    const options = Array.from(win.document.getElementById('stats-caliber').options)
+      .map(o => o.textContent);
+    const nine = options.filter(o => o === '9mm');
+    assert.strictEqual(nine.length, 1,
+      'a single-token group would just duplicate the individual entry above it');
   });
 
   test('selecting a merged caliber group returns the same total as the firearm-only filter', async () => {
@@ -818,6 +842,81 @@ describe('shared stats filter bar', () => {
     const gun = win.buildDefaultData().firearms[0];
     setFilter(win, 'stats-firearm', gun.id);
     assert.strictEqual(count(), 1, `one firearm selected, ${all} shown before`);
+  });
+});
+
+// ── INDIVIDUAL vs MERGED CALIBERS ON MONEY ──────────────────────────
+// The merged group exists because rounds fired through a .223/5.56 rifle cannot be
+// attributed to one token. Purchases have no such ambiguity, and the two chamberings are
+// different products at different prices — so both must stay selectable, and picking one
+// must not quietly return the combined figure.
+
+describe('picking an individual caliber on Money', () => {
+  // Adds a purchase through the app's own save path rather than patching demo data, so the
+  // test exercises the same code the user does.
+  function addPurchase(win, { caliber, quantity, totalPrice, date = '2026-03-01' }) {
+    win.openAddAmmo();
+    win.document.getElementById('ammo-date').value = date;
+    const sel = win.document.getElementById('ammo-caliber-select');
+    const known = Array.from(sel.options).find(o => o.value === caliber);
+    if (known) { sel.value = caliber; } else {
+      sel.value = '__custom__';
+      win.handleCaliberSelectChange();
+      win.document.getElementById('ammo-caliber-custom').value = caliber;
+    }
+    win.document.getElementById('ammo-manufacturer').value = 'Test';
+    win.document.getElementById('ammo-model').value = caliber + ' load';
+    win.document.getElementById('ammo-quantity').value = String(quantity);
+    win.document.getElementById('ammo-price').value = String(totalPrice);
+    win.saveAmmo();
+  }
+
+  // Give the demo rifle both chamberings so a merged group exists for them.
+  const bothChamberings = js => {
+    const patched = js.replace(
+      /(\{ id: g1,[^}]*?calibers: )\['\.223 Rem', '5\.56 NATO'\]/,
+      "$1['.223 Rem', '5.56 NATO']"
+    );
+    return patched;
+  };
+
+  const spend = win => parseFloat(win.document.querySelector('#stats-as-stats .stats-stat-num')
+    .textContent.replace(/[$,]/g, ''));
+  const cpr = win => parseFloat([...win.document.querySelectorAll('#stats-as-stats .stats-stat-box')]
+    .find(b => /CPR/i.test(b.textContent))
+    .querySelector('.stats-stat-num').textContent.replace('$', ''));
+
+  test('one token returns that token alone, and the merged entry returns the sum', async () => {
+    const win = await ready(loadApp(bothChamberings));
+    // Bulk 5.56 at $0.40/rd against match .223 already in demo data at $0.35/rd — priced
+    // differently on purpose, which is the entire reason not to merge them here.
+    addPurchase(win, { caliber: '5.56 NATO', quantity: 1000, totalPrice: 400 });
+
+    win.showTab('stats');
+    win.showStatsSection('money');
+    win.document.getElementById('stats-range').value = 'all';
+    const sel = win.document.getElementById('stats-caliber');
+
+    const opt223 = Array.from(sel.options).find(o => o.value === '.223 Rem');
+    const opt556 = Array.from(sel.options).find(o => o.value === '5.56 NATO');
+    const optBoth = Array.from(sel.options).find(o => o.value.includes('||'));
+    assert.ok(opt223 && opt556 && optBoth, 'all three options should be offered');
+
+    sel.value = opt223.value; win.renderStats(); const a = spend(win), aRate = cpr(win);
+    sel.value = opt556.value; win.renderStats(); const b = spend(win), bRate = cpr(win);
+    sel.value = optBoth.value; win.renderStats(); const both = spend(win), bothRate = cpr(win);
+
+    assert.ok(a > 0 && b > 0, 'both chamberings have purchases in this scenario');
+    assert.ok(Math.abs(both - (a + b)) < 0.02,
+      `merged should total its parts (${a} + ${b} vs ${both})`);
+    assert.notStrictEqual(a, both, 'picking .223 must not return the combined figure');
+    assert.notStrictEqual(b, both, 'picking 5.56 must not return the combined figure');
+
+    // And the blended rate describes neither product, which is the point.
+    assert.ok(Math.abs(aRate - bRate) > 0.001, 'the two are priced differently');
+    const lo = Math.min(aRate, bRate), hi = Math.max(aRate, bRate);
+    assert.ok(bothRate > lo && bothRate < hi,
+      `the merged rate (${bothRate}) sits between ${lo} and ${hi}, matching neither`);
   });
 });
 

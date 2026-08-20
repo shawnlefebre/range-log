@@ -116,6 +116,10 @@ now, so Time Range is inert on Upkeep.
 
 Two things there are deliberately careful:
 
+- **The caliber picker offers individual calibers and, separately, shared chambers.** A rifle
+  chambered .223/5.56 can't have its rounds attributed to one or the other, so the merged
+  entry exists for the shooting views. But a purchase always names exactly one caliber, and
+  .223 match is a different product from bulk 5.56 — so on Money you pick the one you mean.
 - **Filtering money by firearm is an inference.** Purchases are logged per caliber and never
   per firearm, so picking a rifle shows spend on the calibers it uses — including ammo you
   actually put through something else chambered the same way. The screen says so.

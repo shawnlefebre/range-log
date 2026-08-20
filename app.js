@@ -2302,14 +2302,27 @@ function populateStatsFilterDropdowns() {
   gun.innerHTML = '<option value="">All Firearms</option>' +
     data.firearms.map(g => `<option value="${g.id}"${g.id === curGun ? ' selected' : ''}>${g.name}</option>`).join('');
 
-  // Merged caliber groups throughout, including Ammo Spend, which used to list raw caliber
-  // strings. Selecting ".223 / 5.56" now covers both tokens, which is what a firearm
-  // chambered for both actually consumes.
+  // Both individual calibers and the merged groups, because the two answer different
+  // questions. Rounds fired through a firearm chambered .223/5.56 cannot be attributed to
+  // one or the other, so the merged entry exists for the shooting panes. A purchase always
+  // names exactly one caliber, and .223 match at ~$1.10/rd is a different product from bulk
+  // 5.56 at ~$0.44 — merging those on Money would compare products rather than prices, the
+  // same trap the store comparison avoids.
   const cal = document.getElementById('stats-caliber');
   const curCal = cal.value;
-  cal.innerHTML = '<option value="">All Calibers</option>' +
-    getMergedFirearmCalibers().map(g =>
-      `<option value="${g.value}"${g.value === curCal ? ' selected' : ''}>${g.label}</option>`).join('');
+  const merged = getMergedFirearmCalibers().filter(g => g.tokens.length > 1);
+  const singles = allKnownCalibers();
+  let calHtml = '<option value="">All Calibers</option>';
+  calHtml += singles.map(c =>
+    `<option value="${c}"${c === curCal ? ' selected' : ''}>${c}</option>`).join('');
+  // Only listed where a merge actually exists — a single-token group would just duplicate
+  // the entry above it.
+  if (merged.length) {
+    calHtml += '<optgroup label="Shared chambers">' + merged.map(g =>
+      `<option value="${g.value}"${g.value === curCal ? ' selected' : ''}>${g.label}</option>`).join('') +
+      '</optgroup>';
+  }
+  cal.innerHTML = calHtml;
 }
 
 // Which filters mean anything in which pane. A control that cannot apply is dimmed and
@@ -4586,7 +4599,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.2';
+const APP_VERSION = '7.1.3';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
