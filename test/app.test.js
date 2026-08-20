@@ -731,6 +731,169 @@ describe('group tags', () => {
   });
 });
 
+// ── STATS · GROUPS PANE ─────────────────────────────────────────────
+
+describe('stats groups pane', () => {
+  const gunWithGroups = win => win.buildDefaultData().firearms.find(g => (g.groups || []).length);
+  const pick = (win, gunId, range = 'all') => {
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-firearm').value = gunId || '';
+    win.renderStats();
+    if (range) {
+      win.document.getElementById('stats-range').value = range;
+      win.renderStats();
+    }
+  };
+
+  test('with no firearm chosen it explains itself instead of drawing an empty chart', async () => {
+    const win = await ready(loadApp());
+    pick(win, '', null);
+    const prompt = win.document.getElementById('stats-groups-prompt').textContent;
+    assert.match(prompt, /Pick a firearm/i);
+    assert.match(prompt, /comparable/i, 'it should say why this view is single-firearm');
+    assert.strictEqual(win.document.getElementById('stats-groups-body').style.display, 'none');
+  });
+
+  test('choosing a firearm shows its groups and hides the prompt', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    pick(win, gun.id);
+    assert.strictEqual(win.document.getElementById('stats-groups-prompt').textContent.trim(), '');
+    assert.notStrictEqual(win.document.getElementById('stats-groups-body').style.display, 'none');
+    const { groups } = win.groupsInScope();
+    assert.strictEqual(groups.length, gun.groups.length);
+  });
+
+  test('group size is recomputed, never read from the record', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    pick(win, gun.id);
+    const before = win.groupsInScope().groups[0].mrMOA;
+
+    // Tell the app the scale reference is twice the real size it was. The marked points are
+    // untouched, but each one now stands for twice as many inches, so the same holes
+    // describe a group twice as large.
+    win.openLogGroup(gun.id, gun.groups[0].id);
+    const cal = win.document.getElementById('group-cal-w');
+    cal.value = String(parseFloat(cal.value) * 2);
+    win.saveGroup();
+
+    pick(win, gun.id);
+    const after = win.groupsInScope().groups[0].mrMOA;
+    assert.ok(Math.abs(after - before * 2) < 1e-6,
+      `doubling the reference should double the measured group (${before} -> ${after})`);
+  });
+
+  test('a zero anchor appears only on Groups, and only with a firearm chosen', async () => {
+    const win = await ready(loadApp());
+    const gun = win.buildDefaultData().firearms[0];
+    // Demo firearms ship no zeros, so add one through the app.
+    win.openLogZero(gun.id);
+    win.document.getElementById('zero-date').value = '2026-01-15';
+    win.document.getElementById('zero-distance').value = '50';
+    win.saveZero();
+
+    const anchors = () => [...win.document.getElementById('stats-range').options]
+      .filter(o => o.value.startsWith('zero:'));
+
+    pick(win, gun.id, null);
+    assert.strictEqual(anchors().length, 1, 'Groups with a firearm offers its zeros');
+
+    pick(win, '', null);
+    assert.strictEqual(anchors().length, 0, 'no firearm, no anchors');
+
+    win.document.getElementById('stats-firearm').value = gun.id;
+    win.showStatsSection('practice');
+    assert.strictEqual(anchors().length, 0, 'a zero anchor is meaningless on Practice');
+  });
+
+  test('groups dated the same day as a zero count as after it', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    const dates = [...new Set(gun.groups.map(g => g.date))].sort();
+    const anchorDate = dates[dates.length - 1];
+
+    win.openLogZero(gun.id);
+    win.document.getElementById('zero-date').value = anchorDate;
+    win.document.getElementById('zero-distance').value = '50';
+    win.saveZero();
+
+    pick(win, gun.id, null);
+    const anchor = [...win.document.getElementById('stats-range').options]
+      .find(o => o.value.startsWith('zero:'));
+    win.document.getElementById('stats-range').value = anchor.value;
+    win.renderStats();
+
+    const inScope = win.groupsInScope().groups;
+    const sameDay = gun.groups.filter(g => g.date === anchorDate).length;
+    assert.ok(sameDay > 0, 'precondition: groups share the zero date');
+    assert.strictEqual(inScope.length, sameDay,
+      'same-day groups are kept (counted as after the zero), earlier ones dropped');
+    assert.ok(inScope.every(g => g.date >= anchorDate));
+  });
+
+  test('an anchor from another firearm is dropped rather than silently kept', async () => {
+    const win = await ready(loadApp());
+    const [a, b] = win.buildDefaultData().firearms;
+    win.openLogZero(a.id);
+    win.document.getElementById('zero-date').value = '2026-01-15';
+    win.document.getElementById('zero-distance').value = '50';
+    win.saveZero();
+
+    pick(win, a.id, null);
+    const anchor = [...win.document.getElementById('stats-range').options]
+      .find(o => o.value.startsWith('zero:'));
+    win.document.getElementById('stats-range').value = anchor.value;
+    win.renderStats();
+
+    win.document.getElementById('stats-firearm').value = b.id;
+    win.renderStats();
+    assert.strictEqual(win.document.getElementById('stats-range').value, '12months',
+      "the other firearm's zero is not a range this firearm can be measured against");
+  });
+
+  test('the trend joins one point per range day, not one per group', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    pick(win, gun.id);
+    const svg = win.document.querySelector('#stats-groups-trend svg');
+    assert.ok(svg, 'the chart renders');
+
+    const days = new Set(gun.groups.map(g => g.date)).size;
+    const line = svg.querySelector('polyline');
+    assert.strictEqual(line.getAttribute('points').trim().split(/\s+/).length, days,
+      'the median line has one vertex per range day');
+    // Every group is still drawn behind it.
+    assert.ok(svg.querySelectorAll('circle').length >= gun.groups.length + days,
+      'individual groups are plotted as well as the medians');
+  });
+
+  test('re-zero marks are drawn even when the range is not anchored to one', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    const mid = [...new Set(gun.groups.map(g => g.date))].sort()[0];
+    win.openLogZero(gun.id);
+    win.document.getElementById('zero-date').value = mid;
+    win.document.getElementById('zero-distance').value = '50';
+    win.saveZero();
+
+    pick(win, gun.id, 'all');            // plain calendar range, not a zero anchor
+    const svg = win.document.querySelector('#stats-groups-trend svg');
+    assert.match(svg.innerHTML, /re-zero/,
+      'hiding the boundary unless you filtered by it is how you read straight through one');
+  });
+
+  test('a firearm with no groups says so rather than rendering a broken chart', async () => {
+    const win = await ready(loadApp());
+    const bare = win.buildDefaultData().firearms.find(g => !(g.groups || []).length);
+    assert.ok(bare, 'demo data has a firearm without groups');
+    pick(win, bare.id);
+    assert.match(win.document.getElementById('stats-groups-stats').textContent, /No measurable groups/i);
+    assert.strictEqual(win.document.getElementById('stats-groups-trend').innerHTML, '');
+  });
+});
+
 // ── SHARED STATS FILTER BAR ─────────────────────────────────────────
 // Stats used to carry three independent filter sets, so setting a firearm in Rounds Fired
 // left Ammo Spend reporting every caliber you own with nothing on screen saying so. One bar

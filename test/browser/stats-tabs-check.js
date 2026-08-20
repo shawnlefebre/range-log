@@ -119,6 +119,42 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   ck('no blended per-round price while calibers are mixed', !/\/rd/.test(stores.text));
   await page.locator('#statspane-money').screenshot({ path: path.join(ARTIFACTS,'stats-money.png') });
 
+  // ── Groups pane, with a firearm that actually has groups ──
+  await page.click('#statstab-groups');
+  await page.waitForTimeout(300);
+  ck('Groups prompts for a firearm rather than drawing an empty chart',
+    /Pick a firearm/i.test(await page.locator('#stats-groups-prompt').textContent()));
+
+  const gunId = await page.evaluate(() => (data.firearms.find(f => (f.groups||[]).length)||{}).id);
+  await page.selectOption('#stats-firearm', gunId);
+  await page.selectOption('#stats-range', 'all');
+  await page.waitForTimeout(400);
+
+  ck('the prompt clears once a firearm is picked',
+    (await page.locator('#stats-groups-prompt').textContent()).trim() === '');
+  const trend = await page.evaluate(() => {
+    const svg = document.querySelector('#stats-groups-trend svg');
+    if (!svg) return null;
+    const r = svg.getBoundingClientRect();
+    return { w: r.width, h: r.height, pts: svg.querySelector('polyline').getAttribute('points') };
+  });
+  ck('the trend chart has real size', trend && trend.w > 100 && trend.h > 80);
+  ck('the median line is drawn', trend && trend.pts.trim().length > 0);
+  ck('median MOA tile is a number, not a dash',
+    /^\d/.test((await page.locator('#stats-groups-stats .stats-stat-num').first().textContent()).trim()));
+  await page.locator('#statspane-groups').screenshot({ path: path.join(ARTIFACTS,'stats-groups-trend.png') });
+
+  // Switching panes must not leave the chart sized against a hidden container.
+  await page.click('#statstab-practice');
+  await page.waitForTimeout(200);
+  await page.click('#statstab-groups');
+  await page.waitForTimeout(300);
+  const again = await page.evaluate(() => {
+    const svg = document.querySelector('#stats-groups-trend svg');
+    return svg ? svg.getBoundingClientRect().width : 0;
+  });
+  ck('the chart keeps its size after switching away and back', again > 100);
+
   let bad=0;
   checks.forEach(([n,ok])=>{ if(!ok) bad++; console.log(`${ok?'ok  ':'FAIL'} ${n}`); });
   if (errs.length) { bad++; console.log('ERRORS '+[...new Set(errs)].join(' | ')); }

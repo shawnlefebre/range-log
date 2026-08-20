@@ -2262,6 +2262,17 @@ function firstOfYearISO() {
 function getStatsRangeBounds() {
   const key = document.getElementById('stats-range').value;
   const end = today();
+  // A re-zero is a hard boundary: point of impact before and after it are not the same
+  // measurement, so the range picker can anchor to one. Groups dated the same day as the
+  // zero count as after it — neither carries a time, and you zero before you shoot groups.
+  if (key.startsWith('zero:')) {
+    const zeroId = key.slice(5);
+    for (const gun of data.firearms || []) {
+      const z = (gun.zeros || []).find(x => x.id === zeroId);
+      if (z) return { start: z.date, end };
+    }
+    return { start: null, end: null };
+  }
   switch (key) {
     case 'month': return { start: firstOfMonthISO(0), end };
     case '3months': return { start: firstOfMonthISO(2), end };
@@ -2291,7 +2302,38 @@ function handleStatsRangeChange() {
   renderStats();
 }
 
+// Zero anchors are only meaningful for one firearm's own zeros, so they appear on Groups
+// once a firearm is picked. Rebuilt on every render because the selected firearm changes them.
+function populateStatsRangeOptions() {
+  const sel = document.getElementById('stats-range');
+  const current = sel.value;
+  const base = `
+    <option value="month">This Month</option>
+    <option value="3months">Last 3 Months</option>
+    <option value="12months">Last 12 Months</option>
+    <option value="year">This Year</option>
+    <option value="all">All Time</option>
+    <option value="custom">Custom...</option>`;
+
+  let anchors = '';
+  if (currentStatsSection === 'groups') {
+    const gunId = document.getElementById('stats-firearm').value;
+    const gun = gunId ? data.firearms.find(g => g.id === gunId) : null;
+    const zeros = gun ? [...(gun.zeros || [])].sort((a, b) => b.date.localeCompare(a.date)) : [];
+    if (zeros.length) {
+      anchors = '<optgroup label="Anchored to a zero">' + zeros.map((z, i) =>
+        `<option value="zero:${z.id}">${i === 0 ? 'Since last zero' : 'Since zero'} · ${fmtDate(z.date)}</option>`
+      ).join('') + '</optgroup>';
+    }
+  }
+  sel.innerHTML = anchors + base;
+  // A zero anchor from a different firearm has no meaning here, so fall back rather than
+  // silently keeping a selection the list no longer offers.
+  sel.value = Array.from(sel.options).some(o => o.value === current) ? current : '12months';
+}
+
 function populateStatsFilterDropdowns() {
+  populateStatsRangeOptions();
   const loc = document.getElementById('stats-location');
   const curLoc = loc.value;
   loc.innerHTML = '<option value="">All Locations</option>' +
@@ -2357,7 +2399,8 @@ function applyStatsFilterAvailability() {
   // The custom date row goes with the range control.
   const custom = document.getElementById('stats-custom-range');
   if (custom && !applies.range) custom.style.display = 'none';
-  else if (custom && document.getElementById('stats-range').value === 'custom') custom.style.display = 'flex';
+  else if (custom) custom.style.display =
+    document.getElementById('stats-range').value === 'custom' ? 'flex' : 'none';
 
   const noteEl = document.getElementById('stats-filter-note');
   if (noteEl) noteEl.textContent = notes.join(' · ');
@@ -2521,6 +2564,185 @@ function renderStats() {
   renderRangeTripsStats();
   renderAmmoSpendStats();
   renderUpkeepStats();
+  renderGroupsStats();
+}
+
+// ── STATS · GROUPS ────────────────────────────────────────────────
+// Scoped to one firearm on purpose. Group sizes are not comparable between firearms — a
+// rimfire rifle at 50 yd and a pistol at 25 ft are not on the same scale, and on one axis
+// the pistol is the only thing you can see.
+
+// Median rather than mean throughout: a single group is a noisy estimate, and two lucky
+// ones shouldn't move a load or a session up the ranking.
+function statsMedian(a) {
+  if (!a.length) return null;
+  const s = [...a].sort((x, y) => x - y);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+// Every group for the selected firearm that survives the shared filters, with its size
+// recomputed from the marked points — never read from a stored value.
+function groupsInScope() {
+  const gunId = document.getElementById('stats-firearm').value;
+  const gun = gunId ? data.firearms.find(g => g.id === gunId) : null;
+  if (!gun) return { gun: null, groups: [] };
+
+  const { start, end } = getStatsRangeBounds();
+  const locId = document.getElementById('stats-location').value;
+
+  const groups = (gun.groups || []).filter(g => {
+    if (start && g.date < start) return false;      // >= start: same-day counts as after
+    if (end && g.date > end) return false;
+    if (locId) {
+      const ses = g.sessionId ? data.sessions.find(s => s.id === g.sessionId) : null;
+      if (!ses || ses.locationId !== locId) return false;
+    }
+    return true;
+  }).map(g => {
+    const distIn = groupDistanceInches(g);
+    const m = groupMetrics(groupToInches(g));
+    return {
+      raw: g, date: g.date, ammo: g.ammo || '(unspecified)', tags: g.tags || [],
+      shots: m ? m.n : 0,
+      mrMOA: m && distIn ? toMOA(m.meanRadius, distIn) : null,
+      mrIn: m ? m.meanRadius : null,
+      esMOA: m && distIn ? toMOA(m.es, distIn) : null,
+      distance: g.distance, distanceUnit: g.distanceUnit || 'yd',
+    };
+  }).filter(g => g.mrMOA != null).sort((a, b) => a.date.localeCompare(b.date));
+
+  return { gun, groups };
+}
+
+function renderGroupsStats() {
+  const promptEl = document.getElementById('stats-groups-prompt');
+  const bodyEl = document.getElementById('stats-groups-body');
+  if (!promptEl || !bodyEl) return;
+
+  const { gun, groups } = groupsInScope();
+  if (!gun) {
+    bodyEl.style.display = 'none';
+    promptEl.innerHTML = `<div class="empty-state" style="padding:26px 16px;">
+      Pick a firearm above to see its groups.<br>
+      <span style="font-size:0.72rem;color:var(--text-dim);">
+        Group sizes aren't comparable between firearms, so this view always looks at one.
+      </span></div>`;
+    return;
+  }
+  promptEl.innerHTML = '';
+  bodyEl.style.display = '';
+
+  if (!groups.length) {
+    document.getElementById('stats-groups-stats').innerHTML =
+      `<div class="empty-state" style="padding:20px 16px;">
+        No measurable groups for ${gun.name} in this range.</div>`;
+    document.getElementById('stats-groups-trend').innerHTML = '';
+    return;
+  }
+
+  const sizes = groups.map(g => g.mrMOA);
+  const days = [...new Set(groups.map(g => g.date))];
+  document.getElementById('stats-groups-stats').innerHTML = `
+    <div class="stats-stat-grid">
+      <div class="stats-stat-box">
+        <div class="stats-stat-num">${gFmt(statsMedian(sizes))}</div>
+        <div class="stats-stat-label">Median MOA</div></div>
+      <div class="stats-stat-box">
+        <div class="stats-stat-num">${gFmt(Math.min(...sizes))}</div>
+        <div class="stats-stat-label">Best Group</div></div>
+      <div class="stats-stat-box">
+        <div class="stats-stat-num">${groups.length}</div>
+        <div class="stats-stat-label">Groups · ${days.length} day${days.length === 1 ? '' : 's'}</div></div>
+    </div>
+    <div class="stats-note">Mean radius, median across groups. Mean radius uses every shot, so
+      it stays comparable as the number of shots per group changes — extreme spread does not.</div>`;
+
+  renderGroupTrend(gun, groups);
+}
+
+// Every group is plotted, dimmed, with the bold line joining session medians. One group is a
+// noisy estimate — on this rifle a single afternoon has spanned better than 3× best to worst
+// — so a line through individual groups would show trends that are only sampling noise.
+function renderGroupTrend(gun, groups) {
+  const el = document.getElementById('stats-groups-trend');
+  const byDate = {};
+  groups.forEach(g => (byDate[g.date] = byDate[g.date] || []).push(g));
+  const days = Object.keys(byDate).sort();
+
+  const W = 440, H = 190, PL = 34, PR = 34, PT = 18, PB = 30;
+  // Inset the first and last day from the axis, or their dots and value labels sit on the
+  // plot edge and collide with the y-axis and the re-zero line.
+  const inset = days.length > 1 ? 16 : 0;
+  const x = i => days.length === 1 ? PL + (W - PL - PR) / 2
+    : PL + inset + (i / (days.length - 1)) * (W - PL - PR - inset * 2);
+  const vals = groups.map(g => g.mrMOA);
+  const ymax = Math.max(...vals) * 1.2 || 1;
+  const y = v => H - PB - (v / ymax) * (H - PT - PB);
+
+  const ACCENT = '#c8a84b', ZERO = '#1f68bc', GRIDC = '#2e2e2e', DIM = '#555';
+  let svg = '';
+  [0, ymax / 2, ymax].forEach(t => {
+    svg += `<line x1="${PL}" y1="${y(t)}" x2="${W - PR}" y2="${y(t)}" stroke="${GRIDC}" stroke-width="1"/>
+            <text x="${PL - 5}" y="${y(t) + 3}" fill="${DIM}" font-family="IBM Plex Mono"
+                  font-size="8" text-anchor="end">${gFmt(t, 1)}</text>`;
+  });
+
+  // Re-zero marks are drawn whatever the time range is set to. Hiding the boundary unless
+  // you happened to filter by it is how you read straight through one.
+  const { start, end } = getStatsRangeBounds();
+  (gun.zeros || []).forEach(z => {
+    if ((start && z.date < start) || (end && z.date > end)) return;
+    let pos = days.indexOf(z.date);
+    let px;
+    if (pos >= 0) px = x(pos);
+    else {
+      const after = days.findIndex(d => d > z.date);
+      if (after <= 0) return;                        // outside the plotted span
+      px = (x(after - 1) + x(after)) / 2;
+    }
+    svg += `<line x1="${px}" y1="${PT - 6}" x2="${px}" y2="${H - PB}" stroke="${ZERO}"
+                  stroke-width="1" stroke-dasharray="3 3"/>
+            <text x="${px + 4}" y="${PT + 8}" fill="${ZERO}" font-family="IBM Plex Mono"
+                  font-size="7">re-zero</text>`;
+  });
+
+  const meds = days.map((d, i) => {
+    const v = byDate[d].map(g => g.mrMOA);
+    return { i, d, n: v.length, med: statsMedian(v), lo: Math.min(...v), hi: Math.max(...v) };
+  });
+
+  // The faint vertical bar is that day's best-to-worst range — the honest width of the
+  // estimate. A trend is real when the medians move further than those bars are tall.
+  meds.forEach(m => {
+    svg += `<line x1="${x(m.i)}" y1="${y(m.lo)}" x2="${x(m.i)}" y2="${y(m.hi)}"
+                  stroke="${ACCENT}" stroke-width="1" opacity="0.28"/>`;
+    byDate[m.d].forEach(g => {
+      svg += `<circle cx="${x(m.i)}" cy="${y(g.mrMOA)}" r="2.8" fill="${ACCENT}" opacity="0.5"/>`;
+    });
+  });
+  svg += `<polyline fill="none" stroke="${ACCENT}" stroke-width="2.2" stroke-linejoin="round"
+            points="${meds.map(m => `${x(m.i)},${y(m.med)}`).join(' ')}"/>`;
+  meds.forEach(m => {
+    svg += `<circle cx="${x(m.i)}" cy="${y(m.med)}" r="4.2" fill="${ACCENT}"
+                    stroke="var(--surface)" stroke-width="2"/>
+            <text x="${x(m.i)}" y="${y(m.med) - 9}" fill="${ACCENT}" font-family="IBM Plex Mono"
+                  font-size="8" text-anchor="middle">${gFmt(m.med)}</text>
+            <text x="${x(m.i)}" y="${H - 16}" fill="${DIM}" font-family="IBM Plex Mono"
+                  font-size="7" text-anchor="middle">${fmtDate(m.d).replace(/,.*/, '')}</text>
+            <text x="${x(m.i)}" y="${H - 6}" fill="${DIM}" font-family="IBM Plex Mono"
+                  font-size="6.5" text-anchor="middle">${m.n} group${m.n === 1 ? '' : 's'}</text>`;
+  });
+
+  el.innerHTML = `
+    <div class="stats-chart-card">
+      <div class="stats-chart-title">Group Size Over Time</div>
+      <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet"
+           role="img" aria-label="Median group size per range day">${svg}</svg>
+      <div class="stats-note">Bold line joins each range day's <b>median</b>; every group is
+        plotted faintly behind it, with the vertical bar showing that day's best to worst.
+        ${days.length < 3 ? 'Too few range days for a trend yet — this needs several.' : ''}</div>
+    </div>`;
 }
 
 // Rounds since the last deep clean against each firearm's own threshold, worst first.
@@ -4599,7 +4821,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.3';
+const APP_VERSION = '7.1.4';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

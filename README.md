@@ -13,6 +13,28 @@ A simple, private tracker for your range sessions — built as a lightweight web
 
 All data is stored locally in your browser (nothing is sent to a server), and can be exported/imported as JSON for backup or moving between devices.
 
+## Group size over time
+
+Under **Stats → Groups**, once you've picked a firearm.
+
+The chart plots **every group faintly** and joins each range day's **median** with the bold
+line. That distinction matters more than it looks: a single group is a noisy estimate of how
+well something shoots. One afternoon with the same rifle and load has spanned better than 3×
+from best to worst — so a line drawn through individual groups would show dramatic trends
+that are nothing but sampling noise. The faint vertical bar is that day's best-to-worst
+range, which is the honest width of the estimate: a trend is real when the medians move
+further than those bars are tall.
+
+Median rather than mean, so one called flyer doesn't drag a day's figure.
+
+**Re-zero marks are always drawn**, whatever time range you're on. A re-zero is a hard
+boundary — point of impact before and after it aren't the same measurement — and hiding that
+line unless you happened to filter by it is how you read straight through one.
+
+The time range picker offers your zeros as anchors: **Since last zero**, and each earlier one.
+Groups dated the same day as a zero count as *after* it, since neither carries a time and you
+zero before you shoot groups.
+
 ## A firearm's Details
 
 **View Details** on any firearm gathers its cleaning history, zeros, dope tables and groups
@@ -101,7 +123,8 @@ questions and nobody reads past the first:
 
 - **Groups** — per-firearm shooting analysis. Comparing group sizes across firearms isn't
   meaningful (a rimfire rifle at 50 yd and a pistol at 25 ft aren't on the same scale), so
-  this one is always scoped to a single firearm.
+  this one is always scoped to a single firearm. Pick one in the filter bar to see its
+  group-size trend.
 - **Practice** — rounds fired and range trips over time, by firearm, caliber and location.
 - **Money** — ammo spend, cost per round, and spend by store.
 - **Upkeep** — rounds since the last deep clean against each firearm's own threshold, sorted
