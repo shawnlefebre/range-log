@@ -120,6 +120,18 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   await page.locator('#statspane-money').screenshot({ path: path.join(ARTIFACTS,'stats-money.png') });
 
   // ── Groups pane, with a firearm that actually has groups ──
+  const cost = await page.evaluate(() => {
+    const t = [...document.querySelectorAll('#stats-as-cost .stats-stat-box')]
+      .map(b => b.textContent.replace(/\s+/g, ' '));
+    return { tiles: t, rows: document.querySelectorAll('#stats-as-cost .breakdown-row').length,
+             note: document.querySelector('#stats-as-cost .stats-note').textContent.replace(/\s+/g,' ') };
+  });
+  ck('cost of shooting reports a total and a per-trip figure',
+    cost.tiles.length === 2 && /Per Range Trip/i.test(cost.tiles.join(' ')));
+  ck('cost of shooting ranks firearms', cost.rows > 1);
+  ck('cost of shooting is labelled an estimate', /estimated/i.test(cost.note));
+  await page.locator('#stats-as-cost').screenshot({ path: path.join(ARTIFACTS,'stats-cost.png') });
+
   const burn = await page.evaluate(() =>
     [...document.querySelectorAll('#stats-as-burn .breakdown-row')].map(r => ({
       label: r.querySelector('.breakdown-name').textContent,

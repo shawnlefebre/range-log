@@ -1493,6 +1493,144 @@ describe('non-range ammo', () => {
   });
 });
 
+// ── COST OF SHOOTING ────────────────────────────────────────────────
+// Total spend is what left the wallet; this is what actually got fired. It is the reason the
+// "not range ammo" flag exists, so the link between the two is what matters most here.
+
+describe('cost of shooting', () => {
+  const openMoney = (win, range = 'all') => {
+    win.showTab('stats');
+    win.showStatsSection('money');
+    win.document.getElementById('stats-range').value = range;
+    win.renderStats();
+  };
+  const rows = win => [...win.document.querySelectorAll('#stats-as-cost .breakdown-row')]
+    .map(r => ({
+      name: r.querySelector('.breakdown-name').textContent,
+      cost: parseFloat(r.querySelector('.breakdown-val').textContent.replace('$', '')),
+      cpr: parseFloat(r.querySelector('.breakdown-pct').textContent.match(/\$([\d.]+)\/rd/)[1]),
+      rounds: parseInt(r.querySelector('.breakdown-pct').textContent.replace(/,/g, ''), 10),
+    }));
+  const tile = (win, label) => {
+    const box = [...win.document.querySelectorAll('#stats-as-cost .stats-stat-box')]
+      .find(b => new RegExp(label, 'i').test(b.querySelector('.stats-stat-label').textContent));
+    return box ? parseFloat(box.querySelector('.stats-stat-num').textContent.replace(/[$,]/g, '')) : null;
+  };
+
+  test('each firearm is priced at its own chambering, times what it fired', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const d = win.buildDefaultData();
+    const fired = {};
+    d.sessions.forEach(s => Object.entries(s.rounds || {})
+      .forEach(([g, n]) => fired[g] = (fired[g] || 0) + n));
+
+    rows(win).forEach(r => {
+      const gun = d.firearms.find(g => g.name === r.name);
+      assert.ok(gun, `${r.name} is a real firearm`);
+      assert.strictEqual(r.rounds, fired[gun.id], 'rounds come from the session log');
+      assert.ok(Math.abs(r.cost - r.rounds * r.cpr) < 0.02, 'cost is rounds times price');
+    });
+  });
+
+  test('the total is the sum of the rows, and per-trip divides by trips', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const sum = rows(win).reduce((x, r) => x + r.cost, 0);
+    assert.ok(Math.abs(tile(win, 'Rounds Fired') - sum) < 0.05);
+    const trips = win.buildDefaultData().sessions.length;
+    assert.ok(Math.abs(tile(win, 'Per Range Trip') - sum / trips) < 0.05,
+      'per-trip is the fired cost over trips, not total spend over trips');
+  });
+
+  test('what got fired is measured separately from what got bought', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const d = win.buildDefaultData();
+    const bought = d.ammo.reduce((x, a) => x + a.totalPrice, 0);
+    const firedCost = tile(win, 'Rounds Fired');
+
+    // Not a direction: rounds fired can exceed rounds bought, because ammo bought before the
+    // app existed was never logged — that is the user's actual situation. What matters is
+    // that the two come from different sources and are never conflated.
+    assert.notStrictEqual(Number(firedCost.toFixed(2)), Number(bought.toFixed(2)));
+
+    const fired = {};
+    d.sessions.forEach(s => Object.entries(s.rounds || {})
+      .forEach(([g, n]) => fired[g] = (fired[g] || 0) + n));
+    const roundsFired = Object.values(fired).reduce((a, b) => a + b, 0);
+    const roundsBought = d.ammo.reduce((x, a) => x + a.quantity, 0);
+    assert.notStrictEqual(roundsFired, roundsBought,
+      'precondition: the demo shoots a different number of rounds than it buys');
+
+    // The fired figure has to track the session log, so shooting more must cost more.
+    const before = tile(win, 'Rounds Fired');
+    win.document.getElementById('stats-range').value = 'month';
+    win.renderStats();
+    const narrowed = tile(win, 'Rounds Fired');
+    assert.ok(narrowed === null || narrowed <= before + 0.01,
+      'a shorter window cannot cost more than the whole record');
+  });
+
+  test('flagging ammo as not-range changes what shooting is estimated to cost', async () => {
+    const win = await ready(loadApp());
+    // Start from a state where nothing is flagged, so the change is attributable.
+    const carryId = win.buildDefaultData().ammo.find(a => a.rangeAmmo === false).id;
+    win.openEditAmmo(carryId);
+    win.document.getElementById('ammo-not-range').checked = false;
+    win.saveAmmo();
+    openMoney(win);
+    const blended = rows(win);
+
+    win.openEditAmmo(carryId);
+    win.document.getElementById('ammo-not-range').checked = true;
+    win.saveAmmo();
+    openMoney(win);
+    const rangeOnly = rows(win);
+
+    const carry = win.buildDefaultData().ammo.find(a => a.id === carryId);
+    const affected = rangeOnly.filter(r => {
+      const gun = win.buildDefaultData().firearms.find(g => g.name === r.name);
+      return gun && gunCaliberMatch(gun, carry.caliber);
+    });
+    function gunCaliberMatch(gun, cal) { return (gun.calibers || []).includes(cal); }
+
+    assert.ok(affected.length, 'some firearm shoots the flagged chambering');
+    affected.forEach(r => {
+      const before = blended.find(b => b.name === r.name);
+      assert.ok(r.cpr < before.cpr,
+        `${r.name}: excluding a pricier carry box should lower its per-round estimate ` +
+        `(${before.cpr} -> ${r.cpr})`);
+    });
+  });
+
+  test('it says it is an estimate, and why it has to be', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const note = flat(win.document.querySelector('#stats-as-cost .stats-note'));
+    assert.match(note, /estimated/i);
+    assert.match(note, /per firearm/i);
+    assert.match(note, /carry ammo excluded/i,
+      'the reason the flag matters belongs on the view it affects');
+  });
+
+  test('rounds with no ammo logged for their chambering are reported, not dropped', async () => {
+    const win = await ready(loadApp());
+    // Remove every purchase for one firearm's chambering; its rounds become unpriceable.
+    const d = win.buildDefaultData();
+    const gun = d.firearms.find(g => g.calibers.some(c => d.ammo.some(a => a.caliber === c)));
+    const doomed = d.ammo.filter(a => gun.calibers.includes(a.caliber));
+    win.confirm = () => true;
+    doomed.forEach(a => win.deleteAmmo(a.id));
+
+    openMoney(win);
+    assert.strictEqual(rows(win).some(r => r.name === gun.name), false,
+      'a firearm with no priceable ammo drops out of the ranking');
+    assert.match(flat(win.document.getElementById('stats-as-cost')), /aren't priced here/i,
+      'but its rounds are accounted for in words rather than silently ignored');
+  });
+});
+
 // ── BURN RATE ───────────────────────────────────────────────────────
 // Rounds fired come from the session log, which is complete. Bucketing by a firearm's whole
 // chambering is what removes the attribution problem: a .357/.38 revolver cannot say which

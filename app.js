@@ -2602,6 +2602,101 @@ function renderStats() {
   renderGroupsStats();
 }
 
+// ── COST OF SHOOTING ──────────────────────────────────────────────
+// What you have actually put downrange, as money. Total spend is what left your wallet;
+// this is what got fired, which is the figure you would quote to someone.
+//
+// It is an estimate and says so: rounds are logged per firearm and purchases per caliber, so
+// there is no way to know which specific box a given round came from. Each firearm's rounds
+// are priced at the average of the range ammo bought for its chambering — which is exactly
+// what the "not range ammo" flag is for. A 20-round box of carry ammo at five times the
+// price would otherwise inflate every round that firearm has ever fired.
+function rangePricePerRound(start, end) {
+  const per = {};
+  (data.ammo || []).forEach(a => {
+    if (a.rangeAmmo === false) return;              // carry ammo does not price practice
+    if (start && a.date < start) return;
+    if (end && a.date > end) return;
+    const c = (a.caliber || '').trim();
+    if (!c) return;
+    if (!per[c]) per[c] = { spend: 0, rounds: 0 };
+    per[c].spend += (a.totalPrice || 0);
+    per[c].rounds += (a.quantity || 0);
+  });
+  return per;
+}
+
+function renderCostToShoot() {
+  const el = document.getElementById('stats-as-cost');
+  if (!el) return;
+  const { start, end } = getStatsRangeBounds();
+  const scoped = scopedGunIdsFromFilters();
+
+  // Price from every purchase on record, not just the filtered window: narrowing to "this
+  // month" should narrow what was shot, not leave the ammo unpriced.
+  const price = rangePricePerRound(null, null);
+
+  const fired = {};
+  const sessions = (data.sessions || []).filter(s =>
+    (!start || s.date >= start) && (!end || s.date <= end));
+  sessions.forEach(s => Object.entries(s.rounds || {}).forEach(([gid, n]) => {
+    if (scoped && !scoped.has(gid)) return;
+    fired[gid] = (fired[gid] || 0) + n;
+  }));
+
+  const rows = [];
+  let unpriced = 0;
+  Object.entries(fired).forEach(([gid, rounds]) => {
+    const gun = (data.firearms || []).find(g => g.id === gid);
+    if (!gun || !rounds) return;
+    const cals = gunCalibers(gun).map(c => c.trim()).filter(c => price[c] && price[c].rounds);
+    if (!cals.length) { unpriced += rounds; return; }
+    const spend = cals.reduce((x, c) => x + price[c].spend, 0);
+    const qty = cals.reduce((x, c) => x + price[c].rounds, 0);
+    const cpr = spend / qty;
+    rows.push({ name: gun.name, rounds, cpr, cost: rounds * cpr });
+  });
+  if (!rows.length) { el.innerHTML = ''; return; }
+  rows.sort((a, b) => b.cost - a.cost);
+
+  const total = rows.reduce((x, r) => x + r.cost, 0);
+  const trips = sessions.filter(s =>
+    !scoped || Object.keys(s.rounds || {}).some(id => scoped.has(id))).length;
+  const max = rows[0].cost || 1;
+
+  const rowsHtml = rows.map(r => `
+    <div class="breakdown-row">
+      <div class="breakdown-top">
+        <span class="breakdown-name">${r.name}</span>
+        <span class="breakdown-val">$${r.cost.toFixed(2)}</span>
+      </div>
+      <div class="breakdown-bar-track">
+        <div class="breakdown-bar-fill" style="width:${Math.round((r.cost / max) * 100)}%"></div>
+      </div>
+      <div class="breakdown-pct">${r.rounds.toLocaleString()} rounds at $${r.cpr.toFixed(3)}/rd</div>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="stats-chart-card">
+      <div class="stats-chart-title">Cost of Shooting</div>
+      <div class="stats-stat-grid two">
+        <div class="stats-stat-box">
+          <div class="stats-stat-num">$${total.toFixed(2)}</div>
+          <div class="stats-stat-label">Rounds Fired</div></div>
+        <div class="stats-stat-box">
+          <div class="stats-stat-num">$${trips ? (total / trips).toFixed(2) : '0.00'}</div>
+          <div class="stats-stat-label">Per Range Trip</div></div>
+      </div>
+      ${rowsHtml}
+      <div class="stats-note"><b>Estimated.</b> Rounds are logged per firearm and purchases per
+        caliber, so each firearm's rounds are priced at the average of the range ammo bought
+        for its chambering — carry ammo excluded, or one expensive box would inflate every
+        round that firearm ever fired.${
+        unpriced ? ` ${unpriced.toLocaleString()} rounds aren't priced here: no ammo logged
+        for their chambering.` : ''}</div>
+    </div>`;
+}
+
 // ── BURN RATE ─────────────────────────────────────────────────────
 // Rounds actually fired per month, by chambering. This comes from the session log, which is
 // complete — unlike inventory, which cannot be computed because ammo bought before the app
@@ -3454,6 +3549,7 @@ function renderAmmoSpendStats() {
   }
 
   renderSellerSpend(purchases, tokens, rangeOnly);
+  renderCostToShoot();
   renderBurnRate();
 }
 
@@ -5193,7 +5289,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.1.10';
+const APP_VERSION = '7.1.11';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

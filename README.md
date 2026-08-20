@@ -161,7 +161,7 @@ questions and nobody reads past the first:
   this one is always scoped to a single firearm. Pick one in the filter bar to see its
   group-size trend.
 - **Practice** — rounds fired and range trips over time, by firearm, caliber and location.
-- **Money** — ammo spend, cost per round, spend by store, and how fast you burn each chambering.
+- **Money** — ammo spend, cost per round, spend by store, what shooting actually costs, and how fast you burn each chambering.
 - **Upkeep** — rounds since the last deep clean against each firearm's own threshold, sorted
   by whoever needs it most. Amber past 80%, red past due — always with the number and the
   word beside it, so the state never depends on colour alone.
@@ -181,6 +181,12 @@ Two things there are deliberately careful:
 - **Filtering money by firearm is an inference.** Purchases are logged per caliber and never
   per firearm, so picking a rifle shows spend on the calibers it uses — including ammo you
   actually put through something else chambered the same way. The screen says so.
+- **Cost of shooting is not total spend.** Total spend is what left your wallet; this is
+  what actually went downrange — rounds fired times the average price of range ammo for that
+  firearm's chambering, ranked by firearm, with a per-range-trip figure. It's explicitly an
+  estimate: rounds are logged per firearm and purchases per caliber, so there's no way to
+  know which box a given round came from. Rounds whose chambering has no logged ammo are
+  reported rather than quietly dropped.
 - **Carry ammo can be marked "not range ammo"** on a purchase, unchecked by default. A
   20-round box of defensive ammo at five times the price says nothing about what practice
   costs, so per-round prices leave it out — while spend and round totals still include it,
