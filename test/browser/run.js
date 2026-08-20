@@ -24,6 +24,7 @@ const SUITES = [
   ['bundle-check', 'photo bundle export and import round trip'],
   ['exif-check', 'EXIF date reading and session auto-linking'],
   ['tags-check', 'group tags: entry, case-insensitive dedup, view mode'],
+  ['multigroup-check', 'several groups on one photo, shared calibration and photo'],
 ];
 
 const waitForServer = () => new Promise((resolve, reject) => {

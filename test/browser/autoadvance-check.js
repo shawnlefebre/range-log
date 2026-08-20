@@ -9,6 +9,7 @@ require('fs').mkdirSync(ARTIFACTS, { recursive: true });
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 430, height: 900 }, serviceWorkers: 'block' });
   const page = await ctx.newPage();
+  page.on('dialog', dlg => dlg.accept());
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto((process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html'));
@@ -25,6 +26,10 @@ require('fs').mkdirSync(ARTIFACTS, { recursive: true });
   await page.waitForTimeout(250);
   await page.setInputFiles('#group-file', path.join(d, 'target.png'));
   await page.waitForTimeout(600);
+  // Done now writes the group rather than just advancing, so the required fields have to
+  // be present or it will refuse — which is the point of them being required.
+  await page.fill('#group-distance', '50');
+  await page.fill('#group-cal-w', '1');
 
   check('starts on the scale step', await step() === 0);
   check('no Done button while scaling', !(await nextShown()));
@@ -68,8 +73,8 @@ require('fs').mkdirSync(ARTIFACTS, { recursive: true });
   check('Done enables at two impacts',
     !(await page.evaluate(() => document.getElementById('group-next').disabled)));
   await page.click('#group-next');
-  await page.waitForTimeout(200);
-  check('Done finishes marking', await step() === 3);
+  await page.waitForTimeout(700);
+  check('Done finishes marking and writes the group', await step() === 3);
 
   // Four-corner mode needs four points before advancing.
   await page.evaluate(() => { G.calPts = []; G.poa = null; G.impacts = []; G.step = 0; gRefresh(); });

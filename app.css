@@ -527,6 +527,30 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* GROUPS MARKED ON ONE PHOTO */
+  .marked { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .marked-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;
+  }
+  .marked-row {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center;
+    background: var(--surface2); border-radius: 4px; padding: 7px 10px; margin-bottom: 5px;
+  }
+  .marked-n {
+    font-family: var(--font-mono); font-size: 0.58rem; color: var(--bg);
+    background: var(--mark-impact); border-radius: 3px; padding: 2px 6px;
+  }
+  .marked-row.current .marked-n {
+    background: none; color: var(--accent); border: 1px solid var(--accent);
+  }
+  .marked-meta { font-family: var(--font-mono); font-size: 0.62rem; color: var(--text-muted); }
+  .marked-size {
+    font-family: var(--font-mono); font-size: 0.78rem; font-weight: 600;
+    color: var(--accent); font-variant-numeric: tabular-nums;
+  }
+
   /* GROUP TAGS */
   .group-row-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
   .tag-pill {

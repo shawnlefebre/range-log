@@ -2299,6 +2299,10 @@ function groupBlank(gunId) {
     photoBlob: null, photoId: null,
     view: { scale: 1, ox: 0, oy: 0 },
     calPts: [], poa: null, impacts: [],
+    // A target usually carries several groups. Scale is marked once for the photo, then
+    // aim and impacts repeat per group. `saved` holds the ones already written, so they
+    // can be drawn dimmed and listed while the next one is marked.
+    saved: [],
   };
 }
 
@@ -2615,6 +2619,34 @@ function gDrawCanvas() {
     }, gVar('--mark-cal')));
   }
 
+  // Groups already finished on this photo, drawn faint. Without them there's no way to
+  // tell which clusters you've covered on a target carrying four of them.
+  if (G.saved && G.saved.length) {
+    const gun = data.firearms.find(x => x.id === G.gunId);
+    const done = (gun ? gun.groups || [] : []).filter(x => G.saved.includes(x.id) && x.id !== G.editId);
+    ctx.save();
+    ctx.globalAlpha = 0.34;
+    done.forEach((rec, gi) => {
+      (rec.impacts || []).forEach(ip => {
+        const p = gNormToScreen(ip);
+        halo(() => { ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, Math.PI * 2); ctx.stroke(); },
+             gVar('--mark-impact'), 1.5);
+      });
+      if (rec.poa) {
+        const p = gNormToScreen(rec.poa);
+        halo(() => {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+          ctx.stroke();
+        }, gVar('--mark-poa'), 1.5);
+        ctx.font = '600 10px ' + getComputedStyle(document.body).getPropertyValue('--font-mono');
+        ctx.fillStyle = gVar('--mark-impact');
+        ctx.fillText(String(gi + 1), p.x + 12, p.y - 10);
+      }
+    });
+    ctx.restore();
+  }
+
   if (G.poa) {
     const p = gNormToScreen(G.poa);
     halo(() => {
@@ -2694,7 +2726,11 @@ function gBindStage() {
       const field = document.getElementById(id);
       if (field.dataset.bound) return;
       field.dataset.bound = '1';
-      field.addEventListener('input', () => { if (G) gRefresh(); });
+      field.addEventListener('input', () => {
+        if (!G) return;
+        gSyncSharedToSaved();
+        gRefresh();
+      });
     });
 
   // Changing the date changes which session is the obvious match, so re-run the suggestion
@@ -2871,8 +2907,59 @@ function gRefresh() {
   next.disabled = G.impacts.length < 2;
   document.querySelector('.group-actions').classList.toggle('no-next', G.step !== 2);
 
+  // Once a group has been written, Save has nothing left to do — the useful actions are
+  // marking the next group on the same photo, or closing.
+  const finished = G.saved.length > 0 && G.step === 3 && !G.readOnly;
+  document.getElementById('group-another').style.display = finished && G.img ? '' : 'none';
+  document.getElementById('group-save').style.display =
+    (G.readOnly || finished) ? 'none' : '';
+  document.getElementById('group-cancel').textContent =
+    G.readOnly ? 'Close' : finished ? 'Done' : 'Cancel';
+
+  gRenderMarked();
+
   gDrawCanvas();
   gRenderResults();
+}
+
+// Starts the next group on the same photo: the scale, the photo and every shared field
+// stay put, only the aim point and impacts reset. This is the whole point of the feature —
+// four groups on one target shouldn't mean four passes at the same setup.
+// Shared fields describe the target, not one group on it. If the distance or ammo is
+// corrected after some groups are already written, those groups have to follow — four
+// groups off one photo disagreeing about the distance they were shot at is nonsense.
+function gSyncSharedToSaved() {
+  if (!G || !G.saved.length) return;
+  const gun = data.firearms.find(x => x.id === G.gunId);
+  if (!gun) return;
+  const shared = {
+    date: document.getElementById('group-date').value,
+    sessionId: document.getElementById('group-session').value || null,
+    distance: parseFloat(document.getElementById('group-distance').value),
+    distanceUnit: document.getElementById('group-distance-unit').value,
+    ammo: getSelectedAmmo('group-ammo-select', 'group-ammo-custom'),
+    tags: [...groupModalTags],
+    bulletDia: parseFloat(document.getElementById('group-bullet').value) || null,
+    calMode: document.getElementById('group-cal-mode').value,
+    calInches: parseFloat(document.getElementById('group-cal-w').value),
+    calInchesH: parseFloat(document.getElementById('group-cal-h').value) || null,
+    calPts: G.calPts.map(p => ({ x: p.x, y: p.y })),
+  };
+  if (!(shared.distance > 0) || !(shared.calInches > 0)) return;
+  let touched = false;
+  (gun.groups || []).forEach(rec => {
+    if (G.saved.includes(rec.id)) { Object.assign(rec, shared); touched = true; }
+  });
+  if (touched) { save(data); renderGunHistory(G.gunId); }
+}
+
+function groupMarkAnother() {
+  if (!G) return;
+  G.poa = null;
+  G.impacts = [];
+  G.editId = null;
+  G.step = 1;
+  gRefresh();
 }
 
 function groupSetPoint() {
@@ -2909,6 +2996,9 @@ function groupUndo() {
 }
 
 function groupNextStep() {
+  // Done on the impacts step writes the group straight away rather than waiting for a
+  // final Save, so an interruption at the bench can't cost you what's already marked.
+  if (G.step === 2) { groupFinishCurrent(); return; }
   if (G.step < 3) G.step++;
   gRefresh();
 }
@@ -3000,6 +3090,37 @@ function handleGroupAmmoChange() {
   const dia = gun && guessBulletDiameter(gun, getSelectedAmmo('group-ammo-select', 'group-ammo-custom'));
   if (dia) document.getElementById('group-bullet').value = dia;
   if (G) gRefresh();
+}
+
+// The set of groups marked on this photo, so you can watch it build and spot a cluster
+// you've missed. Each is already saved by the time it appears here.
+function gRenderMarked() {
+  const box = document.getElementById('group-marked');
+  if (!G || !G.saved.length) { box.innerHTML = ''; return; }
+
+  const gun = data.firearms.find(x => x.id === G.gunId);
+  const rows = G.saved.map((id, i) => {
+    const rec = (gun ? gun.groups || [] : []).find(x => x.id === id);
+    if (!rec) return '';
+    const size = groupSizeInches(rec);
+    const moa = size != null ? toMOA(size, groupDistanceInches(rec)) : null;
+    const current = rec.id === G.editId && G.step < 3;
+    return `
+      <div class="marked-row${current ? ' current' : ''}">
+        <span class="marked-n">${i + 1}</span>
+        <span class="marked-meta">${(rec.impacts || []).length} shots${current ? ' — marking' : ''}</span>
+        <span class="marked-size">${moa != null ? gFmt(moa) + ' MOA' : '—'}</span>
+      </div>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="marked">
+      <div class="marked-head">
+        <span>Groups on this photo</span>
+        <span>${G.saved.length} saved</span>
+      </div>
+      ${rows}
+    </div>`;
 }
 
 /* ---- results ---- */
@@ -3361,6 +3482,7 @@ async function gLoadImage(fileOrBlob, resetMarks) {
   G.imgW = bmp.width;
   G.imgH = bmp.height;
   G.photoBlob = fileOrBlob;
+  G.photoWritten = false;
   if (resetMarks) { G.calPts = []; G.poa = null; G.impacts = []; G.step = 0; }
 
   // Reveal the stage first — a hidden canvas measures 0 wide, and fitting against that
@@ -3414,7 +3536,9 @@ async function handleGroupFile(input) {
   await gLoadImage(file, true);
 }
 
-async function saveGroup() {
+// Validates and writes the current marking state. Returns the record, or undefined
+// when something's missing — callers decide whether to close.
+async function groupPersist() {
   if (!G || G.readOnly) return;
   const gun = data.firearms.find(g => g.id === G.gunId);
   if (!gun) return;
@@ -3433,10 +3557,18 @@ async function saveGroup() {
   if (!Array.isArray(gun.groups)) gun.groups = [];
   const existing = G.editId && gun.groups.find(x => x.id === G.editId);
 
-  let photoId = existing ? (existing.photoId || null) : null;
+  // Groups after the first on the same target reuse the photo already stored for it —
+  // G.photoId carries it across. Without this each group would store its own copy of the
+  // same image, so a four-group target would hold four identical blobs.
+  let photoId = existing ? (existing.photoId || null) : (G.photoId || null);
   if (keepPhoto && G.photoBlob && G.img) {
     photoId = photoId || uid();
-    await putPhoto(photoId, await gDownscale(G.img));
+    // Write once per loaded image; gLoadImage clears this when a new photo is chosen,
+    // so editing a group and replacing its photo still overwrites properly.
+    if (!G.photoWritten) {
+      await putPhoto(photoId, await gDownscale(G.img));
+      G.photoWritten = true;
+    }
   } else if (!keepPhoto && photoId) {
     await deletePhoto(photoId);
     photoId = null;
@@ -3464,6 +3596,26 @@ async function saveGroup() {
   else gun.groups.push(record);
 
   save(data);
+  return record;
+}
+
+// Finishing a group writes it immediately rather than batching to the end, so being
+// interrupted mid-target can't lose what's already marked. The photo is stored once on
+// the first save; later groups on the same target reference the same blob.
+async function groupFinishCurrent() {
+  const record = await groupPersist();
+  if (!record) return;
+  G.photoId = record.photoId;
+  G.saved.push(record.id);
+  G.editId = record.id;
+  G.step = 3;
+  renderGunHistory(G.gunId);
+  gRefresh();
+}
+
+async function saveGroup() {
+  const record = await groupPersist();
+  if (!record) return;
   G = null;
   closeModal('modal-group');
 }
@@ -3473,10 +3625,15 @@ async function deleteGroup(gunId, groupId) {
   const gun = data.firearms.find(g => g.id === gunId);
   if (!gun) return;
   const g = (gun.groups || []).find(x => x.id === groupId);
-  // Drop the photo too, or the blob orphans in IndexedDB and quietly eats space.
-  if (g && g.photoId) await deletePhoto(g.photoId);
+  const photoId = g && g.photoId;
   gun.groups = (gun.groups || []).filter(x => x.id !== groupId);
   save(data);
+
+  // Several groups marked on one target share a single photo, so the blob can only go
+  // once nothing references it any more. Deleting it outright would blind the groups
+  // still pointing at it — they'd keep their measurements but lose the ability to
+  // re-mark. Checking after the removal is what makes the count correct.
+  if (photoId && !referencedPhotoIds().has(photoId)) await deletePhoto(photoId);
   if (currentHistoryGunId === gunId) renderGunHistory(gunId);
 }
 
