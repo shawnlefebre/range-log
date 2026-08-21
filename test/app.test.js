@@ -1300,6 +1300,164 @@ describe('point of impact map', () => {
         'a zero on or before the first group does not split the data');
     }
   });
+
+  // Offsets are what you dial, so they follow the rifle's turret. Group size deliberately
+  // does not — it stays MOA so it can be compared between firearms. The Stats map used to
+  // hardcode MOA here while the group detail view honored the setting, so a mil rifle
+  // reported its offsets in the wrong unit on one screen and the right one on the other.
+  test('offsets read in the rifle turret unit, and group size stays MOA', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+
+    open(win, gun.id, 'ammo');
+    win.groupsInScope().gun.opticUnit = 'mrad';
+    open(win, gun.id, 'ammo');
+    const milText = flat(poi(win));
+    assert.match(milText, /MRAD (high|low|right|left)/,
+      'a mil rifle should state its point of impact in MRAD');
+    assert.doesNotMatch(milText, /MOA (high|low|right|left)/,
+      'and should not also offer the same offset in MOA');
+
+    // The headline group-size figure is a different question and must not follow suit.
+    assert.match(flat(win.document.getElementById('stats-groups-stats')), /MOA/,
+      'group size stays MOA regardless of the turret');
+
+    open(win, gun.id, 'ammo');
+    win.groupsInScope().gun.opticUnit = 'moa';
+    open(win, gun.id, 'ammo');
+    assert.match(flat(poi(win)), /MOA (high|low|right|left)/, 'an MOA rifle reads MOA');
+
+    open(win, gun.id, 'ammo');
+    win.groupsInScope().gun.opticUnit = null;
+    open(win, gun.id, 'ammo');
+    assert.match(flat(poi(win)), /MOA (high|low|right|left)/, 'an unset turret falls back to MOA');
+  });
+
+  test('the offset rings are labelled in that same unit', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    const ringLabels = () => [...poi(win).querySelectorAll('svg text')]
+      .map(t => t.textContent).filter(t => /^[\d.]+$/.test(t));
+
+    // The sample groups sit almost on their aim point, which is too small an offset to draw
+    // any ring at all. Move the aim a known inch away so there is a scale to label: at 50 yd
+    // that is ~1.9 MOA, or ~0.56 mil.
+    open(win, gun.id, 'ammo');
+    win.groupsInScope().gun.groups.forEach(g => { g.poa = { x: 0.40, y: 0.50 }; });
+
+    win.groupsInScope().gun.opticUnit = 'moa';
+    open(win, gun.id, 'ammo');
+    const moaRings = ringLabels();
+    assert.ok(moaRings.length, 'an MOA rifle draws rings');
+    assert.ok(moaRings.every(r => Number.isInteger(Number(r))), 'MOA rings step in whole units');
+
+    open(win, gun.id, 'ammo');
+    win.groupsInScope().gun.opticUnit = 'mrad';
+    open(win, gun.id, 'ammo');
+    const milRings = ringLabels();
+    // A whole mil is ~3.44 MOA, so whole-mil rings would often draw none at all — the
+    // reason mil steps by half. Losing that leaves the plot with no scale to read against.
+    assert.ok(milRings.length, 'a mil rifle still draws rings rather than an empty plot');
+    assert.ok(milRings.some(r => r.endsWith('.5')), 'mil rings step by half');
+  });
+});
+
+// ── PICKING A COMPARISON WORTH MAKING ───────────────────────────────
+// Every dimension looked equally useful in the picker, so the only way to learn that a
+// firearm had one ammo, or one tag, was to select it and land on "nothing to compare".
+
+describe('comparison dimension counts', () => {
+  const gunWithGroups = win => win.buildDefaultData().firearms.find(g => (g.groups || []).length);
+  const open = (win, gunId, dim) => {
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-firearm').value = gunId;
+    win.document.getElementById('stats-range').value = 'all';
+    if (dim) win.document.getElementById('stats-groups-compare-by').value = dim;
+    win.renderStats();
+  };
+  const opts = win => [...win.document.querySelectorAll('#stats-groups-compare-by option')];
+
+  test('every dimension carries its bucket count', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    open(win, gun.id, 'ammo');
+    opts(win).forEach(o => assert.match(o.textContent, /\(\d+\)$/,
+      `${o.value} should say how many buckets it would split into`));
+  });
+
+  test('the count matches what the chart actually draws', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    open(win, gun.id, 'tag');
+    const stated = Number(opts(win).find(o => o.value === 'tag').textContent.match(/\((\d+)\)/)[1]);
+    const drawn = win.document.querySelectorAll('#stats-groups-compare .cmp-name').length;
+    assert.strictEqual(stated, drawn, 'the number in the picker is the number of rows drawn');
+  });
+
+  test('counts follow the filters rather than the whole history', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    open(win, gun.id, 'day');
+    const all = Number(opts(win).find(o => o.value === 'day').textContent.match(/\((\d+)\)/)[1]);
+    // Narrowing to a single range day has to bring the range-day count down with it.
+    const dates = [...new Set(win.groupsInScope().groups.map(g => g.date))].sort();
+    win.document.getElementById('stats-range').value = 'all';
+    win.groupsInScope().gun.groups.forEach(g => { g.date = dates[dates.length - 1]; });
+    win.renderStats();
+    const narrowed = Number(opts(win).find(o => o.value === 'day').textContent.match(/\((\d+)\)/)[1]);
+    assert.ok(all > 1, 'precondition: the sample data spans several range days');
+    assert.strictEqual(narrowed, 1, 'one date left means one bucket');
+  });
+
+  test('a count is never appended twice across re-renders', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    open(win, gun.id, 'ammo');
+    win.renderStats();
+    win.renderStats();
+    opts(win).forEach(o => assert.doesNotMatch(o.textContent, /\(\d+\).*\(\d+\)/,
+      `${o.value} label is being rebuilt from itself instead of its base name`));
+  });
+
+  test('a dead end names the dimensions that would work', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    // Collapse ammo to a single load so this is the real single-bucket case.
+    open(win, gun.id, 'ammo');
+    const live = win.groupsInScope().gun;
+    live.groups.forEach(g => { g.ammo = live.groups[0].ammo; });
+    open(win, gun.id, 'ammo');
+
+    const el = win.document.getElementById('stats-groups-compare');
+    assert.match(flat(el), /nothing to compare/i);
+    const chips = [...el.querySelectorAll('.chip-btn')];
+    assert.ok(chips.length, 'a dead end should offer a way out');
+    // A suggestion that leads to another dead end is worse than none at all.
+    chips.forEach(c => {
+      const n = Number(c.textContent.match(/(\d+)\s*$/)[1]);
+      assert.ok(n >= 2, `suggested ${c.textContent.trim()} but it has nothing to compare either`);
+    });
+    assert.ok(!chips.some(c => /^Ammo/.test(c.textContent.trim())),
+      'the dimension you are already on is not a suggestion');
+  });
+
+  test('tapping a suggestion switches the picker and draws the chart', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    open(win, gun.id, 'ammo');
+    const live = win.groupsInScope().gun;
+    live.groups.forEach(g => { g.ammo = live.groups[0].ammo; });
+    open(win, gun.id, 'ammo');
+
+    const chip = win.document.querySelector('#stats-groups-compare .chip-btn');
+    assert.ok(chip, 'precondition: a suggestion is offered');
+    chip.onclick();
+    assert.notStrictEqual(win.document.getElementById('stats-groups-compare-by').value, 'ammo',
+      'the picker should now be on the suggested dimension');
+    assert.ok(win.document.querySelectorAll('#stats-groups-compare .cmp-name').length >= 2,
+      'and the comparison it promised should be on screen');
+  });
 });
 
 // ── SHARED STATS FILTER BAR ─────────────────────────────────────────

@@ -1222,6 +1222,24 @@
     font-family: var(--font-mono);
     font-size: 0.75rem;
   }
+  /* Ways out of a dimension with nothing to compare. Built on .chip so they match the tag
+     chips already in the app; the count is dim rather than a status colour, since how many
+     buckets a dimension has is information, not good or bad news. */
+  .cmp-alts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 12px;
+  }
+  .chip-btn {
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 0.72rem;
+  }
+  .chip-btn b { color: var(--text-dim); font-weight: 600; }
+  .chip-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .chip-btn:hover b { color: var(--accent); }
 
   /* Per-firearm breakdown */
   .breakdown-row { margin-bottom: 10px; }

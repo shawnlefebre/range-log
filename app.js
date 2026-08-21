@@ -3392,8 +3392,47 @@ function renderGroupsStats() {
       shot counts, unlike extreme spread.</div>`;
 
   renderGroupTrend(gun, groups);
+  updateCompareCounts(groups);
   renderGroupCompare(groups);
   renderGroupPOI(gun, groups);
+}
+
+// How many distinct buckets a dimension would split these groups into. One bucket means
+// there is nothing to compare, which is worth knowing before you pick it rather than after.
+function groupBucketCount(groups, dim) {
+  const seen = new Set();
+  groups.forEach(g => dim.of(g).forEach(k => seen.add(k)));
+  return seen.size;
+}
+
+// Carry each dimension's bucket count in the picker itself. Tags in particular are often
+// sparse — a rifle every group of which is tagged "prone" offers nothing to compare, and
+// without the count the only way to discover that was to select it and hit a dead end.
+function updateCompareCounts(groups) {
+  const sel = document.getElementById('stats-groups-compare-by');
+  if (!sel) return;
+  [...sel.options].forEach(o => {
+    const dim = GROUP_COMPARE_DIMS[o.value];
+    if (!dim) return;
+    const base = o.dataset.label || o.textContent;
+    o.textContent = `${base} (${groupBucketCount(groups, dim)})`;
+  });
+}
+
+// The picker's own wording for a dimension, so a suggestion chip names exactly what you
+// would be selecting. Falls back to the sentence-case label the empty state uses.
+function compareDimLabel(key) {
+  const o = document.querySelector(`#stats-groups-compare-by option[value="${key}"]`);
+  return (o && o.dataset.label) || (GROUP_COMPARE_DIMS[key] || {}).label || key;
+}
+
+// Chips in the empty state switch the picker for you, so a dead end costs one tap instead
+// of trying each dimension in turn.
+function setGroupCompare(key) {
+  const sel = document.getElementById('stats-groups-compare-by');
+  if (!sel) return;
+  sel.value = key;
+  renderStats();
 }
 
 // Every group is plotted, dimmed, with the bold line joining session medians. One group is a
@@ -3736,8 +3775,17 @@ function renderGroupCompare(groups) {
   })).sort((a, b) => a.med - b.med);
 
   if (rows.length < 2) {
+    // Name the ways out rather than leaving a dead end. Only dimensions that would actually
+    // split these same groups are offered, so a suggestion can never lead to another one.
+    const alts = Object.entries(GROUP_COMPARE_DIMS)
+      .filter(([k]) => k !== key)
+      .map(([k, d]) => ({ k, label: compareDimLabel(k), n: groupBucketCount(groups, d) }))
+      .filter(a => a.n >= 2);
     el.innerHTML = `<div class="stats-empty">Only one ${dim.label} in this range — nothing to
-      compare against yet.</div>`;
+      compare against yet.${alts.length ? `
+      <div class="cmp-alts">${alts.map(a =>
+        `<button type="button" class="chip chip-btn" onclick="setGroupCompare('${a.k}')"
+                 >${a.label} <b>${a.n}</b></button>`).join('')}</div>` : ''}</div>`;
     return;
   }
 
@@ -3818,18 +3866,32 @@ function renderGroupPOI(gun, groups) {
   const px = v => C + (v / reach) * (C - PAD);
   const py = v => C - (v / reach) * (C - PAD);
 
+  // Offsets are the figures you dial, so they read in this rifle's turret unit — the same
+  // rule the group detail view follows. Group size stays MOA everywhere, since that one is
+  // compared across firearms and a per-rifle unit would make those numbers incomparable.
+  const mil = !!gun && gun.opticUnit === 'mrad';
+  const unitLabel = mil ? 'MRAD' : 'MOA';
+  const disp = v => (mil ? v / MOA_PER_MRAD : v);
+  const reachDisp = disp(reach);
+  // A whole mil is coarse enough that a typical zero offset would draw no ring at all, so
+  // mil rings step by half. Either way, coarsen rather than crowd the plot with rings.
+  let ringStep = mil ? 0.5 : 1;
+  while (reachDisp / ringStep > 8) ringStep *= 2;
+
   const GRIDC = '#2e2e2e', AXIS = '#555', DIM = '#555';
   let svg = '';
-  // Rings at whole MOA, as many as fit.
-  for (let r = 1; r <= Math.floor(reach); r++) {
-    svg += `<circle cx="${C}" cy="${C}" r="${(C - PAD) * r / reach}" fill="none"
+  // Rings out to the edge, labeled in whichever unit the offsets are being read in.
+  for (let i = 1; i * ringStep <= reachDisp + 1e-9; i++) {
+    const frac = (i * ringStep) / reachDisp;
+    const label = ringStep < 1 ? (i * ringStep).toFixed(1) : String(i * ringStep);
+    svg += `<circle cx="${C}" cy="${C}" r="${(C - PAD) * frac}" fill="none"
                     stroke="${GRIDC}" stroke-width="1"/>
-            <text x="${C + (C - PAD) * r / reach - 3}" y="${C - 4}" fill="${DIM}"
-                  font-family="IBM Plex Mono" font-size="8.5" text-anchor="end">${r}</text>`;
+            <text x="${C + (C - PAD) * frac - 3}" y="${C - 4}" fill="${DIM}"
+                  font-family="IBM Plex Mono" font-size="8.5" text-anchor="end">${label}</text>`;
   }
   svg += `<line x1="${PAD}" y1="${C}" x2="${W - PAD}" y2="${C}" stroke="${AXIS}" stroke-width="1"/>
           <line x1="${C}" y1="${PAD}" x2="${C}" y2="${H - PAD}" stroke="${AXIS}" stroke-width="1"/>
-          <text x="${W - 4}" y="${C - 6}" fill="${DIM}" font-family="IBM Plex Mono"
+          <text x="${W - 4}" y="${C + 12}" fill="${DIM}" font-family="IBM Plex Mono"
                 font-size="8.5" text-anchor="end">right</text>
           <text x="${C + 6}" y="${PAD - 6}" fill="${DIM}" font-family="IBM Plex Mono"
                 font-size="8.5">up</text>`;
@@ -3856,8 +3918,12 @@ function renderGroupPOI(gun, groups) {
 
   const mx = statsMedian(usable.map(g => g.offXMOA));
   const my = statsMedian(usable.map(g => g.offYMOA));
-  const dirX = Math.abs(mx) < 0.05 ? '' : `${gFmt(Math.abs(mx))} MOA ${mx > 0 ? 'right' : 'left'}`;
-  const dirY = Math.abs(my) < 0.05 ? '' : `${gFmt(Math.abs(my))} MOA ${my > 0 ? 'high' : 'low'}`;
+  // "On aim" stays a test in MOA so the threshold means the same thing physically whichever
+  // unit the number is then printed in.
+  const offText = (v, pos, neg) => Math.abs(v) < 0.05 ? ''
+    : `${gFmt(Math.abs(disp(v)))} ${unitLabel} ${v > 0 ? pos : neg}`;
+  const dirX = offText(mx, 'right', 'left');
+  const dirY = offText(my, 'high', 'low');
   const centered = !dirX && !dirY;
 
   // A re-zero inside the visible range means these dots are not one measurement. Point of
@@ -6073,7 +6139,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.3.2';
+const APP_VERSION = '7.3.3';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

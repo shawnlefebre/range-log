@@ -41,6 +41,11 @@ Also under **Stats → Groups**, a single chart with a **Compare by** control: a
 range day, or distance. Prone versus bench is the same question as Norma versus CCI — one dot
 per group, a median tick, the spread as a bar — so it's one view rather than three.
 
+Each option carries the number of buckets it would split the current groups into — *Ammo (3),
+Tag (1)* — so you can see which comparisons are worth making without selecting each in turn.
+A dimension with one bucket has nothing to compare, and when you land on one it names the
+dimensions that do, as chips that switch the control for you.
+
 Two things it deliberately tells you:
 
 - **When every bucket comes from one range day**, it says so. Comparing two tags that happen
@@ -56,7 +61,7 @@ Distances are normalized first, so 25 ft and 8.333 yd are one bucket rather than
 
 The last chart under **Stats → Groups**. Group size tells you what the firearm can do; this
 tells you whether it's pointed where you think — each dot is one group's *center* relative to
-your aim, with rings at whole MOA.
+your aim, with rings marking the distance out from it.
 
 It's colored by whatever **Compare by** is set to, so the two charts read together, with a
 cross marking each row's median. Beyond four rows it stops coloring: the palette is
@@ -65,6 +70,12 @@ failing colorblind separation.
 
 Underneath, it says in words where things actually sit — *"typical center is 0.74 MOA high
 and 0.48 MOA right of aim across 15 groups"* — which is usually the sentence you wanted.
+
+Offsets are what you dial, so both that sentence and the rings read in the firearm's own
+**optic adjustment unit**: a mil rifle reports MRAD, with rings every half mil, since a whole
+mil is coarse enough that a typical zero offset wouldn't draw one. Group size stays in MOA
+throughout, because that figure is compared *between* firearms and a per-rifle unit would
+make those numbers incomparable.
 
 **If a re-zero falls inside the range you're looking at, it says so.** Point of impact before
 and after a zero change aren't the same measurement, and averaging across one gives a number
