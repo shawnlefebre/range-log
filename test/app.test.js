@@ -1702,6 +1702,116 @@ describe('cost of shooting', () => {
   });
 });
 
+// ── AS-OF PRICING ───────────────────────────────────────────────────
+// A trip is priced from the ammo that had been bought by that date. Without this, buying
+// expensive ammo today would raise what last March cost — a figure that changes after the
+// fact is not a record of anything.
+
+describe('as-of ammo pricing', () => {
+  const addPurchase = (win, { caliber, quantity, totalPrice, date }) => {
+    win.openAddAmmo();
+    win.document.getElementById('ammo-date').value = date;
+    const sel = win.document.getElementById('ammo-caliber-select');
+    if ([...sel.options].some(o => o.value === caliber)) { sel.value = caliber; }
+    else {
+      sel.value = '__custom__';
+      win.handleCaliberSelectChange();
+      win.document.getElementById('ammo-caliber-custom').value = caliber;
+    }
+    win.document.getElementById('ammo-manufacturer').value = 'Test';
+    win.document.getElementById('ammo-model').value = 'Lot ' + date;
+    win.document.getElementById('ammo-quantity').value = String(quantity);
+    win.document.getElementById('ammo-price').value = String(totalPrice);
+    win.saveAmmo();
+  };
+
+  test('buying ammo today does not change what an earlier trip cost', async () => {
+    const win = await ready(loadApp());
+    const d = win.buildDefaultData();
+    const oldest = [...d.sessions].sort((a, b) => a.date.localeCompare(b.date))[0];
+    const before = win.sessionCost(oldest, win.buildCaliberPricer()).cost;
+    assert.ok(before > 0, 'precondition: the oldest trip has a price');
+
+    // A wildly expensive purchase, dated after that trip.
+    const cal = d.ammo[0].caliber;
+    addPurchase(win, { caliber: cal, quantity: 100, totalPrice: 900, date: '2026-12-31' });
+
+    const after = win.sessionCost(oldest, win.buildCaliberPricer()).cost;
+    assert.ok(Math.abs(after - before) < 0.005,
+      `an earlier trip must not move (${before.toFixed(2)} -> ${after.toFixed(2)})`);
+  });
+
+  test('but a backdated purchase does change it, because it was true at the time', async () => {
+    const win = await ready(loadApp());
+    const d = win.buildDefaultData();
+    const target = [...d.sessions].sort((a, b) => b.date.localeCompare(a.date))[0];
+    const cal = d.ammo[0].caliber;
+    const before = win.sessionCost(target, win.buildCaliberPricer()).cost;
+
+    addPurchase(win, { caliber: cal, quantity: 100, totalPrice: 900,
+                       date: '2020-01-01' });
+    const after = win.sessionCost(target, win.buildCaliberPricer()).cost;
+    assert.ok(after > before,
+      'ammo bought before a trip is part of what that trip could have been shooting');
+  });
+
+  test('a trip predating every purchase falls back to the earliest price, and is flagged', async () => {
+    const win = await ready(loadApp());
+    const pricer = win.buildCaliberPricer();
+    const d = win.buildDefaultData();
+    const cal = d.ammo.map(a => a.caliber).sort()[0];
+    const earliest = [...d.ammo].filter(a => a.caliber === cal)
+      .sort((a, b) => a.date.localeCompare(b.date))[0];
+
+    const long_ago = pricer.forCaliber(cal, '2000-01-01');
+    assert.ok(long_ago, 'it still returns a price rather than nothing');
+    assert.strictEqual(long_ago.estimated, true, 'and marks it as a fallback');
+    assert.ok(Math.abs(long_ago.cpr - earliest.totalPrice / earliest.quantity) < 1e-9,
+      'the fallback is the first price ever recorded for that chambering');
+
+    const now = pricer.forCaliber(cal, null);
+    assert.strictEqual(now.estimated, false, 'a normal lookup is not flagged');
+  });
+
+  test('a caliber never purchased has no price at all, rather than a guess', async () => {
+    const win = await ready(loadApp());
+    const pricer = win.buildCaliberPricer();
+    assert.strictEqual(pricer.forCaliber('.700 Nitro Express', null), null);
+  });
+
+  test('carry ammo never prices a trip, whatever the date', async () => {
+    const win = await ready(loadApp());
+    const d = win.buildDefaultData();
+    const carry = d.ammo.find(a => a.rangeAmmo === false);
+    assert.ok(carry, 'demo data has a carry purchase');
+    const pricer = win.buildCaliberPricer();
+    const withCarry = d.ammo.filter(a => a.caliber === carry.caliber);
+    const rangeOnly = withCarry.filter(a => a.rangeAmmo !== false);
+    const blended = withCarry.reduce((x, a) => x + a.totalPrice, 0)
+      / withCarry.reduce((x, a) => x + a.quantity, 0);
+    const expected = rangeOnly.reduce((x, a) => x + a.totalPrice, 0)
+      / rangeOnly.reduce((x, a) => x + a.quantity, 0);
+    const got = pricer.forCaliber(carry.caliber, null).cpr;
+    assert.ok(Math.abs(got - expected) < 1e-9);
+    assert.ok(Math.abs(got - blended) > 1e-9, 'and it is not the blended figure');
+  });
+
+  test('the two Money views are built from the same per-session figures', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    win.showStatsSection('money');
+    win.document.getElementById('stats-range').value = 'all';
+    win.renderStats();
+
+    const perGun = [...win.document.querySelectorAll('#stats-as-cost .breakdown-row')]
+      .reduce((x, r) => x + parseFloat(r.querySelector('.breakdown-val').textContent.replace('$', '')), 0);
+    const perTrip = [...win.document.querySelectorAll('#stats-trip-list .trip-row')]
+      .reduce((x, r) => x + parseFloat(r.querySelector('.breakdown-val').textContent.replace('$', '')), 0);
+    assert.ok(Math.abs(perGun - perTrip) < 0.25,
+      `by-firearm (${perGun.toFixed(2)}) and by-trip (${perTrip.toFixed(2)}) must agree`);
+  });
+});
+
 // ── VIEWING A SESSION ───────────────────────────────────────────────
 
 describe('viewing a session', () => {
@@ -1780,23 +1890,30 @@ describe('cost per trip list', () => {
       'and it opens the trip that was tapped');
   });
 
-  test('each row lists what was shot, biggest count first', async () => {
+  test('each row lists what was shot and what it cost, dearest firearm first', async () => {
     const win = await ready(loadApp());
     open(win);
     const row = win.document.querySelector('#stats-trip-list .trip-row');
     const guns = [...row.querySelectorAll('.trip-guns span')];
     assert.ok(guns.length, 'the firearms are named, since they explain the cost');
 
-    const counts = guns.map(g => parseInt(g.querySelector('b').textContent, 10));
-    counts.forEach((n, i) => {
-      if (i) assert.ok(n <= counts[i - 1], 'listed heaviest-used first');
+    // Ranked by cost, not rounds — in a money view those orders differ, since 30 rounds of
+    // centerfire outspend 60 of rimfire.
+    const costs = guns.map(g => parseFloat(g.querySelector('b').textContent.replace('$', '')));
+    costs.forEach((c, i) => {
+      if (i) assert.ok(c <= costs[i - 1] + 0.005, 'listed most-expensive firearm first');
     });
 
+    const counts = guns.map(g => parseInt(g.querySelector('i').textContent, 10));
     const id = row.getAttribute('onclick').match(/openViewSession\('([^']+)'\)/)[1];
     const sess = win.buildDefaultData().sessions.find(x => x.id === id);
     const total = Object.values(sess.rounds || {}).reduce((a, b) => a + b, 0);
     assert.strictEqual(counts.reduce((a, b) => a + b, 0), total,
       'the per-firearm counts add up to the trip');
+
+    const rowCost = parseFloat(row.querySelector('.breakdown-val').textContent.replace('$', ''));
+    assert.ok(Math.abs(costs.reduce((a, b) => a + b, 0) - rowCost) < 0.02,
+      'the per-firearm costs add up to the trip cost');
   });
 
   test('a long list scrolls in place rather than being truncated', async () => {
@@ -1955,15 +2072,15 @@ describe('per-session cost', () => {
   test('a session is priced from its own firearms, not an average trip', async () => {
     const win = await ready(loadApp());
     const d = win.buildDefaultData();
-    const priced = win.rangePricePerCaliber();
+    const pricer = win.buildCaliberPricer();
 
     d.sessions.forEach(sess => {
       const expected = Object.entries(sess.rounds || {}).reduce((sum, [gid, n]) => {
         const gun = d.firearms.find(g => g.id === gid);
-        const cpr = gun ? win.firearmPricePerRound(gun, priced) : null;
-        return cpr == null ? sum : sum + n * cpr;
+        const priced = gun ? pricer.forFirearm(gun, sess.date) : null;
+        return priced ? sum + n * priced.cpr : sum;
       }, 0);
-      const got = win.sessionCost(sess, priced).cost;
+      const got = win.sessionCost(sess, pricer).cost;
       assert.ok(Math.abs(got - expected) < 0.005,
         `${sess.date}: ${got.toFixed(2)} vs ${expected.toFixed(2)}`);
     });
@@ -1972,8 +2089,8 @@ describe('per-session cost', () => {
   test('two trips with the same round count can cost very different money', async () => {
     const win = await ready(loadApp());
     const d = win.buildDefaultData();
-    const priced = win.rangePricePerCaliber();
-    const costed = d.sessions.map(s => ({ ...win.sessionCost(s, priced), date: s.date }))
+    const pricer = win.buildCaliberPricer();
+    const costed = d.sessions.map(s => ({ ...win.sessionCost(s, pricer), date: s.date }))
       .filter(x => x.rounds > 0);
     const rates = costed.map(x => x.cpr);
     assert.ok(Math.max(...rates) > Math.min(...rates) * 1.2,
@@ -1992,7 +2109,7 @@ describe('per-session cost', () => {
 
     const d = win.buildDefaultData();
     const newest = [...d.sessions].sort((a, b) => b.date.localeCompare(a.date))[0];
-    const expected = win.sessionCost(newest, win.rangePricePerCaliber()).cost;
+    const expected = win.sessionCost(newest, win.buildCaliberPricer()).cost;
     assert.ok(Math.abs(parseFloat(cost.textContent.replace('~$', '')) - expected) < 0.02);
   });
 
@@ -2039,7 +2156,7 @@ describe('per-session cost', () => {
     d.ammo.forEach(a => win.deleteAmmo(a.id));      // nothing is priceable now
 
     const sess = d.sessions[0];
-    const out = win.sessionCost(sess, win.rangePricePerCaliber());
+    const out = win.sessionCost(sess, win.buildCaliberPricer());
     assert.strictEqual(out.cost, 0);
     assert.strictEqual(out.rounds, 0, 'no rounds were priced');
     assert.ok(out.unpriced > 0, 'and the unpriced ones are counted, not silently discarded');

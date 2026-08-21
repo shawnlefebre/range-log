@@ -1746,3 +1746,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+
+  .trip-guns i { color: var(--text-dim); font-style: normal; font-size: 0.54rem; }
+  /* Marks a trip priced from a fallback rather than from purchases that existed at the time. */
+  .est-flag { color: var(--warn); font-style: normal; cursor: help; }

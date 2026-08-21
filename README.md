@@ -190,11 +190,16 @@ Two things there are deliberately careful:
   trip is what explains it, since a rimfire afternoon and a centerfire one cost very different
   money for the same round count.
 - **Cost of shooting is not total spend.** Total spend is what left your wallet; this is
-  what actually went downrange — rounds fired times the average price of range ammo for that
+  what actually went downrange — rounds fired times the price of range ammo for that
   firearm's chambering, ranked by firearm, with a per-range-trip figure. It's explicitly an
   estimate: rounds are logged per firearm and purchases per caliber, so there's no way to
   know which box a given round came from. Rounds whose chambering has no logged ammo are
   reported rather than quietly dropped.
+- **Each trip is priced from the ammo you'd bought by that date.** Buying expensive ammo
+  today never changes what last March cost — a figure that moves after the fact isn't a
+  record of anything. Trips that predate every purchase of what was shot (real, if you were
+  shooting before you started logging) fall back to the earliest price on record and are
+  marked `≈` rather than reading $0.
 - **Carry ammo can be marked "not range ammo"** on a purchase, unchecked by default. A
   20-round box of defensive ammo at five times the price says nothing about what practice
   costs, so per-round prices leave it out — while spend and round totals still include it,

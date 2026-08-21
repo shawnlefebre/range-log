@@ -895,10 +895,10 @@ function renderSessions() {
     return;
   }
   const sorted = [...data.sessions].sort((a,b) => b.date.localeCompare(a.date));
-  const priced = rangePricePerCaliber();
+  const pricer = buildCaliberPricer();
   el.innerHTML = sorted.map(s => {
     const loc = data.locations.find(l => l.id === s.locationId);
-    const money = sessionCost(s, priced);
+    const money = sessionCost(s, pricer);
     const rounds = s.rounds && typeof s.rounds === 'object' ? s.rounds : {};
     const pills = Object.entries(rounds).map(([gid, r]) => {
       const gun = data.firearms.find(g => g.id === gid);
@@ -2687,44 +2687,90 @@ function renderStats() {
 // given round came from. A firearm's rounds are priced at the average of the range ammo
 // bought for its chambering — carry ammo excluded, or one 20-round box at five times the
 // price would inflate every round that firearm ever fired.
-function rangePricePerCaliber() {
-  const per = {};
+//
+// Crucially the average is taken *as of the session date*: only purchases made on or before
+// a trip can price it. Otherwise buying expensive ammo today would retroactively raise what
+// last March cost, and a figure that changes after the fact is not a record of anything.
+//
+// Where a trip predates every purchase of what was shot — real here, since ammo bought
+// before this app existed was never logged — it falls back to the earliest price ever
+// recorded for that chambering and says so. An assumption stated beats a trip that reads $0.
+function buildCaliberPricer() {
+  const lots = {};
   (data.ammo || []).forEach(a => {
     if (a.rangeAmmo === false) return;
     const c = (a.caliber || '').trim();
-    if (!c) return;
-    if (!per[c]) per[c] = { spend: 0, rounds: 0 };
-    per[c].spend += (a.totalPrice || 0);
-    per[c].rounds += (a.quantity || 0);
+    if (!c || !(a.quantity > 0)) return;
+    (lots[c] = lots[c] || []).push({ date: a.date, spend: a.totalPrice || 0, rounds: a.quantity });
   });
-  return per;
+  Object.values(lots).forEach(l => l.sort((x, y) => (x.date || '').localeCompare(y.date || '')));
+
+  const cache = new Map();
+  // Returns { cpr, estimated } for one caliber as of a date, or null if never purchased.
+  function forCaliber(caliber, date) {
+    const l = lots[caliber];
+    if (!l || !l.length) return null;
+    const key = caliber + '|' + (date || '');
+    if (cache.has(key)) return cache.get(key);
+    const upTo = date ? l.filter(x => (x.date || '') <= date) : l;
+    let out;
+    if (upTo.length) {
+      const spend = upTo.reduce((x, y) => x + y.spend, 0);
+      const rounds = upTo.reduce((x, y) => x + y.rounds, 0);
+      out = { cpr: rounds ? spend / rounds : null, estimated: false };
+    } else {
+      // Nothing bought yet at that date — use the first price ever recorded, and flag it.
+      out = { cpr: l[0].rounds ? l[0].spend / l[0].rounds : null, estimated: true };
+    }
+    cache.set(key, out);
+    return out && out.cpr != null ? out : null;
+  }
+
+  // A firearm's price is the weighted average across its own chamberings, as of that date.
+  function forFirearm(gun, date) {
+    const parts = gunCalibers(gun).map(c => ({ c: c.trim(), l: lots[c.trim()] }))
+      .filter(x => x.l && x.l.length);
+    if (!parts.length) return null;
+    let spend = 0, rounds = 0, estimated = false;
+    parts.forEach(({ c }) => {
+      const l = lots[c];
+      const upTo = date ? l.filter(x => (x.date || '') <= date) : l;
+      if (upTo.length) {
+        spend += upTo.reduce((x, y) => x + y.spend, 0);
+        rounds += upTo.reduce((x, y) => x + y.rounds, 0);
+      } else {
+        spend += l[0].spend;
+        rounds += l[0].rounds;
+        estimated = true;
+      }
+    });
+    if (!rounds) return null;
+    return { cpr: spend / rounds, estimated };
+  }
+
+  return { forCaliber, forFirearm };
 }
 
-// Price per round for one firearm, or null when nothing has been logged for its chambering.
-function firearmPricePerRound(gun, priced) {
-  const per = priced || rangePricePerCaliber();
-  const cals = gunCalibers(gun).map(c => c.trim()).filter(c => per[c] && per[c].rounds);
-  if (!cals.length) return null;
-  const spend = cals.reduce((x, c) => x + per[c].spend, 0);
-  const qty = cals.reduce((x, c) => x + per[c].rounds, 0);
-  return spend / qty;
-}
-
-// What one range trip cost. `unpriced` is rounds whose chambering has no logged ammo — they
-// are reported rather than folded into the total as if they were free.
-function sessionCost(session, priced, scoped) {
-  const per = priced || rangePricePerCaliber();
-  let cost = 0, rounds = 0, unpriced = 0;
+// What one range trip cost, broken out by firearm. `unpriced` is rounds whose chambering has
+// no logged ammo at all — reported rather than folded in as if they were free.
+function sessionCost(session, pricer, scoped) {
+  const p = pricer || buildCaliberPricer();
+  let cost = 0, rounds = 0, unpriced = 0, estimated = false;
+  const byFirearm = [];
   Object.entries(session.rounds || {}).forEach(([gid, n]) => {
     if (scoped && !scoped.has(gid)) return;
     const gun = (data.firearms || []).find(g => g.id === gid);
     if (!gun) return;
-    const cpr = firearmPricePerRound(gun, per);
-    if (cpr == null) { unpriced += n; return; }
-    cost += n * cpr;
+    const priced = p.forFirearm(gun, session.date);
+    if (!priced) { unpriced += n; return; }
+    if (priced.estimated) estimated = true;
+    cost += n * priced.cpr;
     rounds += n;
+    byFirearm.push({ gun, name: gun.name, rounds: n, cpr: priced.cpr,
+                     cost: n * priced.cpr, estimated: priced.estimated });
   });
-  return { cost, rounds, unpriced, cpr: rounds ? cost / rounds : null };
+  byFirearm.sort((a, b) => b.cost - a.cost);
+  return { cost, rounds, unpriced, estimated, byFirearm, cpr: rounds ? cost / rounds : null };
 }
 
 // ── COST OF SHOOTING ──────────────────────────────────────────────
@@ -2741,34 +2787,33 @@ function renderCostToShoot() {
   if (!el) return;
   const { start, end } = getStatsRangeBounds();
   const scoped = scopedGunIdsFromFilters();
+  const pricer = buildCaliberPricer();
 
-  // Price from every purchase on record, not just the filtered window: narrowing to "this
-  // month" should narrow what was shot, not leave the ammo unpriced.
-  const price = rangePricePerCaliber();
-
-  const fired = {};
   const sessions = (data.sessions || []).filter(s =>
     (!start || s.date >= start) && (!end || s.date <= end));
-  sessions.forEach(s => Object.entries(s.rounds || {}).forEach(([gid, n]) => {
-    if (scoped && !scoped.has(gid)) return;
-    fired[gid] = (fired[gid] || 0) + n;
-  }));
 
-  const rows = [];
-  let unpriced = 0;
-  Object.entries(fired).forEach(([gid, rounds]) => {
-    const gun = (data.firearms || []).find(g => g.id === gid);
-    if (!gun || !rounds) return;
-    const cpr = firearmPricePerRound(gun, price);
-    if (cpr == null) { unpriced += rounds; return; }
-    rows.push({ name: gun.name, rounds, cpr, cost: rounds * cpr });
+  // Built from the same per-session figures the trip list uses, so the two can never
+  // disagree — each trip is priced as of its own date and the firearm totals are the sum.
+  const byGun = {};
+  let unpriced = 0, estimated = false, tripsInScope = 0;
+  sessions.forEach(s => {
+    const c = sessionCost(s, pricer, scoped);
+    unpriced += c.unpriced;
+    if (c.estimated) estimated = true;
+    if (c.rounds > 0 || c.unpriced > 0) tripsInScope++;
+    c.byFirearm.forEach(f => {
+      const row = byGun[f.name] || (byGun[f.name] = { name: f.name, rounds: 0, cost: 0 });
+      row.rounds += f.rounds;
+      row.cost += f.cost;
+    });
   });
+
+  const rows = Object.values(byGun)
+    .map(r => ({ ...r, cpr: r.rounds ? r.cost / r.rounds : 0 }))
+    .sort((a, b) => b.cost - a.cost);
   if (!rows.length) { el.innerHTML = ''; return; }
-  rows.sort((a, b) => b.cost - a.cost);
 
   const total = rows.reduce((x, r) => x + r.cost, 0);
-  const trips = sessions.filter(s =>
-    !scoped || Object.keys(s.rounds || {}).some(id => scoped.has(id))).length;
   const max = rows[0].cost || 1;
 
   const rowsHtml = rows.map(r => `
@@ -2780,7 +2825,7 @@ function renderCostToShoot() {
       <div class="breakdown-bar-track">
         <div class="breakdown-bar-fill" style="width:${Math.round((r.cost / max) * 100)}%"></div>
       </div>
-      <div class="breakdown-pct">${r.rounds.toLocaleString()} rounds at $${r.cpr.toFixed(3)}/rd</div>
+      <div class="breakdown-pct">${r.rounds.toLocaleString()} rounds, averaging $${r.cpr.toFixed(3)}/rd</div>
     </div>`).join('');
 
   el.innerHTML = `
@@ -2791,14 +2836,15 @@ function renderCostToShoot() {
           <div class="stats-stat-num">$${total.toFixed(2)}</div>
           <div class="stats-stat-label">Rounds Fired</div></div>
         <div class="stats-stat-box">
-          <div class="stats-stat-num">$${trips ? (total / trips).toFixed(2) : '0.00'}</div>
+          <div class="stats-stat-num">$${tripsInScope ? (total / tripsInScope).toFixed(2) : '0.00'}</div>
           <div class="stats-stat-label">Per Range Trip</div></div>
       </div>
       ${rowsHtml}
-      <div class="stats-note"><b>Estimated.</b> Rounds are logged per firearm and purchases per
-        caliber, so each firearm's rounds are priced at the average of the range ammo bought
-        for its chambering — carry ammo excluded, or one expensive box would inflate every
-        round that firearm ever fired.${
+      <div class="stats-note"><b>Estimated.</b> Each trip is priced from the range ammo you had
+        bought <b>by that date</b> — so buying today never changes what last March cost. Rounds
+        are logged per firearm and purchases per caliber, so a firearm's rounds carry the
+        average for its chambering, carry ammo excluded.${
+        estimated ? ' Some trips predate every purchase of what was shot and fall back to the earliest price on record.' : ''}${
         unpriced ? ` ${unpriced.toLocaleString()} rounds aren't priced here: no ammo logged
         for their chambering.` : ''}</div>
     </div>`;
@@ -2822,11 +2868,11 @@ function renderCostPerTrip() {
   if (!el) return;
   const { start, end } = getStatsRangeBounds();
   const scoped = scopedGunIdsFromFilters();
-  const priced = rangePricePerCaliber();
+  const pricer = buildCaliberPricer();
 
   const rows = (data.sessions || [])
     .filter(s => (!start || s.date >= start) && (!end || s.date <= end))
-    .map(s => ({ s, ...sessionCost(s, priced, scoped) }))
+    .map(s => ({ s, ...sessionCost(s, pricer, scoped) }))
     .filter(r => r.cost > 0)
     .sort((a, b) => tripSortDesc ? b.cost - a.cost : a.cost - b.cost);
   if (rows.length < 2) { el.innerHTML = ''; return; }
@@ -2836,20 +2882,16 @@ function renderCostPerTrip() {
   const max = Math.max(...rows.map(r => r.cost));
   const rowsHtml = rows.map(r => {
     const loc = data.locations.find(l => l.id === r.s.locationId);
-    // What was actually shot, which is the thing that explains the cost.
-    const guns = Object.entries(r.s.rounds || {})
-      .filter(([gid]) => !scoped || scoped.has(gid))
-      .map(([gid, n]) => {
-        const gun = (data.firearms || []).find(g => g.id === gid);
-        return gun ? { name: gun.name, n } : null;
-      })
-      .filter(Boolean)
-      .sort((a, b) => b.n - a.n);
+    // What was actually shot and what each firearm's share of the money was — sorted by
+    // cost rather than rounds, since this is the money view and the two orders differ:
+    // 30 rounds of centerfire outspend 60 of rimfire.
+    const guns = r.byFirearm;
     return `
       <div class="breakdown-row trip-row tappable" onclick="openViewSession('${r.s.id}')"
            role="button" tabindex="0" title="View this session">
         <div class="breakdown-top">
-          <span class="breakdown-name">${fmtDate(r.s.date)}</span>
+          <span class="breakdown-name">${fmtDate(r.s.date)}${
+            r.estimated ? ' <span class="est-flag" title="Predates every purchase of what was shot — priced from the earliest record">≈</span>' : ''}</span>
           <span class="breakdown-val">$${r.cost.toFixed(2)}</span>
         </div>
         <div class="breakdown-bar-track">
@@ -2858,7 +2900,7 @@ function renderCostPerTrip() {
         <div class="breakdown-pct">${r.rounds.toLocaleString()} rounds at $${r.cpr.toFixed(3)}/rd${
           loc ? ` · ${loc.name}` : ''}</div>
         <div class="trip-guns">${guns.map(g =>
-          `<span>${g.name} <b>${g.n}</b></span>`).join('')}</div>
+          `<span>${g.name} <b>$${g.cost.toFixed(2)}</b> <i>${g.rounds} rds</i></span>`).join('')}</div>
         ${r.s.notes && r.s.notes.trim()
           // One line, clipped. Most notes fit whole; the long ones give their gist, and the
           // row opens the session for the rest. A note is why the trip was what it was —
@@ -2888,7 +2930,11 @@ function renderCostPerTrip() {
       <div class="stats-note">${rows.length} trips — tap one to open it. The most expensive ran
         ${(priciest / cheapest).toFixed(1)}× the cheapest. The per-round rate is the tell: a
         rimfire afternoon and a centerfire one cost very different money for the same round
-        count. Estimated the same way as above.</div>
+        count. Each trip is priced from the ammo you had bought by that date, so these figures
+        don't move when you buy more.${
+        rows.some(r => r.estimated)
+          ? ' Trips marked ≈ predate every purchase of what was shot and use the earliest price on record.'
+          : ''}</div>
     </div>`;
 
   const list = document.getElementById('stats-trip-list');
@@ -5494,7 +5540,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.2';
+const APP_VERSION = '7.2.1';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
