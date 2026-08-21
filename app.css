@@ -507,6 +507,17 @@
   .cleaning-row.tappable:hover { background: var(--surface3); }
   .cleaning-row.tappable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+  .group-row-info { flex: 1 1 8rem; min-width: 0; }
+  /* Two lines of detail, then ellipsis. A list row is for finding the group, not reading it. */
+  .group-row-info .group-row-sub {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .group-row-figure { flex: 0 0 auto; margin-left: auto; text-align: right; }
+  .group-row-actions { flex: 0 0 auto; display: flex; gap: 4px; }
+
   .group-row.tappable { cursor: pointer; }
   .group-row.tappable:hover { background: var(--surface3); }
   .group-row.tappable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -526,9 +537,13 @@
   .viewing .btn-photo { display: none; }
 
   .group-row {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-    gap: 10px;
+    /* Was a three-column grid, which at larger text left the date and ammo about 90px to
+       wrap into and turned each row into a 237px tower — one row filled the whole panel.
+       Wrapping instead: the figure and buttons drop onto a second line when the text no
+       longer leaves room, and the row stays as short as it can be. */
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
     align-items: center;
     background: var(--surface2);
     border-radius: var(--radius);
@@ -1522,7 +1537,9 @@
      overscroll-behavior is what makes a nested scroll tolerable on a phone: reaching the
      end of this panel doesn't chain the scroll to the modal behind it. */
   .list-scroll {
-    max-height: 46vh;
+    /* Deliberately a fraction of the screen, so it reads as a panel inside the page and the
+       page still scrolls around it — but tall enough to show several rows at once. */
+    max-height: 58vh;
     overflow-y: auto;
     overscroll-behavior: contain;
     border: 1px solid var(--surface3);
@@ -1703,7 +1720,7 @@
 
   /* Cost Per Trip rows. Tappable, and the list scrolls in place past a handful of trips
      rather than being truncated — same panel treatment the Details lists use. */
-  .trip-list.list-scroll { max-height: 46vh; padding: 6px 8px 6px 6px; }
+  .trip-list.list-scroll { max-height: 58vh; padding: 6px 8px 6px 6px; }
   .trip-row.tappable { cursor: pointer; border-radius: 4px; padding: 6px; margin: 0 -6px 4px; }
   .trip-row.tappable:hover { background: var(--surface2); }
   .trip-row.tappable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

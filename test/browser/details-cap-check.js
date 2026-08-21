@@ -92,6 +92,29 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
     !(await page.isVisible('#show-all-zeros')) || await page.evaluate(() =>
       document.getElementById('show-all-zeros').style.display === 'none'));
 
+  // The expanded panel is meant to be a mini view: clearly a fraction of the screen so the
+  // page still scrolls around it, but tall enough to read several rows without scrolling
+  // inside it for every one. Checked at the default text size, where rows are tallest for
+  // the size most people will actually use.
+  await page.click('#show-all-groups');
+  await page.waitForTimeout(350);
+  const miniView = await page.evaluate(() => {
+    const l = document.getElementById('history-groups-list');
+    const rows = [...l.querySelectorAll('.group-row')];
+    const h = l.clientHeight;
+    let visible = 0, acc = 0;
+    rows.forEach(r => { const rh = r.getBoundingClientRect().height + 6;
+      if (acc + rh <= h) { visible++; acc += rh; } });
+    return { h, visible, vh: window.innerHeight,
+             rowH: Math.round(rows[0].getBoundingClientRect().height) };
+  });
+  ck('the panel is a fraction of the screen, not all of it',
+    miniView.h < miniView.vh * 0.7 && miniView.h > miniView.vh * 0.4);
+  ck('several rows are readable without scrolling inside it', miniView.visible >= 3);
+  if (miniView.visible < 3) {
+    console.log(`     only ${miniView.visible} rows fit (${miniView.rowH}px each)`);
+  }
+
   let bad=0;
   checks.forEach(([n,ok])=>{ if(!ok) bad++; console.log(`${ok?'ok  ':'FAIL'} ${n}`); });
   if (errs.length) { bad++; console.log('ERRORS '+[...new Set(errs)].join(' | ')); }

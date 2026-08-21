@@ -1457,23 +1457,25 @@ function renderGunHistory(gunId) {
         : size != null ? `${gFmt(size)}"` : '—';
       const secondary = (moa != null && size != null) ? `${gFmt(size)}"` : '';
       const sub = [`${g.distance} ${g.distanceUnit || 'yd'}`, `${(g.impacts || []).length} shots`];
-      if (g.ammo) sub.push(g.ammo);
+      // Shortened here as everywhere else: the full load name runs to three lines on a phone
+      // and pushes every other group off the panel. Tapping the row shows it in full.
+      if (g.ammo) sub.push(shortLoadName(g.ammo));
       const tagLine = (g.tags || []).length
         ? `<div class="group-row-tags">${g.tags.map(t => `<span class="tag-pill">${t}</span>`).join('')}</div>`
         : '';
       return `
         <div class="group-row tappable" onclick="openViewGroup('${gunId}','${g.id}')"
              role="button" tabindex="0" title="View this group">
-          <div>
+          <div class="group-row-info">
             <div class="group-row-main">${fmtDate(g.date)}</div>
             <div class="group-row-sub">${sub.join(' · ')}${g.photoId ? ' · 📷' : ''}</div>
             ${tagLine}
           </div>
-          <div style="text-align:right;">
+          <div class="group-row-figure">
             <div class="group-row-size">${primary}</div>
             <div class="group-row-sub">${secondary}</div>
           </div>
-          <div style="display:flex;gap:4px;">
+          <div class="group-row-actions">
             <button class="btn-icon" onclick="event.stopPropagation(); openLogGroup('${gunId}','${g.id}')" title="Edit">✏️</button>
             <button class="btn-icon" onclick="event.stopPropagation(); deleteGroup('${gunId}','${g.id}')" title="Delete">🗑</button>
           </div>
@@ -5726,7 +5728,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.2.5';
+const APP_VERSION = '7.2.6';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
