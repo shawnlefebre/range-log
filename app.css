@@ -16,6 +16,8 @@
        keeping three visibly distinct steps. */
     --text-muted: #a8a8a8;
     --text-dim: #8a8a8a;
+    /* Chart structure. Neutral by design — a gridline is scaffolding, not a status. */
+    --grid: #3a3a3a;
     /* Group-marking roles. Cool tones read as reference scaffolding, gold as your
        shots. Deliberately not the status colours — none of these indicate state. */
     --mark-cal: #6b7f8c;
@@ -1128,11 +1130,48 @@
     text-transform: uppercase;
     margin-bottom: 12px;
   }
+  /* The gutter is set by JS to fit its widest tick; until then it is simply absent, so a
+     chart that never gets measured still renders as a plain bar chart rather than shifted. */
+  .stats-bar-plot { position: relative; }
+  .stats-bar-grid {
+    position: absolute;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+  }
+  .stats-bar-gl {
+    position: absolute;
+    left: var(--gutter, 0px);
+    right: 0;
+    height: 1px;
+    background: var(--grid);
+  }
+  .stats-bar-gl:first-child { background: var(--border); }   /* the baseline reads stronger */
+  .stats-bar-tick {
+    position: absolute;
+    right: calc(100% + 5px);
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    line-height: 1;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  /* Bars sit above the grid: a recessive line belongs behind the data, not struck across
+     it. The lines still read through the gaps between columns. */
+  .stats-bar-plot .stats-bar-chart {
+    margin-left: var(--gutter, 0px);
+    position: relative;
+    z-index: 1;
+  }
+  /* The plot area is a fixed height so bar proportions read the same at every text size;
+     the value and label rows size themselves, so the chart grows instead of clipping them. */
   .stats-bar-chart {
     display: flex;
     align-items: flex-end;
     gap: 4px;
-    height: 110px;
+    padding: 0 6px;
     overflow-x: auto;
   }
   .stats-bar-col {
@@ -1142,11 +1181,10 @@
     flex-direction: column;
     align-items: center;
     justify-content: flex-end;
-    height: 100%;
   }
   .stats-bar-track {
     width: 100%;
-    height: calc(100% - 32px);
+    height: 78px;
     display: flex;
     align-items: flex-end;
   }
@@ -1159,8 +1197,7 @@
   .stats-bar-val {
     font-family: var(--font-mono);
     font-size: 0.64rem;
-    line-height: 11px;
-    height: 11px;
+    line-height: 1.25;
     color: var(--text-muted);
     margin-bottom: 3px;
     white-space: nowrap;
@@ -1172,9 +1209,12 @@
     margin-top: 6px;
     letter-spacing: 0.5px;
     white-space: nowrap;
-    height: 12px;
+    line-height: 1.25;
   }
-  .stats-bar-label.hidden-label { visibility: hidden; }
+  /* Both reserve their space so columns stay aligned — this hides ink, not layout. */
+  .stats-bar-label.hidden-label,
+  .stats-bar-val.thinned,
+  .stats-bar-label.thinned { visibility: hidden; }
   .stats-empty {
     text-align: center;
     padding: 24px;
@@ -1837,4 +1877,51 @@
   .textsize-sample-row b { color: var(--accent); }
   .textsize-sample-sub {
     font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); margin-top: 5px;
+  }
+
+  /* ── Group trend: pinned axis, scrolling plot ─────────────────────
+     Two SVGs rather than one wide element with a transform: a transform would scale the
+     strokes and the type along with the data, so labels would grow into illegibility exactly
+     when you zoomed in for detail. The axis is separate and never moves. */
+  .trend-chart { display: grid; grid-template-columns: auto 1fr; }
+  .trend-axis { flex: 0 0 auto; }
+  .trend-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* pan-x, not pan-y: this declares the gesture the browser may handle here. pan-x lets it
+       scroll the chart sideways while vertical drags fall through and scroll the page. */
+    touch-action: pan-x;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    scrollbar-width: thin;
+  }
+  .trend-scroll.dragging { cursor: grabbing; }
+  .trend-scroll::-webkit-scrollbar { height: 9px; }
+  .trend-scroll::-webkit-scrollbar-track { background: var(--surface2); border-radius: 5px; }
+  .trend-scroll::-webkit-scrollbar-thumb {
+    background: var(--surface3); border-radius: 5px; border: 2px solid var(--surface);
+  }
+  /* The plot is a drag surface; taps are resolved against point positions in JS. */
+  .trend-scroll svg { pointer-events: none; display: block; }
+
+  .trend-ctrl { display: flex; gap: 5px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  .trend-ctrl button {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  .trend-ctrl button.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  .trend-ctrl button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .trend-readout {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    color: var(--text-dim);
+    white-space: nowrap;
   }

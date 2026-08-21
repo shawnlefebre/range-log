@@ -223,7 +223,10 @@ Two things there are deliberately careful:
   kept — not cleared — if you toggle back to in stock, so mis-tapping the button and
   correcting it leaves the record as it was rather than silently restamping it as today. The
   date is editable on the purchase, and blank is allowed: lots that ran out before the app
-  tracked this have no date, and unknown beats a made-up one.
+  tracked this have no date, and unknown beats a made-up one. The Ammo tab filters on this
+  three ways — **In stock only** (the default), **Used up only**, or **All** — so past lots
+  are reachable when you want to look up what something cost last time without wading past
+  what's on the shelf.
 - **Carry ammo can be marked "not range ammo"** on a purchase, unchecked by default. A
   20-round box of defensive ammo at five times the price says nothing about what practice
   costs, so per-round prices leave it out — while spend and round totals still include it,
@@ -236,6 +239,22 @@ Two things there are deliberately careful:
 - **Spend by store withholds price per round until one caliber is in scope.** A shop that
   only ever sold you 5.56 would look expensive beside one that sold you bulk .22, and that
   compares products rather than prices.
+
+### Reading the bar charts
+
+Rounds fired, range trips and ammo spend share one chart, with a **y-axis and gridlines**.
+The scale rounds up to a number a person would have picked — a 510-round month is drawn
+against a ceiling of 600, with lines at 200 and 400 — so a bar's height means something on
+its own rather than only in comparison to the tallest one. The trade is that no bar ever
+touches the top of the plot. Ticks are drawn from the same formatter as the values, so the
+Money chart's axis reads in dollars.
+
+**Month labels thin out instead of shrinking.** At the larger text sizes three-letter months
+no longer fit side by side, so every second or third one is labelled rather than reducing the
+type — the point of the setting is that text stays readable. Which ones survive is measured
+against the space actually available, so it depends on your text size and screen width rather
+than a fixed rule, and every bar is still drawn. The gridlines are what carry magnitude for
+the bars whose own number was thinned away.
 
 ## Dope Tables
 

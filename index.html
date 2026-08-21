@@ -15,7 +15,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.3</span>
+    <span id="app-version">v7.3.1</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -88,6 +88,7 @@
         <label class="filter-label">Stock</label>
         <select id="ammo-filter-stock" onchange="renderAmmo()">
           <option value="instock" selected>In stock only</option>
+          <option value="usedup">Used up only</option>
           <option value="all">All (incl. used up)</option>
         </select>
       </div>

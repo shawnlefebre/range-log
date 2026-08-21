@@ -2402,6 +2402,7 @@ function renderAmmo() {
   let filtered = ammo;
   if (filterCal) filtered = filtered.filter(a => a.caliber === filterCal);
   if (filterStock === 'instock') filtered = filtered.filter(a => (a.status || 'instock') === 'instock');
+  if (filterStock === 'usedup') filtered = filtered.filter(a => (a.status || 'instock') === 'usedup');
 
   // Stats
   const statsEl = document.getElementById('ammo-stats');
@@ -2742,11 +2743,35 @@ function getBucketKeyForDate(buckets, dateStr) {
   return match;
 }
 
+// Gridlines are only worth drawing if they land on numbers a person would have picked, so
+// the top of the scale rounds up to a round step instead of sitting on the tallest bar.
+//
+// The step sequence is 1/2/5/10 rather than the usual 1/2/2.5/5/10, and is floored at 1,
+// because all three charts using this render whole numbers. With 2.5 in the sequence a
+// seven-trip month produced ticks at 2.5 and 7.5 — worse than a slightly coarser axis.
+function niceScale(max, intervals) {
+  if (!(max > 0)) return { step: 1, top: 1 };
+  const raw = max / Math.max(1, intervals);
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / mag;
+  const step = Math.max(1, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag);
+  return { step, top: Math.ceil(max / step) * step };
+}
+
 function buildStatsBarChart(buckets, formatVal) {
   if (!buckets.length) return '<div class="stats-empty">No data for this range.</div>';
   const max = Math.max(...buckets.map(b => b.value), 1);
+  const scale = niceScale(max, 3);
+  const top = scale.top;
+  // Lines are placed as a percentage of the plot area, so nothing here has to know how
+  // tall the track is in pixels — that stays a CSS decision.
+  const lines = [];
+  for (let v = 0; v <= top + 1e-9; v += scale.step) {
+    lines.push(`<div class="stats-bar-gl" style="bottom:${(v / top) * 100}%">` +
+      `<span class="stats-bar-tick">${formatVal(v)}</span></div>`);
+  }
   const bars = buckets.map(b => {
-    const pct = b.value > 0 ? Math.max((b.value / max) * 100, 3) : 1;
+    const pct = b.value > 0 ? Math.max((b.value / top) * 100, 3) : 1;
     const labelClass = b.showLabel === false ? 'stats-bar-label hidden-label' : 'stats-bar-label';
     return `
       <div class="stats-bar-col">
@@ -2756,7 +2781,10 @@ function buildStatsBarChart(buckets, formatVal) {
       </div>
     `;
   }).join('');
-  return `<div class="stats-bar-chart">${bars}</div>`;
+  return `<div class="stats-bar-plot">
+      <div class="stats-bar-grid" aria-hidden="true">${lines.join('')}</div>
+      <div class="stats-bar-chart">${bars}</div>
+    </div>`;
 }
 
 // ── STATS SUB-TABS ────────────────────────────────────────────────
@@ -2788,6 +2816,58 @@ function renderStats() {
   renderAmmoSpendStats();
   renderUpkeepStats();
   renderGroupsStats();
+  layoutStatsBarCharts();
+}
+
+// The axis gutter is sized to its own widest tick rather than a fixed width, because the
+// ticks are rem-sized and grow with the text-size setting — and a dollar figure is wider
+// than a round count. Runs before the thinning pass, since narrowing the columns is
+// exactly what decides how many month labels still fit.
+function layoutStatsBarCharts(root) {
+  (root || document).querySelectorAll('.stats-bar-plot').forEach(plot => {
+    const grid = plot.querySelector('.stats-bar-grid');
+    const track = plot.querySelector('.stats-bar-track');
+    if (!grid || !track) return;
+    let widest = 0;
+    plot.querySelectorAll('.stats-bar-tick').forEach(t => {
+      widest = Math.max(widest, t.getBoundingClientRect().width);
+    });
+    plot.style.setProperty('--gutter', widest ? Math.ceil(widest + 9) + 'px' : '0px');
+    // Overlay the plot area exactly, measured rather than derived from margins — the value
+    // and label rows above and below it change height with the text size.
+    const t = track.getBoundingClientRect();
+    const p = plot.getBoundingClientRect();
+    if (!(t.height > 0)) return;   // pane is hidden (or jsdom) — nothing to measure yet
+    grid.style.top = (t.top - p.top) + 'px';
+    grid.style.height = t.height + 'px';
+  });
+  thinStatsBarLabels(root);
+}
+
+// Bar-chart text is sized in rem, so it grows with the text-size setting while the columns
+// stay where they are — at Larger and Largest the values run together and the month labels
+// overlap. Measure what actually fits once laid out, then show every Nth column's text.
+// Measured rather than a fixed modulo because the answer depends on text size, bucket count
+// and viewport width together, and a hardcoded rule gets all three wrong somewhere.
+function thinStatsBarLabels(root) {
+  (root || document).querySelectorAll('.stats-bar-chart').forEach(chart => {
+    const cols = [...chart.querySelectorAll('.stats-bar-col')];
+    if (cols.length < 2) return;
+    const pitch = cols[0].getBoundingClientRect().width +
+      (parseFloat(getComputedStyle(chart).gap) || 0);
+    if (!(pitch > 0)) return;   // pane is hidden (or jsdom) — nothing to measure yet
+    let widest = 0;
+    const texts = cols.map(c => [...c.querySelectorAll('.stats-bar-val, .stats-bar-label')]);
+    texts.forEach(els => els.forEach(el => {
+      el.classList.remove('thinned');                      // re-measure from unthinned
+      widest = Math.max(widest, el.getBoundingClientRect().width);
+    }));
+    const step = Math.max(1, Math.ceil((widest + 4) / pitch));
+    if (step === 1) return;
+    texts.forEach((els, i) => {
+      if (i % step) els.forEach(el => el.classList.add('thinned'));
+    });
+  });
 }
 
 // ── AMMO PRICING ──────────────────────────────────────────────────
@@ -3260,98 +3340,301 @@ function renderGroupsStats() {
 }
 
 // Every group is plotted, dimmed, with the bold line joining session medians. One group is a
-// noisy estimate — on this rifle a single afternoon has spanned better than 3× best to worst
+// noisy estimate — on this rifle a single afternoon has spanned better than 3x best to worst
 // — so a line through individual groups would show trends that are only sampling noise.
+//
+// The x-axis is real time rather than one slot per range day: evenly spacing them makes a
+// two-month gap look like a week between trips, which misreads the history as a steady march.
+// That means the plot can be wider than the screen, so it scrolls under a pinned y-axis.
+const TREND_ZOOMS = [
+  { key: 'fit', label: 'Fit' },
+  { key: '6mo', label: '6 mo', days: 183 },
+  { key: '3mo', label: '3 mo', days: 92 },
+  { key: '1mo', label: '1 mo', days: 31 },
+];
+// View state, not data: it survives a re-render so that opening a session from the chart and
+// closing it again puts you back where you were looking.
+let trendZoom = 'fit';
+let trendScrollLeft = 0;
+
+function setTrendZoom(key) {
+  if (!TREND_ZOOMS.some(z => z.key === key)) return;
+  trendZoom = key;
+  // Zooming in holds the most recent end, which is where you were.
+  trendScrollLeft = key === 'fit' ? 0 : Number.MAX_SAFE_INTEGER;
+  renderGroupsStats();
+}
+
 function renderGroupTrend(gun, groups) {
   const el = document.getElementById('stats-groups-trend');
   const byDate = {};
   groups.forEach(g => (byDate[g.date] = byDate[g.date] || []).push(g));
-  const days = Object.keys(byDate).sort();
+  const dates = Object.keys(byDate).sort();
 
-  // Authored close to phone width on purpose: SVG text scales with the viewBox, so a canvas
-  // wider than the screen shrinks its own labels below body copy.
-  const W = 300, H = 172, PL = 30, PR = 26, PT = 16, PB = 30;
-  // Inset the first and last day from the axis, or their dots and value labels sit on the
-  // plot edge and collide with the y-axis and the re-zero line.
-  const inset = days.length > 1 ? 12 : 0;
-  const x = i => days.length === 1 ? PL + (W - PL - PR) / 2
-    : PL + inset + (i / (days.length - 1)) * (W - PL - PR - inset * 2);
+  const days = dates.map(d => {
+    const v = byDate[d].map(g => g.mrMOA);
+    return {
+      date: d, t: dateMs(d), n: v.length, med: statsMedian(v),
+      lo: Math.min(...v), hi: Math.max(...v),
+      // A day is one range trip in practice; where groups from that day span more than one
+      // session, the busiest wins rather than guessing.
+      sessionId: pickSessionForDay(byDate[d]),
+    };
+  });
+
+  const H = 200, PT = 18, PB = 36, PAD = 12, AXIS_W = 42;
+  const existing = el.querySelector('.trend-scroll');
+  // A container that has not been laid out yet — or is in a hidden pane — measures zero.
+  // Fall back to a sane width rather than dividing by it.
+  const measured = existing ? existing.clientWidth : 0;
+  const viewW = measured > 40 ? measured : 300;
+  const T0 = days[0].t, T1 = days[days.length - 1].t;
+  const spanDays = Math.max((T1 - T0) / 86400000, 1) + 20;
+  const z = TREND_ZOOMS.find(o => o.key === trendZoom) || TREND_ZOOMS[0];
+  const pxPerDay = (z.days ? viewW / z.days : viewW / spanDays);
+  const W = Math.max(viewW, spanDays * pxPerDay);
+  const x = t => PAD + ((t - T0) / 86400000) * pxPerDay;
   const vals = groups.map(g => g.mrMOA);
   const ymax = Math.max(...vals) * 1.2 || 1;
   const y = v => H - PB - (v / ymax) * (H - PT - PB);
 
-  const ACCENT = '#c8a84b', ZERO = '#1f68bc', GRIDC = '#2e2e2e', DIM = '#555';
-  let svg = '';
-  [0, ymax / 2, ymax].forEach(t => {
-    svg += `<line x1="${PL}" y1="${y(t)}" x2="${W - PR}" y2="${y(t)}" stroke="${GRIDC}" stroke-width="1"/>
-            <text x="${PL - 5}" y="${y(t) + 3}" fill="${DIM}" font-family="IBM Plex Mono"
-                  font-size="9" text-anchor="end">${gFmt(t, 1)}</text>`;
-  });
+  const ACCENT = '#c8a84b', ZERO = '#1f68bc', GRIDC = '#2e2e2e', DIM = '#8a8a8a';
+  const ticks = [0, ymax / 2, ymax];
 
-  // Re-zero marks are drawn whatever the time range is set to. Hiding the boundary unless
-  // you happened to filter by it is how you read straight through one.
+  // The y-axis is its own element so it never scrolls — and never scales, which a CSS
+  // transform over the whole chart would have done to every label and stroke.
+  const axisSvg = ticks.map(t =>
+    `<text x="${AXIS_W - 6}" y="${y(t) + 3}" fill="${DIM}" font-family="IBM Plex Mono"
+           font-size="9" text-anchor="end">${gFmt(t, 1)}</text>`).join('') +
+    `<line x1="${AXIS_W - 3}" y1="${PT - 6}" x2="${AXIS_W - 3}" y2="${H - PB}" stroke="${GRIDC}"/>`;
+
+  let svg = ticks.map(t =>
+    `<line x1="0" y1="${y(t)}" x2="${W}" y2="${y(t)}" stroke="${GRIDC}"/>`).join('');
+
+  // Month gridlines are the skeleton of the timeline at every zoom.
+  const months = [];
+  for (let d = new Date(T0); d.getTime() <= T1 + 30 * 86400000; d.setMonth(d.getMonth() + 1)) {
+    months.push(new Date(d.getFullYear(), d.getMonth(), 1).getTime());
+  }
+  months.forEach(m => { svg += `<line x1="${x(m)}" y1="${PT - 6}" x2="${x(m)}" y2="${H - PB}"
+    stroke="${GRIDC}" opacity="0.7"/>`; });
+
+  // Zoomed in far enough that a week is a comfortable label apart, the axis names the range
+  // days themselves — a date is what you need to find the session it came from. Zoomed out,
+  // months are all that fits.
+  if (pxPerDay * 7 >= 40) {
+    let lastX = -Infinity;
+    days.forEach(d => {
+      if (x(d.t) - lastX < 40) return;      // trips cluster; skip what will not fit
+      svg += `<text x="${x(d.t)}" y="${H - 14}" fill="${DIM}" font-family="IBM Plex Mono"
+                    font-size="9" text-anchor="middle">${trendDayLabel(d.date)}</text>`;
+      lastX = x(d.t);
+    });
+  } else {
+    const everyN = Math.max(1, Math.ceil(58 / (30 * pxPerDay)));
+    let prev = null;
+    months.forEach((m, i) => {
+      if (i % everyN) return;
+      svg += `<text x="${x(m)}" y="${H - 14}" fill="${DIM}" font-family="IBM Plex Mono"
+                    font-size="9" text-anchor="middle">${trendMonthLabel(m, prev)}</text>`;
+      prev = m;
+    });
+  }
+
+  // Re-zero marks are drawn whatever the range is set to: hiding the boundary unless you
+  // filtered by it is how you read straight through one. Labels are per cluster, since at low
+  // zoom two zeros a week apart are a few pixels apart and pushing their labels apart just
+  // walks them off the chart.
   const { start, end } = getStatsRangeBounds();
-  (gun.zeros || []).forEach(z => {
-    if ((start && z.date < start) || (end && z.date > end)) return;
-    let pos = days.indexOf(z.date);
-    let px;
-    if (pos >= 0) px = x(pos);
-    else {
-      const after = days.findIndex(d => d > z.date);
-      if (after <= 0) return;                        // outside the plotted span
-      px = (x(after - 1) + x(after)) / 2;
-    }
-    svg += `<line x1="${px}" y1="${PT - 6}" x2="${px}" y2="${H - PB}" stroke="${ZERO}"
-                  stroke-width="1" stroke-dasharray="3 3"/>
-            <text x="${px + 4}" y="${PT + 8}" fill="${ZERO}" font-family="IBM Plex Mono"
-                  font-size="8.5">re-zero</text>`;
+  const zs = (gun.zeros || []).map(z2 => z2.date)
+    .filter(d => (!start || d >= start) && (!end || d <= end) && d >= dates[0] && d <= dates[dates.length - 1])
+    .sort();
+  zs.forEach(d => { svg += `<line x1="${x(dateMs(d))}" y1="${PT - 6}" x2="${x(dateMs(d))}"
+    y2="${H - PB}" stroke="${ZERO}" stroke-width="1" stroke-dasharray="3 3"/>`; });
+  const clusters = [];
+  zs.forEach(d => {
+    const last = clusters[clusters.length - 1];
+    if (last && x(dateMs(d)) - x(dateMs(last[last.length - 1])) < 52) last.push(d);
+    else clusters.push([d]);
   });
-
-  const meds = days.map((d, i) => {
-    const v = byDate[d].map(g => g.mrMOA);
-    return { i, d, n: v.length, med: statsMedian(v), lo: Math.min(...v), hi: Math.max(...v) };
+  clusters.forEach(c => {
+    const at = x(dateMs(c[0]));
+    const text = c.length > 1 ? `${c.length} re-zeros` : 're-zero';
+    const right = at + 4 + text.length * 5.4 < W - 4;
+    svg += `<text x="${right ? at + 4 : at - 4}" y="${PT + 6}" fill="${ZERO}"
+                  font-family="IBM Plex Mono" font-size="9"
+                  text-anchor="${right ? 'start' : 'end'}">${text}</text>`;
   });
 
   // The faint vertical bar is that day's best-to-worst range — the honest width of the
   // estimate. A trend is real when the medians move further than those bars are tall.
-  meds.forEach(m => {
-    svg += `<line x1="${x(m.i)}" y1="${y(m.lo)}" x2="${x(m.i)}" y2="${y(m.hi)}"
+  days.forEach(d => {
+    svg += `<line x1="${x(d.t)}" y1="${y(d.lo)}" x2="${x(d.t)}" y2="${y(d.hi)}"
                   stroke="${ACCENT}" stroke-width="1" opacity="0.28"/>`;
-    byDate[m.d].forEach(g => {
-      svg += `<circle cx="${x(m.i)}" cy="${y(g.mrMOA)}" r="2.8" fill="${ACCENT}" opacity="0.5"/>`;
+    byDate[d.date].forEach(g => {
+      svg += `<circle cx="${x(d.t)}" cy="${y(g.mrMOA)}" r="2.8" fill="${ACCENT}" opacity="0.5"/>`;
     });
   });
   svg += `<polyline fill="none" stroke="${ACCENT}" stroke-width="2.2" stroke-linejoin="round"
-            points="${meds.map(m => `${x(m.i)},${y(m.med)}`).join(' ')}"/>`;
-  // With more than a handful of range days the date labels would collide, so thin them out
-  // rather than let them overlap — the same trick the Rounds Fired chart uses.
-  const every = days.length > 6 ? Math.ceil(days.length / 6) : 1;
-  meds.forEach(m => {
-    svg += `<circle cx="${x(m.i)}" cy="${y(m.med)}" r="4.2" fill="${ACCENT}"
+            points="${days.map(d => `${x(d.t)},${y(d.med)}`).join(' ')}"/>`;
+
+  let lastLabel = -Infinity;
+  days.forEach(d => {
+    svg += `<circle class="trend-point" data-session="${d.sessionId || ''}" data-date="${d.date}"
+                    cx="${x(d.t)}" cy="${y(d.med)}" r="4.2" fill="${ACCENT}"
                     stroke="var(--surface)" stroke-width="2"/>`;
-    if (days.length <= 8) {
-      svg += `<text x="${x(m.i)}" y="${y(m.med) - 9}" fill="${ACCENT}" font-family="IBM Plex Mono"
-                    font-size="9.5" text-anchor="middle">${gFmt(m.med)}</text>`;
-    }
-    if (m.i % every === 0 || m.i === days.length - 1) {
-      svg += `<text x="${x(m.i)}" y="${H - 15}" fill="${DIM}" font-family="IBM Plex Mono"
-                    font-size="9" text-anchor="middle">${fmtDate(m.d).replace(/,.*/, '')}</text>`;
-      if (days.length <= 6) {
-        svg += `<text x="${x(m.i)}" y="${H - 5}" fill="${DIM}" font-family="IBM Plex Mono"
-                      font-size="8" text-anchor="middle">${m.n} group${m.n === 1 ? '' : 's'}</text>`;
-      }
+    if (x(d.t) - lastLabel >= 30) {
+      svg += `<text x="${x(d.t)}" y="${y(d.med) - 9}" fill="${ACCENT}" font-family="IBM Plex Mono"
+                    font-size="9" text-anchor="middle">${gFmt(d.med)}</text>`;
+      lastLabel = x(d.t);
     }
   });
 
+  const tappable = days.some(d => d.sessionId);
   el.innerHTML = `
     <div class="stats-chart-card">
       <div class="stats-chart-title">Group Size Over Time</div>
-      <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet"
-           role="img" aria-label="Median group size per range day">${svg}</svg>
+      <div class="trend-chart">
+        <svg class="trend-axis" viewBox="0 0 ${AXIS_W} ${H}" width="${AXIS_W}" height="${H}"
+             aria-hidden="true">${axisSvg}</svg>
+        <div class="trend-scroll" data-pxperday="${pxPerDay}" data-pad="${PAD}" data-t0="${T0}">
+          <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
+               aria-label="Median group size per range day">${svg}</svg>
+        </div>
+      </div>
+      <div class="trend-ctrl">
+        ${TREND_ZOOMS.map(o => `<button type="button" class="${o.key === trendZoom ? 'on' : ''}"
+          onclick="setTrendZoom('${o.key}')">${o.label}</button>`).join('')}
+        <span class="trend-readout" id="trend-readout"></span>
+      </div>
       <div class="stats-note">Bold line joins each range day's <b>median</b>; every group is
-        plotted faintly behind it, with the vertical bar showing that day's best to worst.
-        ${days.length < 3 ? 'Too few range days for a trend yet — this needs several.' : ''}</div>
+        plotted faintly behind it, with the vertical bar showing that day's best to worst.${
+        tappable ? ' Tap a point to open that session.' : ''}${
+        dates.length < 3 ? ' Too few range days for a trend yet.' : ''}</div>
     </div>`;
+
+  wireTrendScroll(el.querySelector('.trend-scroll'), viewW);
+}
+
+// A range day is one trip in practice. Where a day's groups span more than one session, the
+// one carrying most of them wins rather than the chart guessing silently.
+function pickSessionForDay(groupsOnDay) {
+  const tally = {};
+  groupsOnDay.forEach(g => { if (g.raw && g.raw.sessionId) tally[g.raw.sessionId] = (tally[g.raw.sessionId] || 0) + 1; });
+  const best = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
+  return best ? best[0] : null;
+}
+
+// A bare "2026-08-14" parses as UTC midnight and renders as the 13th west of Greenwich.
+function dateMs(d) { return new Date(d + 'T12:00').getTime(); }
+function trendDayLabel(d) {
+  return new Date(d + 'T12:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+function trendMonthLabel(ms, prev) {
+  const d = new Date(ms);
+  const m = d.toLocaleDateString('en-US', { month: 'short' });
+  // "Jul 26" reads as the 26th of July, so the year is only ever marked when it turns.
+  return (!prev || new Date(prev).getFullYear() !== d.getFullYear())
+    ? `${m} ’${String(d.getFullYear()).slice(2)}` : m;
+}
+
+function wireTrendScroll(sc, assumedW) {
+  if (!sc) return;
+  // First paint has nothing to measure. Once the element exists at its real width, draw again
+  // at the right scale — guessing it made the readout disagree with the plot.
+  if (sc.clientWidth > 40 && Math.abs(sc.clientWidth - assumedW) > 2) {
+    requestAnimationFrame(renderGroupsStats);
+    return;
+  }
+
+  sc.scrollLeft = Math.min(trendScrollLeft, sc.scrollWidth);
+  updateTrendReadout(sc);
+  sc.addEventListener('scroll', () => {
+    trendScrollLeft = sc.scrollLeft;
+    updateTrendReadout(sc);
+  }, { passive: true });
+
+  // Dragging anywhere on the plot pans it. touch-action: pan-x already gives touch the
+  // horizontal gesture while vertical falls through to the page; this covers mouse and
+  // trackpad, which have no obvious way to scroll a narrow strip sideways.
+  let downX = 0, downLeft = 0, dragging = false, moved = 0;
+  sc.addEventListener('pointerdown', e => {
+    if (e.button != null && e.button !== 0) return;
+    dragging = true; moved = 0;
+    downX = e.clientX; downLeft = sc.scrollLeft;
+    sc.classList.add('dragging');
+    sc.setPointerCapture(e.pointerId);
+  });
+  sc.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - downX;
+    moved = Math.max(moved, Math.abs(dx));
+    sc.scrollLeft = downLeft - dx;
+  });
+  const release = e => {
+    if (!dragging) return;
+    dragging = false;
+    sc.classList.remove('dragging');
+    if (e.pointerId != null && sc.hasPointerCapture(e.pointerId)) sc.releasePointerCapture(e.pointerId);
+    // A pan that barely moved was a tap. Anything more and opening a session would be a
+    // surprise at the end of a drag.
+    if (moved <= 5) trendTapAt(sc, e.clientX, e.clientY);
+  };
+  sc.addEventListener('pointerup', release);
+  sc.addEventListener('pointercancel', release);
+  sc.addEventListener('wheel', e => {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    sc.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }, { passive: false });
+}
+
+// Opens the session behind the nearest range day, if the tap landed near one. Generous about
+// what counts as near: the points are small targets and the answer is unambiguous.
+function trendTapAt(sc, clientX, clientY) {
+  const svg = sc.querySelector('svg');
+  if (!svg) return;
+  const box = svg.getBoundingClientRect();
+  const scale = box.width / Number(svg.getAttribute('width'));
+  const px = (clientX - box.left) / scale;
+  const py = (clientY - box.top) / scale;
+  let best = null, bestD = 26;
+  svg.querySelectorAll('.trend-point').forEach(c => {
+    const d = Math.hypot(Number(c.getAttribute('cx')) - px, Number(c.getAttribute('cy')) - py);
+    if (d < bestD) { bestD = d; best = c; }
+  });
+  const id = best && best.dataset.session;
+  if (id && (data.sessions || []).some(s => s.id === id)) openViewSession(id);
+}
+
+function updateTrendReadout(sc) {
+  const out = document.getElementById('trend-readout');
+  if (!out || !sc) return;
+  // Read the scale the plot was drawn at rather than deriving it again; deriving it
+  // separately is how a readout comes to disagree with its own chart.
+  const pxPerDay = Number(sc.dataset.pxperday);
+  const pad = Number(sc.dataset.pad);
+  const t0 = Number(sc.dataset.t0);
+  const svg = sc.querySelector('svg');
+  const drawnW = svg ? Number(svg.getAttribute('width')) : 0;
+  const shownW = svg ? svg.getBoundingClientRect().width : 0;
+  const scale = shownW > 0 && drawnW > 0 ? shownW / drawnW : 1;
+  if (!isFinite(pxPerDay) || pxPerDay <= 0) { out.textContent = ''; return; }
+
+  const at = pxv => t0 + ((pxv - pad) / pxPerDay) * 86400000;
+  const width = sc.clientWidth > 0 ? sc.clientWidth : drawnW;
+  const lo = at(sc.scrollLeft / scale);
+  const hi = at((sc.scrollLeft + width) / scale);
+  out.textContent = `${trendDayLabel(isoDay(lo))} – ${trendDayLabel(isoDay(hi))}`;
+}
+
+// Local calendar day for a timestamp. toISOString would shift the date across the UTC
+// boundary, which is the same trap the T12:00 parsing avoids on the way in.
+function isoDay(ms) {
+  const d = new Date(ms);
+  if (!isFinite(d.getTime())) return today();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 // Prone vs bench is the same chart as Norma vs CCI — one dot per group, a median tick, the
@@ -5722,7 +6005,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.3';
+const APP_VERSION = '7.3.1';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

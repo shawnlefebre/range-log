@@ -39,6 +39,29 @@ const TABS = ['dashboard', 'log', 'sessions', 'ammo', 'stats', 'settings'];
     ck(`${size}: no clipping, wrapping or sideways scroll`, problems.length === 0);
     if (problems.length) console.log('     ' + [...new Set(problems)].slice(0, 5).join(' | '));
 
+    // The bar charts size their text in rem but used to reserve its space in px, so at the
+    // larger steps the month labels were clipped away below the fold and the round counts
+    // ran into each other. Both failures are invisible to the scan above: one is vertical,
+    // the other is overlap rather than truncation.
+    const bars = await barCharts(page);
+    ck(`${size}: bar chart labels are not cut off below the plot`,
+      bars.every(c => c.clipped === 0));
+    ck(`${size}: no two visible bar labels overlap`,
+      bars.every(c => c.overlap === 0));
+    ck(`${size}: every bar still has a value and a label reserved`,
+      bars.every(c => c.labels === c.cols && c.vals === c.cols));
+    bars.filter(c => c.clipped || c.overlap).forEach(c =>
+      console.log(`     ${c.id}: clipped ${c.clipped}px, ${c.overlap} overlapping`));
+
+    // The y-axis gutter is measured from its own ticks, so it has to grow with the text or
+    // the numbers get clipped; and each line has to sit where its own label claims it does.
+    ck(`${size}: every gridline sits at the value it is labelled with`,
+      bars.every(c => c.misaligned <= 1.5));
+    ck(`${size}: the axis gutter fits its widest tick`,
+      bars.every(c => c.gutter >= c.widestTick + 2));
+    bars.filter(c => c.misaligned > 1.5 || c.gutter < c.widestTick + 2).forEach(c =>
+      console.log(`     ${c.id}: gridline off by ${c.misaligned}px, gutter ${c.gutter} vs tick ${c.widestTick}`));
+
     // The nav is sticky beneath a sticky header; its offset has to track the header height
     // or it rides over the content at larger sizes.
     const stick = await page.evaluate(() => {
@@ -74,6 +97,57 @@ const TABS = ['dashboard', 'log', 'sessions', 'ammo', 'stats', 'settings'];
         });
       return out;
     }, where);
+  }
+
+  // Measures each rendered bar chart: vertical overflow, and whether any two labels that are
+  // actually showing collide. Thinned labels keep their box (visibility, not display) so the
+  // columns stay aligned — those are skipped, since an invisible label cannot collide.
+  async function barCharts(page) {
+    const ids = ['stats-rf-chart', 'stats-rt-chart', 'stats-as-chart'];
+    const out = [];
+    for (const [sec, id] of [['practice','stats-rf-chart'], ['practice','stats-rt-chart'],
+                             ['money','stats-as-chart']]) {
+      await page.evaluate(s => { showTab('stats'); showStatsSection(s); }, sec);
+      await page.waitForTimeout(150);
+      const r = await page.evaluate(i => {
+        const c = document.querySelector('#' + i + ' .stats-bar-chart');
+        if (!c) return null;
+        const shown = [...c.querySelectorAll('.stats-bar-label')]
+          .filter(e => getComputedStyle(e).visibility !== 'hidden')
+          .map(e => e.getBoundingClientRect());
+        let overlap = 0;
+        for (let n = 1; n < shown.length; n++) {
+          if (shown[n].left < shown[n - 1].right) overlap++;
+        }
+        // Read the axis back off the DOM and check it against its own geometry.
+        const plot = c.closest('.stats-bar-plot');
+        const track = c.querySelector('.stats-bar-track').getBoundingClientRect();
+        const num = e => Number((e.textContent || '').replace(/[^0-9.]/g, ''));
+        const gls = [...plot.querySelectorAll('.stats-bar-gl')];
+        const ceiling = gls.length ? num(gls[gls.length - 1].querySelector('.stats-bar-tick')) : 0;
+        let misaligned = 0, widestTick = 0;
+        gls.forEach(g => {
+          const tick = g.querySelector('.stats-bar-tick');
+          widestTick = Math.max(widestTick, tick.getBoundingClientRect().width);
+          if (!ceiling) return;
+          const want = track.bottom - (num(tick) / ceiling) * track.height;
+          misaligned = Math.max(misaligned, Math.abs(g.getBoundingClientRect().top - want));
+        });
+        return {
+          id: i,
+          clipped: c.scrollHeight - c.clientHeight,
+          overlap,
+          cols: c.querySelectorAll('.stats-bar-col').length,
+          labels: c.querySelectorAll('.stats-bar-label').length,
+          vals: c.querySelectorAll('.stats-bar-val').length,
+          misaligned: +misaligned.toFixed(2),
+          widestTick: +widestTick.toFixed(2),
+          gutter: parseFloat(getComputedStyle(plot).getPropertyValue('--gutter')) || 0,
+        };
+      }, id);
+      if (r) out.push(r);
+    }
+    return out;
   }
 
   let bad = 0;

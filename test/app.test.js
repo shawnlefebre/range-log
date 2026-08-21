@@ -418,6 +418,53 @@ describe('stats chart bucket granularity', () => {
     assert.strictEqual(title, 'Rounds per Month');
   });
 
+  test('the y-axis scale rounds up to numbers a person would have chosen', async () => {
+    const win = await ready(loadApp());
+    // The tallest bar must always fit under the ceiling, or it would overflow the plot.
+    for (const max of [1, 3, 4, 7, 12, 95, 510, 1234, 9999]) {
+      const { step, top } = win.niceScale(max, 3);
+      assert.ok(top >= max, `${max}: the scale has to contain the tallest bar (got ${top})`);
+      assert.ok(Number.isInteger(top / step),
+        `${max}: the ceiling has to land on a tick, not between two`);
+      assert.ok(step >= 1, `${max}: whole-number charts must not get fractional ticks`);
+      assert.ok(top <= max * 2 + step,
+        `${max}: rounding up must not squash the bars into the floor (got ${top})`);
+    }
+    // The case that motivated the shape of this: 510 should read 0/200/400/600.
+    // Compared field by field — the object comes from the jsdom realm, so deepStrictEqual
+    // fails on the prototype even when every value matches.
+    const five = win.niceScale(510, 3);
+    assert.strictEqual(five.step, 200);
+    assert.strictEqual(five.top, 600);
+    // Whole-number data must never get a fractional tick: 7 once produced 2.5 and 7.5.
+    for (const max of [1, 3, 4, 7, 12, 95, 510, 1234]) {
+      assert.ok(Number.isInteger(win.niceScale(max, 3).step),
+        `${max}: step ${win.niceScale(max, 3).step} is not a whole number`);
+    }
+    // A single range trip in a month must not produce a "0.5 trips" gridline.
+    assert.strictEqual(win.niceScale(1, 3).step, 1);
+    // No data at all still has to return something divisible, not NaN or Infinity.
+    const empty = win.niceScale(0, 3);
+    assert.ok(empty.step > 0 && empty.top > 0, 'an empty chart still needs a usable scale');
+  });
+
+  test('every bar is drawn against the rounded ceiling, not the tallest bar', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    win.document.getElementById('stats-range').value = '12months';
+    win.renderStats();
+    const html = win.document.getElementById('stats-rf-chart').innerHTML;
+    const heights = [...html.matchAll(/class="stats-bar" style="height:([\d.]+)%"/g)]
+      .map(m => Number(m[1]));
+    assert.ok(heights.length > 0, 'the chart drew some bars');
+    // If bars were still scaled to the data max, exactly one would sit at 100%.
+    assert.ok(heights.every(h => h <= 100), 'no bar may exceed the plot');
+    assert.ok(!heights.includes(100),
+      'the tallest bar should stop below the ceiling now that the scale rounds up');
+    // A tick label must exist for the ceiling, or the axis is unreadable.
+    assert.match(html, /stats-bar-tick/, 'the axis ticks are rendered');
+  });
+
   test('weekly charts with more than 8 bars alternate labels; monthly charts never do', async () => {
     const win = await ready(loadApp());
     win.showTab('stats');
@@ -893,8 +940,10 @@ describe('stats groups pane', () => {
     const win = await ready(loadApp());
     const gun = gunWithGroups(win);
     pick(win, gun.id);
-    const svg = win.document.querySelector('#stats-groups-trend svg');
+    const svg = win.document.querySelector('#stats-groups-trend .trend-scroll svg');
     assert.ok(svg, 'the chart renders');
+    assert.ok(win.document.querySelector('#stats-groups-trend .trend-axis'),
+      'and its y-axis is a separate element so it can stay pinned while the plot scrolls');
 
     const days = new Set(gun.groups.map(g => g.date)).size;
     const line = svg.querySelector('polyline');
@@ -915,7 +964,7 @@ describe('stats groups pane', () => {
     win.saveZero();
 
     pick(win, gun.id, 'all');            // plain calendar range, not a zero anchor
-    const svg = win.document.querySelector('#stats-groups-trend svg');
+    const svg = win.document.querySelector('#stats-groups-trend .trend-scroll svg');
     assert.match(svg.innerHTML, /re-zero/,
       'hiding the boundary unless you filtered by it is how you read straight through one');
   });

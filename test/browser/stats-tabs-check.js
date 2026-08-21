@@ -156,7 +156,8 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   ck('the prompt clears once a firearm is picked',
     (await page.locator('#stats-groups-prompt').textContent()).trim() === '');
   const trend = await page.evaluate(() => {
-    const svg = document.querySelector('#stats-groups-trend svg');
+    // Two SVGs now: a pinned y-axis and the scrolling plot. The polyline is in the plot.
+    const svg = document.querySelector('#stats-groups-trend .trend-scroll svg');
     if (!svg) return null;
     const r = svg.getBoundingClientRect();
     return { w: r.width, h: r.height, pts: svg.querySelector('polyline').getAttribute('points') };
@@ -173,7 +174,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   await page.click('#statstab-groups');
   await page.waitForTimeout(300);
   const again = await page.evaluate(() => {
-    const svg = document.querySelector('#stats-groups-trend svg');
+    const svg = document.querySelector('#stats-groups-trend .trend-scroll svg');
     return svg ? svg.getBoundingClientRect().width : 0;
   });
   ck('the chart keeps its size after switching away and back', again > 100);
