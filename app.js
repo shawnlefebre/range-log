@@ -2806,12 +2806,15 @@ function getBucketKeyForDate(buckets, dateStr) {
 // The step sequence is 1/2/5/10 rather than the usual 1/2/2.5/5/10, and is floored at 1,
 // because all three charts using this render whole numbers. With 2.5 in the sequence a
 // seven-trip month produced ticks at 2.5 and 7.5 — worse than a slightly coarser axis.
-function niceScale(max, intervals) {
-  if (!(max > 0)) return { step: 1, top: 1 };
+// minStep floors the step size. It defaults to 1 because the bar charts count rounds and
+// dollars, where a gridline at 0.5 means nothing. Angular scales pass a smaller floor —
+// offsets in mils live below 1 entirely, and flooring them at 1 leaves no scale at all.
+function niceScale(max, intervals, minStep = 1) {
+  if (!(max > 0)) return { step: minStep, top: minStep };
   const raw = max / Math.max(1, intervals);
   const mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const n = raw / mag;
-  const step = Math.max(1, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag);
+  const step = Math.max(minStep, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag);
   return { step, top: Math.ceil(max / step) * step };
 }
 
@@ -3873,17 +3876,20 @@ function renderGroupPOI(gun, groups) {
   const unitLabel = mil ? 'MRAD' : 'MOA';
   const disp = v => (mil ? v / MOA_PER_MRAD : v);
   const reachDisp = disp(reach);
-  // A whole mil is coarse enough that a typical zero offset would draw no ring at all, so
-  // mil rings step by half. Either way, coarsen rather than crowd the plot with rings.
-  let ringStep = mil ? 0.5 : 1;
-  while (reachDisp / ringStep > 8) ringStep *= 2;
+  // The ring step has to come from how far the dots actually sit, not from a fixed size in
+  // either unit: a rifle whose groups all land inside one step draws no rings at all and
+  // the plot loses its scale entirely. A mil zero offset is routinely under half a mil, so
+  // the floor here has to go well below 1 — hence the third argument.
+  const ringStep = niceScale(reachDisp, 4, 0.01).step;
+  // Enough decimals for the step chosen, so a 0.2 step never labels its rings "0" and "0".
+  const ringDec = Math.max(0, -Math.floor(Math.log10(ringStep)));
 
   const GRIDC = '#2e2e2e', AXIS = '#555', DIM = '#555';
   let svg = '';
   // Rings out to the edge, labeled in whichever unit the offsets are being read in.
   for (let i = 1; i * ringStep <= reachDisp + 1e-9; i++) {
     const frac = (i * ringStep) / reachDisp;
-    const label = ringStep < 1 ? (i * ringStep).toFixed(1) : String(i * ringStep);
+    const label = (i * ringStep).toFixed(ringDec);
     svg += `<circle cx="${C}" cy="${C}" r="${(C - PAD) * frac}" fill="none"
                     stroke="${GRIDC}" stroke-width="1"/>
             <text x="${C + (C - PAD) * frac - 3}" y="${C - 4}" fill="${DIM}"
@@ -6139,7 +6145,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.3.3';
+const APP_VERSION = '7.3.4';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

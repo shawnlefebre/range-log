@@ -1358,7 +1358,38 @@ describe('point of impact map', () => {
     // A whole mil is ~3.44 MOA, so whole-mil rings would often draw none at all — the
     // reason mil steps by half. Losing that leaves the plot with no scale to read against.
     assert.ok(milRings.length, 'a mil rifle still draws rings rather than an empty plot');
-    assert.ok(milRings.some(r => r.endsWith('.5')), 'mil rings step by half');
+  });
+
+  // A fixed ring step meant any rifle whose groups all landed inside one step drew no rings
+  // at all — the plot lost its scale exactly when the shooting was tightest. Reported on a
+  // mil rifle grouping inside half a mil, but the same held in MOA under 1 MOA.
+  test('rings are drawn however tight the groups are', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+    const ringLabels = () => [...poi(win).querySelectorAll('svg text')]
+      .map(t => t.textContent).filter(t => /^[\d.]+$/.test(t));
+
+    // Walk the aim point in towards the groups: each step is a smaller true offset, down to
+    // a rifle printing effectively on its aim point.
+    for (const offset of [0.10, 0.03, 0.01, 0.003, 0]) {
+      for (const unit of ['mrad', 'moa']) {
+        open(win, gun.id, 'ammo');
+        const live = win.groupsInScope().gun;
+        live.opticUnit = unit;
+        live.groups.forEach(g => { g.poa = { x: 0.5 - offset, y: 0.5 }; });
+        open(win, gun.id, 'ammo');
+
+        const rings = ringLabels();
+        assert.ok(rings.length,
+          `${unit} rifle offset ${offset} drew no rings, leaving the plot with no scale`);
+        // A ring labelled "0" is not a scale either — the label needs decimals for its step.
+        assert.ok(rings.every(r => Number(r) > 0),
+          `${unit} rifle offset ${offset} labelled a ring ${rings.join()}`);
+        // Distinct labels, or two rings claim the same value.
+        assert.strictEqual(new Set(rings).size, rings.length,
+          `${unit} rifle offset ${offset} repeated a ring label: ${rings.join()}`);
+      }
+    }
   });
 });
 
