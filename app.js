@@ -442,7 +442,7 @@ function renderTextSizePicker() {
   if (sample) {
     sample.innerHTML = `
       <div class="textsize-sample-row"><span>Jun 13, 2026</span><b>$94.83</b></div>
-      <div class="textsize-sample-sub">200 rounds at $0.474/rd · Pelham Rod and Gun Club</div>`;
+      <div class="textsize-sample-sub">200 rounds at $0.474/rd · Example Rod and Gun Club</div>`;
   }
 }
 
