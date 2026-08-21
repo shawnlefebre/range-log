@@ -158,6 +158,19 @@ Photos are downscaled before storing, so each one lands around 30–100 KB — a
 
 Because photos are left out of the JSON backup, moving them to another device is a separate step: **Export photos** writes a bundle you import on the new device *after* restoring the JSON backup. Importing a bundle only restores images that some group actually refers to.
 
+## Text size
+
+**Setup → Display → Text size**, four steps from Normal to Largest. It scales the whole app
+together — headings, labels, numbers, charts — so proportions and hierarchy are preserved
+rather than one tier growing while the rest stays put.
+
+The default is **Large**. The app originally rendered its typical text around 11px, which is
+readable but not comfortable on a phone; Large puts that nearer 14px, and the two steps above
+go further.
+
+It's stored per device rather than in your backup: it describes this screen and these eyes,
+not your shooting record, so restoring a backup somewhere else won't drag it along.
+
 ## Stats
 
 Split into four sub-tabs rather than one long scroll, because they answer unrelated

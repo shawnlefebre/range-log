@@ -323,6 +323,72 @@ function buildDefaultData() {
   };
 }
 
+// ── TEXT SIZE ─────────────────────────────────────────────────────
+// Every size in the stylesheet is a rem, so the root font size scales the entire app at once
+// and the hierarchy is preserved exactly. Note that `body { font-size }` cannot do this —
+// rem measures against the root, not the body, which is why the app's 15px body rule never
+// had any effect on it.
+//
+// Stored per device rather than in the backup: it describes this screen and these eyes, not
+// the shooting record, and restoring a backup on a different device should not carry it over.
+const TEXT_SIZES = [
+  { key: 'normal',  label: 'Normal',  px: 16 },
+  { key: 'large',   label: 'Large',   px: 20 },
+  { key: 'larger',  label: 'Larger',  px: 24 },
+  { key: 'largest', label: 'Largest', px: 28 },
+];
+const TEXT_SIZE_KEY = 'rangeLogTextSize';
+// Large is the default: the app shipped at 16, where its typical text renders around 11px,
+// which is below comfortable reading on a phone.
+const DEFAULT_TEXT_SIZE = 'large';
+
+function currentTextSize() {
+  const stored = localStorage.getItem(TEXT_SIZE_KEY);
+  return TEXT_SIZES.some(t => t.key === stored) ? stored : DEFAULT_TEXT_SIZE;
+}
+
+function applyTextSize(key) {
+  const size = TEXT_SIZES.find(t => t.key === (key || currentTextSize())) || TEXT_SIZES[1];
+  document.documentElement.style.fontSize = size.px + 'px';
+  syncStickyOffsets();
+}
+
+// The nav sits below the header, both sticky. The nav's offset was a hard 57px, which is the
+// header's height at the original text size only — scale the text up and the nav rode up
+// over the top of the content beneath it. Measure the header instead of guessing.
+function syncStickyOffsets() {
+  const header = document.querySelector('header');
+  if (!header) return;
+  const set = () => document.documentElement.style.setProperty(
+    '--header-h', Math.round(header.getBoundingClientRect().height) + 'px');
+  set();
+  // Fonts land after first paint and change the height, so measure again once they have.
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(set).catch(() => {});
+  requestAnimationFrame(set);
+}
+
+function setTextSize(key) {
+  if (!TEXT_SIZES.some(t => t.key === key)) return;
+  localStorage.setItem(TEXT_SIZE_KEY, key);
+  applyTextSize(key);
+  renderTextSizePicker();
+}
+
+function renderTextSizePicker() {
+  const el = document.getElementById('textsize-picker');
+  if (!el) return;
+  const cur = currentTextSize();
+  el.innerHTML = TEXT_SIZES.map(t => `
+    <button type="button" class="textsize-opt${t.key === cur ? ' active' : ''}"
+            aria-pressed="${t.key === cur}" onclick="setTextSize('${t.key}')">${t.label}</button>`).join('');
+  const sample = document.getElementById('textsize-sample');
+  if (sample) {
+    sample.innerHTML = `
+      <div class="textsize-sample-row"><span>Jun 13, 2026</span><b>$94.83</b></div>
+      <div class="textsize-sample-sub">200 rounds at $0.474/rd · Pelham Rod and Gun Club</div>`;
+  }
+}
+
 // ── STORAGE ──────────────────────────────────────────────────────
 function load() {
   const raw = localStorage.getItem('rangeLogData');
@@ -489,6 +555,7 @@ function save(d) {
   localStorage.setItem('rangeLogData', JSON.stringify(d));
 }
 
+applyTextSize();
 let data = load();
 
 // ── TARGET PHOTO STORE ────────────────────────────────────────────
@@ -5375,6 +5442,7 @@ function showTab(name) {
   if (name === 'sessions') renderSessions();
   if (name === 'ammo') renderAmmo();
   if (name === 'stats') showStatsSection(currentStatsSection);
+  if (name === 'settings') renderTextSizePicker();
   if (name === 'settings') renderSettings();
 }
 
@@ -5658,7 +5726,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.2.4';
+const APP_VERSION = '7.2.5';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

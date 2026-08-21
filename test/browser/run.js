@@ -32,6 +32,7 @@ const SUITES = [
   ['demo-check', 'load demo data: guard scaling, photo clearing, banner return'],
   ['details-cap-check', 'capped Details lists: caps, expansion, scroll panel, reset'],
   ['stats-tabs-check', 'Stats sub-tabs: pane switching, moved charts, Upkeep ranking'],
+  ['textsize-check', 'text size: every step scales without clipping or overflow'],
 ];
 
 const waitForServer = () => new Promise((resolve, reject) => {

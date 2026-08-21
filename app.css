@@ -73,18 +73,28 @@
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     position: sticky;
-    top: 57px;
+    /* Measured from the real header rather than hardcoded, so the nav still sits directly
+       beneath it at any text size. Falls back to the original value before the first
+       measurement lands. */
+    top: var(--header-h, 57px);
     z-index: 99;
+    /* Six tabs stop fitting once the text is scaled up, so the row scrolls rather than
+       forcing the whole page sideways. At the default size everything still fits and the
+       scrollbar never appears. */
+    overflow-x: auto;
+    scrollbar-width: none;
   }
+  nav::-webkit-scrollbar { display: none; }
   nav button {
-    flex: 1;
+    flex: 1 0 auto;
+    white-space: nowrap;
     padding: 12px 8px;
     background: none;
     border: none;
     color: var(--text-muted);
     font-family: var(--font-mono);
     font-size: 0.72rem;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
     text-transform: uppercase;
     cursor: pointer;
     border-bottom: 2px solid transparent;
@@ -1059,11 +1069,14 @@
   .stats-custom-range input[type="date"] { flex: 1; }
   .stats-stat-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    /* auto-fit rather than a fixed count: a 1fr column still has a min-content floor, so at
+       larger text sizes three tiles pushed the page sideways instead of wrapping. The
+       minimum is in rem so it grows with the text and the row rewraps on its own. */
+    grid-template-columns: repeat(auto-fit, minmax(6.2rem, 1fr));
     gap: 8px;
     margin-bottom: 12px;
   }
-  .stats-stat-grid.two { grid-template-columns: repeat(2, 1fr); }
+  .stats-stat-grid.two { grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); }
   .stats-stat-box {
     background: var(--surface2);
     border: 1px solid var(--border);
@@ -1771,3 +1784,40 @@
   }
   .link-danger:hover { background: rgba(192, 57, 43, 0.15); }
   .link-danger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ── Text size picker ─────────────────────────────────────────────
+     Sizes throughout the app are rem, so the root font size scales everything at once and
+     the hierarchy survives. The options themselves stay a fixed size, or the control would
+     resize under your thumb as you tried it. */
+  .textsize-picker { display: flex; gap: 5px; }
+  .textsize-opt {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 10px 4px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .textsize-opt:hover { border-color: var(--accent-dim); color: var(--text); }
+  .textsize-opt.active { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  .textsize-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* A live sample, so the choice is judged on real content rather than the button labels. */
+  .textsize-sample {
+    background: var(--surface2);
+    border-radius: var(--radius);
+    padding: 11px 12px;
+    margin-bottom: 10px;
+  }
+  .textsize-sample-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--font-mono); font-size: 0.95rem; color: var(--text);
+  }
+  .textsize-sample-row b { color: var(--accent); }
+  .textsize-sample-sub {
+    font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); margin-top: 5px;
+  }

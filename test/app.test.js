@@ -2486,6 +2486,94 @@ describe('inline handlers resolve to real functions', () => {
   });
 });
 
+// ── TEXT SIZE ───────────────────────────────────────────────────────
+// Every size in the stylesheet is a rem, so the root font size scales the whole app at once.
+// `body { font-size }` cannot do this — rem measures against the root — which is why the
+// app's 15px body rule never affected any of it.
+
+describe('text size', () => {
+  const root = win => win.document.documentElement.style.fontSize;
+
+  test('it defaults to Large, not the size the app shipped at', async () => {
+    const win = await ready(loadApp());
+    assert.strictEqual(win.currentTextSize(), 'large');
+    assert.strictEqual(root(win), '20px',
+      'at 16px the app renders its typical text around 11px, below comfortable reading');
+  });
+
+  test('each step scales the root, and every step is bigger than the last', async () => {
+    const win = await ready(loadApp());
+    const sizes = ['normal', 'large', 'larger', 'largest'].map(k => {
+      win.setTextSize(k);
+      return parseFloat(root(win));
+    });
+    sizes.forEach((px, i) => {
+      if (i) assert.ok(px > sizes[i - 1], 'each option must actually be larger');
+    });
+    assert.strictEqual(sizes[0], 16, 'Normal is the original size, for going back');
+  });
+
+  test('the choice persists and survives a reload', async () => {
+    const win = await ready(loadApp());
+    win.setTextSize('largest');
+    assert.strictEqual(win.localStorage.getItem('rangeLogTextSize'), 'largest');
+
+    const again = await ready(loadApp());
+    // jsdom gives each load its own storage, so assert the read path directly instead.
+    again.localStorage.setItem('rangeLogTextSize', 'larger');
+    again.applyTextSize();
+    assert.strictEqual(again.currentTextSize(), 'larger');
+    assert.strictEqual(root(again), '24px');
+  });
+
+  test('an unknown or missing stored value falls back rather than breaking', async () => {
+    const win = await ready(loadApp());
+    win.localStorage.setItem('rangeLogTextSize', 'enormous');
+    assert.strictEqual(win.currentTextSize(), 'large');
+    win.applyTextSize();
+    assert.strictEqual(root(win), '20px');
+  });
+
+  test('it is kept on the device, not in the backup', async () => {
+    const win = await ready(loadApp());
+    win.setTextSize('largest');
+    const exported = JSON.parse(win.localStorage.getItem('rangeLogData') || '{}');
+    assert.strictEqual(exported.textSize, undefined,
+      'it describes this screen and these eyes, not the shooting record');
+    assert.ok(win.localStorage.getItem('rangeLogTextSize'));
+  });
+
+  test('the picker marks the active option and offers every size', async () => {
+    const win = await ready(loadApp());
+    win.showTab('settings');
+    const opts = [...win.document.querySelectorAll('.textsize-opt')];
+    assert.strictEqual(opts.length, 4);
+    const active = opts.filter(o => o.classList.contains('active'));
+    assert.strictEqual(active.length, 1, 'exactly one is current');
+    assert.strictEqual(active[0].getAttribute('aria-pressed'), 'true');
+
+    win.setTextSize('larger');
+    const now = [...win.document.querySelectorAll('.textsize-opt')]
+      .find(o => o.classList.contains('active'));
+    assert.match(now.textContent, /Larger/);
+  });
+
+  test('the picker itself does not resize as you try sizes', () => {
+    // Otherwise the control moves under your thumb while you tap through it.
+    const css = fs.readFileSync(CSS_PATH, 'utf8');
+    const i = css.indexOf('.textsize-opt {');
+    const rule = css.slice(i, css.indexOf('}', i));
+    assert.match(rule, /font-size:\s*\d+px/,
+      'the options are sized in px on purpose, not rem');
+  });
+
+  test('the app applies a size before any tab renders', () => {
+    const js = fs.readFileSync(JS_PATH, 'utf8');
+    assert.ok(js.indexOf('applyTextSize()') < js.indexOf('let data = load()'),
+      'applying it after first paint would flash the wrong size');
+  });
+});
+
 // ── INK CONTRAST ────────────────────────────────────────────────────
 // --text-dim shipped at #555, which is 1.8–2.6:1 against the app's surfaces — far below
 // anything readable, and the reason small secondary text was hard to make out on a phone.
