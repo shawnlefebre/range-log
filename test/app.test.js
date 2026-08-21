@@ -2486,6 +2486,59 @@ describe('inline handlers resolve to real functions', () => {
   });
 });
 
+// ── INK CONTRAST ────────────────────────────────────────────────────
+// --text-dim shipped at #555, which is 1.8–2.6:1 against the app's surfaces — far below
+// anything readable, and the reason small secondary text was hard to make out on a phone.
+// Contrast is arithmetic, so check it rather than judging it by eye.
+
+describe('text contrast', () => {
+  const chan = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  const lum = hex => {
+    const n = parseInt(hex.replace('#', ''), 16);
+    return 0.2126 * chan((n >> 16) & 255) + 0.7152 * chan((n >> 8) & 255) + 0.0722 * chan(n & 255);
+  };
+  const ratio = (a, b) => {
+    const x = lum(a), y = lum(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  };
+  // Read the declaration directly rather than building a regex from a name — the escaping
+  // is a trap and the parsing here is trivial.
+  const varOf = (css, name) => {
+    const at = css.indexOf(`--${name}:`);
+    assert.notStrictEqual(at, -1, `--${name} not found`);
+    let v = css.slice(at + name.length + 3, css.indexOf(';', at)).trim();
+    assert.match(v, /^#[0-9a-fA-F]{3,6}$/, `--${name} is "${v}", expected a hex colour`);
+    if (v.length === 4) v = '#' + [...v.slice(1)].map(c => c + c).join('');
+    return v;
+  };
+
+  test('every ink is readable on every surface it sits on', () => {
+    const css = fs.readFileSync(CSS_PATH, 'utf8');
+    const surfaces = ['bg', 'surface', 'surface2', 'surface3'].map(n => [n, varOf(css, n)]);
+    // 3:1 is the floor for the dimmest tier, which carries short secondary labels; the
+    // brighter tiers carry running text and are held to 4.5.
+    const inks = [['text', 4.5], ['text-muted', 4.5], ['text-dim', 3.0]];
+
+    const bad = [];
+    inks.forEach(([ink, floor]) => {
+      const c = varOf(css, ink);
+      surfaces.forEach(([sName, sHex]) => {
+        const r = ratio(c, sHex);
+        if (r < floor) bad.push(`--${ink} on --${sName}: ${r.toFixed(2)}:1 (needs ${floor})`);
+      });
+    });
+    assert.deepStrictEqual(bad, []);
+  });
+
+  test('the three tiers stay visibly distinct', () => {
+    const css = fs.readFileSync(CSS_PATH, 'utf8');
+    const [t, m, d] = ['text', 'text-muted', 'text-dim'].map(n => lum(varOf(css, n)));
+    assert.ok(t > m && m > d, 'text > muted > dim, or the hierarchy has collapsed');
+    assert.ok(ratio(varOf(css, 'text-muted'), varOf(css, 'text-dim')) > 1.2,
+      'muted and dim must be tellable apart, not two names for one grey');
+  });
+});
+
 // ── SPELLING ────────────────────────────────────────────────────────
 // The app is American English. British spellings crept in repeatedly, so this checks the
 // rendered text rather than relying on noticing them by eye.

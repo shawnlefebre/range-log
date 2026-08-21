@@ -10,8 +10,12 @@
     --warn: #e67e22;
     --ok: #27ae60;
     --text: #e8e8e8;
-    --text-muted: #888;
-    --text-dim: #555;
+    /* Contrast against the four surfaces, measured rather than judged by eye. --text-dim was
+       #555, which is 1.8–2.6:1 — below any readable threshold, and the reason small secondary
+       text was hard to make out. These land at 5.7–8.1:1 (muted) and 3.9–5.6:1 (dim) while
+       keeping three visibly distinct steps. */
+    --text-muted: #a8a8a8;
+    --text-dim: #8a8a8a;
     /* Group-marking roles. Cool tones read as reference scaffolding, gold as your
        shots. Deliberately not the status colours — none of these indicate state. */
     --mark-cal: #6b7f8c;
@@ -908,7 +912,7 @@
   .filter-label {
     display: block;
     font-family: var(--font-mono);
-    font-size: 0.6rem;
+    font-size: 0.66rem;
     letter-spacing: 1px;
     text-transform: uppercase;
     color: var(--text-dim);
@@ -1075,7 +1079,7 @@
   }
   .stats-stat-label {
     font-family: var(--font-mono);
-    font-size: 0.55rem;
+    font-size: 0.65rem;
     color: var(--text-dim);
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -1126,7 +1130,7 @@
   }
   .stats-bar-val {
     font-family: var(--font-mono);
-    font-size: 0.55rem;
+    font-size: 0.64rem;
     line-height: 11px;
     height: 11px;
     color: var(--text-muted);
@@ -1135,7 +1139,7 @@
   }
   .stats-bar-label {
     font-family: var(--font-mono);
-    font-size: 0.55rem;
+    font-size: 0.64rem;
     color: var(--text-dim);
     margin-top: 6px;
     letter-spacing: 0.5px;
@@ -1158,7 +1162,7 @@
   .breakdown-val { font-family: var(--font-mono); font-size: 0.75rem; color: var(--accent); }
   .breakdown-bar-track { height: 6px; background: var(--surface3); border-radius: 3px; overflow: hidden; }
   .breakdown-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; }
-  .breakdown-pct { font-family: var(--font-mono); font-size: 0.6rem; color: var(--text-dim); margin-top: 2px; }
+  .breakdown-pct { font-family: var(--font-mono); font-size: 0.68rem; color: var(--text-dim); margin-top: 2px; }
 
   .caliber-disclaimer {
     display: flex;
@@ -1540,8 +1544,8 @@
     border-radius: 4px;
     cursor: pointer;
     font-family: var(--font-mono);
-    font-size: 0.58rem;
-    letter-spacing: 0.4px;
+    font-size: 0.66rem;
+    letter-spacing: 0.2px;
     text-transform: uppercase;
     color: var(--text-muted);
     padding: 8px 3px;
@@ -1565,7 +1569,7 @@
   .stats-filter-group.na select { cursor: not-allowed; }
   .stats-filter-note {
     font-family: var(--font-mono);
-    font-size: 0.58rem;
+    font-size: 0.66rem;
     line-height: 1.5;
     color: var(--text-dim);
     margin: -4px 0 12px;
@@ -1590,7 +1594,7 @@
     justify-content: center;
     margin-top: 10px;
     font-family: var(--font-mono);
-    font-size: 0.58rem;
+    font-size: 0.64rem;
     color: var(--text-muted);
   }
   .poi-legend i {
@@ -1628,7 +1632,7 @@
   }
   .cmp-name span:not(.cmp-name-t) {
     display: block;
-    font-size: 0.6rem;
+    font-size: 0.66rem;
     color: var(--text-dim);
     margin-top: 2px;
   }
@@ -1659,10 +1663,10 @@
   }
   .cmp-axis {
     position: relative;
-    height: 14px;
+    height: 16px;
     margin-left: calc(minmax(72px, 96px));
     font-family: var(--font-mono);
-    font-size: 0.6rem;
+    font-size: 0.66rem;
     color: var(--text-dim);
   }
   .cmp-axis { margin-left: 113px; margin-right: 55px; }
@@ -1698,7 +1702,7 @@
   }
   .trip-guns span {
     font-family: var(--font-mono);
-    font-size: 0.58rem;
+    font-size: 0.7rem;
     color: var(--text-muted);
     background: var(--surface2);
     border-radius: 3px;
@@ -1724,7 +1728,7 @@
     border-radius: 4px;
     color: var(--text-muted);
     font-family: var(--font-mono);
-    font-size: 0.58rem;
+    font-size: 0.64rem;
     letter-spacing: 0.4px;
     padding: 4px 8px;
     cursor: pointer;
@@ -1747,6 +1751,6 @@
     text-overflow: ellipsis;
   }
 
-  .trip-guns i { color: var(--text-dim); font-style: normal; font-size: 0.54rem; }
+  .trip-guns i { color: var(--text-dim); font-style: normal; font-size: 0.64rem; }
   /* Marks a trip priced from a fallback rather than from purchases that existed at the time. */
   .est-flag { color: var(--warn); font-style: normal; cursor: help; }

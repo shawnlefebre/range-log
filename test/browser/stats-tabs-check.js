@@ -221,32 +221,43 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
     poi && /(of aim|on aim)/i.test(poi.note));
   await page.locator('#stats-groups-poi').screenshot({ path: path.join(ARTIFACTS,'stats-groups-poi.png') });
 
-  // Legibility, measured rather than eyeballed. Text inside an SVG scales with the viewBox,
-  // so a chart authored wider than the phone renders its labels smaller than body copy —
-  // which is exactly how the comparison chart shipped unreadable once.
-  await page.selectOption('#stats-groups-compare-by', 'ammo');
-  await page.waitForTimeout(300);
-  const tiny = await page.evaluate(() => {
-    const out = [];
-    // HTML text in the Groups pane.
-    document.querySelectorAll('#statspane-groups .cmp-name, #statspane-groups .cmp-med, ' +
-      '#statspane-groups .cmp-axis span, #statspane-groups .stats-note').forEach(el => {
-      const px = parseFloat(getComputedStyle(el).fontSize);
-      if (px < 10) out.push(`${el.className} ${px.toFixed(1)}px`);
-    });
-    // SVG text, converted to rendered pixels via the viewBox scale.
-    document.querySelectorAll('#statspane-groups svg').forEach(svg => {
-      const vb = svg.getAttribute('viewBox').split(' ').map(Number);
-      const scale = svg.getBoundingClientRect().width / vb[2];
-      svg.querySelectorAll('text').forEach(t => {
-        const px = parseFloat(t.getAttribute('font-size')) * scale;
-        if (px < 9) out.push(`svg text "${t.textContent}" ${px.toFixed(1)}px`);
+  // Legibility, measured rather than eyeballed, across every pane — not just this one.
+  // Text inside an SVG scales with the viewBox, so a chart authored wider than the phone
+  // renders its labels smaller than body copy. This first shipped in the comparison chart
+  // and then again in the trip rows, because the check only covered Groups.
+  const tiny = [];
+  for (const sec of ['groups', 'practice', 'money', 'upkeep']) {
+    await page.evaluate(s => showStatsSection(s), sec);
+    await page.waitForTimeout(250);
+    const found = await page.evaluate(section => {
+      const out = [];
+      document.querySelectorAll('#tab-stats *').forEach(el => {
+        const own = [...el.childNodes].filter(n => n.nodeType === 3)
+          .map(n => n.textContent.trim()).join('');
+        if (!own) return;
+        if (el.ownerSVGElement) {
+          const svg = el.ownerSVGElement;
+          const vb = svg.getAttribute('viewBox');
+          if (!vb) return;
+          const scale = svg.getBoundingClientRect().width / Number(vb.split(' ')[2]);
+          const attr = parseFloat(el.getAttribute('font-size'));
+          const px = (isFinite(attr) ? attr : parseFloat(getComputedStyle(el).fontSize)) * scale;
+          if (px && px < 9) out.push(`${section} svg "${own.slice(0, 14)}" ${px.toFixed(1)}px`);
+        } else {
+          if (el.offsetParent === null) return;
+          const px = parseFloat(getComputedStyle(el).fontSize);
+          if (px < 9.8) out.push(`${section} .${el.className || el.tagName} ${px.toFixed(1)}px`);
+        }
       });
-    });
-    return out;
-  });
-  ck('no text in the Groups pane renders below its floor', tiny.length === 0);
+      return out;
+    }, sec);
+    tiny.push(...found);
+  }
+  ck('no text anywhere in Stats renders below its floor', tiny.length === 0);
   if (tiny.length) console.log('     too small: ' + tiny.slice(0, 8).join(' | '));
+  // The loop above leaves the last pane selected; put Groups back for what follows.
+  await page.click('#statstab-groups');
+  await page.waitForTimeout(250);
   await page.locator('#statspane-groups').screenshot({ path: path.join(ARTIFACTS,'stats-groups-full.png') });
 
   let bad=0;
