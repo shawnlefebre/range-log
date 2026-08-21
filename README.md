@@ -99,6 +99,12 @@ You get group size (extreme spread), mean radius, width and height, and how far 
 - **The date** defaults to when the photo was taken, not when you logged it
 - **Bullet diameter** comes from the ammo you select
 - **Several groups on one target.** A target often carries four or five separate groups at the same distance with the same load. Mark the scale once, then point of aim and impacts for each group — everything else is entered once and shared. Each saves as its own group, and they share a single stored photo. Groups already marked stay visible on the photo, dimmed, so you can see which clusters you've covered
+- **Fixing one bad mark.** Move the crosshair over an impact and it highlights; a **Remove**
+  control appears in the prompt naming which one. Set point stays the primary action
+  throughout, so you can still add a hole right beside an existing one — on a tight group the
+  crosshair sits near a marked hole most of the time. Undo reverses whichever you did last,
+  so changing your mind about a removal restores that impact where it was rather than
+  deleting a good one
 - **Groups link to a range session**, so each session shows a scorecard of what you shot
 - **Tags** let you label a group however you like — prone, bench, bipod, windy — picking from tags you've used before or typing a new one. Matching ignores case, so *Prone* reuses *prone* rather than creating a second tag that would split your comparisons later
 - **Keeping the photo is optional.** Marked points are always saved, so every measurement still recomputes without it — you just can't re-mark impacts. Photos are stored on the device only and are never included in a JSON export, which keeps backups small

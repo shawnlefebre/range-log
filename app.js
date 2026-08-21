@@ -3931,6 +3931,8 @@ function groupBlank(gunId) {
     photoBlob: null, photoId: null,
     view: { scale: 1, ox: 0, oy: 0 },
     calPts: [], poa: null, impacts: [],
+    // Undo reverses the last thing done at the impacts step, add or remove alike.
+    actions: [],
     // A target usually carries several groups. Scale is marked once for the photo, then
     // aim and impacts repeat per group. `saved` holds the ones already written, so they
     // can be drawn dimmed and listed while the next one is marked.
@@ -4156,6 +4158,51 @@ function gBaseScale() {
   const cv = gCanvas();
   return Math.min(cv.clientWidth / G.imgW, cv.clientHeight / G.imgH) || 1;
 }
+// Which impact the crosshair is sitting on, if any. Measured in screen pixels rather than
+// image units on purpose: the target stays a constant size under your thumb, so it is
+// forgiving at 1x and gets precise as you zoom in — exactly when you need to separate two
+// holes that nearly touch.
+const IMPACT_GRAB_PX = 24;
+
+// Panning redraws the canvas but not the modal chrome, so the prompt would go stale as the
+// crosshair slid over a hole. Rewritten only when the targeted impact actually changes —
+// touching the DOM on every pointermove would be wasteful and would fight text selection.
+let gLastTargeted = -2;
+
+function gSyncImpactPrompt(force) {
+  if (!G || !G.img) { gLastTargeted = -2; return; }
+  const now = gImpactUnderCrosshair();
+  if (!force && now === gLastTargeted) return;
+  gLastTargeted = now;
+  const el = document.getElementById('group-prompt');
+  if (el && G.step < GROUP_PROMPTS.length && !G.readOnly) el.innerHTML = GROUP_PROMPTS[G.step]();
+}
+
+function gImpactUnderCrosshair() {
+  if (!G || !G.img || G.step !== 2 || !G.impacts.length) return -1;
+  const cv = gCanvas();
+  const cx = cv.clientWidth / 2, cy = cv.clientHeight / 2;
+  let best = -1, bestDist = IMPACT_GRAB_PX;
+  G.impacts.forEach((ip, i) => {
+    const p = gNormToScreen(ip);
+    const d = Math.hypot(p.x - cx, p.y - cy);
+    if (d <= bestDist) { bestDist = d; best = i; }
+  });
+  return best;
+}
+
+// Removing is deliberately not the primary button. Marking a tight group puts the crosshair
+// near an existing hole constantly, and a primary that flips to Remove would fight you every
+// time you tried to add a point beside one.
+function groupRemoveImpact(i) {
+  if (!G || G.step !== 2) return;
+  const idx = i == null ? gImpactUnderCrosshair() : i;
+  if (idx < 0 || idx >= G.impacts.length) return;
+  const [p] = G.impacts.splice(idx, 1);
+  (G.actions = G.actions || []).push({ t: 'rm', i: idx, p });
+  gRefresh();
+}
+
 function gCrosshairPoint() {
   const cv = gCanvas();
   return gScreenToNorm({ x: cv.clientWidth / 2, y: cv.clientHeight / 2 });
@@ -4296,10 +4343,17 @@ function gDrawCanvas() {
   const per = groupUnitsPerInch(gFormGroup());
   const bullet = parseFloat(document.getElementById('group-bullet').value);
   const ctxFont = getComputedStyle(document.body).getPropertyValue('--font-mono');
+  const targeted = gImpactUnderCrosshair();
   G.impacts.forEach((ip, i) => {
     const p = gNormToScreen(ip);
     const r = (per && bullet > 0)
       ? Math.max(bullet * per * G.imgW * G.view.scale / 2, 4) : 9;
+    // The one the crosshair is on gets a second ring, so you can see which would be removed
+    // before you commit to removing it.
+    if (i === targeted) {
+      halo(() => { ctx.beginPath(); ctx.arc(p.x, p.y, r + 5, 0, Math.PI * 2); ctx.stroke(); },
+           gVar('--danger'), 2);
+    }
     halo(() => { ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke(); }, gVar('--mark-impact'));
     halo(() => {
       ctx.beginPath();
@@ -4318,6 +4372,7 @@ function gDrawCanvas() {
 
   document.getElementById('group-zoom').textContent = (G.view.scale / gBaseScale()).toFixed(1) + '×';
   gDrawReticle();
+  gSyncImpactPrompt();
 }
 
 // While marking impacts the ring is drawn at true bullet diameter and grows with zoom;
@@ -4487,7 +4542,17 @@ const GROUP_PROMPTS = [
     ? `Put the crosshair on a <b>corner of a known rectangle</b> and Set point. Mark all four <b>in any order</b> — ${G.calPts.length}/4.`
     : `Put the crosshair on one end of a <b>known distance</b> and Set point, then the other end — ${G.calPts.length}/2. Spanning several grid squares tightens accuracy.`,
   () => `Put the crosshair on your <b>point of aim</b> and Set point.`,
-  () => `Mark the <b>center of each hole</b> — ${G.impacts.length} so far. The ring is drawn at true bullet size, so it should sit on the hole like a lid.`,
+  () => {
+    const on = gImpactUnderCrosshair();
+    if (on >= 0) {
+      return `Crosshair is on <b>impact ${on + 1}</b> of ${G.impacts.length}.
+        <button type="button" class="link-danger" onclick="groupRemoveImpact()">Remove it</button>
+        — or Set point to add another beside it.`;
+    }
+    return `Mark the <b>center of each hole</b> — ${G.impacts.length} so far. The ring is drawn
+      at true bullet size, so it should sit on the hole like a lid.${
+      G.impacts.length ? ' Move the crosshair over one to remove it.' : ''}`;
+  },
   () => `Marking complete. Review below, then Save.`,
 ];
 
@@ -4520,6 +4585,7 @@ function gRefresh() {
   }).join('');
 
   document.getElementById('group-prompt').innerHTML = G.img ? GROUP_PROMPTS[G.step]() : '';
+  gLastTargeted = G.img ? gImpactUnderCrosshair() : -2;
   document.querySelector('.group-actions').style.display = marking ? '' : 'none';
   document.getElementById('group-reticle').style.display = marking ? '' : 'none';
 
@@ -4607,6 +4673,7 @@ function groupSetPoint() {
     G.step = 2;
   } else if (G.step === 2) {
     G.impacts.push(p);
+    (G.actions = G.actions || []).push({ t: 'add' });
   }
   gRefresh();
 }
@@ -4621,8 +4688,14 @@ function groupUndo() {
     if (G.poa) G.poa = null;
     else if (G.calPts.length) { G.calPts.pop(); G.step = 0; }
   } else if (G.step === 2) {
-    if (G.impacts.length) G.impacts.pop();
-    else if (G.poa) { G.poa = null; G.step = 1; }
+    // Undo the last thing done, which may have been a removal. Popping the newest impact
+    // regardless would silently delete a good point after you removed a bad one.
+    const last = (G.actions || []).pop();
+    if (last && last.t === 'rm') {
+      G.impacts.splice(Math.min(last.i, G.impacts.length), 0, last.p);
+    } else if (G.impacts.length) {
+      G.impacts.pop();
+    } else if (G.poa) { G.poa = null; G.step = 1; }
   }
   gRefresh();
 }
@@ -5065,6 +5138,9 @@ async function openLogGroup(gunId, groupId, readOnly) {
     G.calPts = (existing.calPts || []).map(p => ({ ...p }));
     G.poa = existing.poa ? { ...existing.poa } : null;
     G.impacts = (existing.impacts || []).map(p => ({ ...p }));
+    // Loading a saved group starts a fresh undo history — there is nothing here to undo
+    // back past, and reversing into a previous group's edits would be nonsense.
+    G.actions = [];
     G.photoId = existing.photoId || null;
     G.step = 3;
     if (!document.getElementById('group-bullet').value) {
@@ -5115,7 +5191,7 @@ async function gLoadImage(fileOrBlob, resetMarks) {
   G.imgH = bmp.height;
   G.photoBlob = fileOrBlob;
   G.photoWritten = false;
-  if (resetMarks) { G.calPts = []; G.poa = null; G.impacts = []; G.step = 0; }
+  if (resetMarks) { G.calPts = []; G.poa = null; G.impacts = []; G.actions = []; G.step = 0; }
 
   // Reveal the stage first — a hidden canvas measures 0 wide, and fitting against that
   // puts the image off-screen. Only once it has real dimensions can we size and fit it.
@@ -5582,7 +5658,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.2.3';
+const APP_VERSION = '7.2.4';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

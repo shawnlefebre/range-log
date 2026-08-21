@@ -1754,3 +1754,20 @@
   .trip-guns i { color: var(--text-dim); font-style: normal; font-size: 0.64rem; }
   /* Marks a trip priced from a fallback rather than from purchases that existed at the time. */
   .est-flag { color: var(--warn); font-style: normal; cursor: help; }
+
+  /* A destructive action offered inline in the prompt rather than as a button in the row.
+     The primary stays Set point: on a tight group the crosshair sits near an existing hole
+     most of the time, and a primary that flipped to Remove would fight every nearby add. */
+  .link-danger {
+    background: none;
+    border: 1px solid var(--danger);
+    border-radius: 4px;
+    color: var(--danger);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    padding: 2px 8px;
+    margin: 0 2px;
+    cursor: pointer;
+  }
+  .link-danger:hover { background: rgba(192, 57, 43, 0.15); }
+  .link-danger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
