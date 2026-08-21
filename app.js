@@ -23,6 +23,10 @@
 // v12: gun.opticUnit added — 'moa' | 'mrad' | null. Chooses which angular unit leads the
 //      point-of-aim offsets, so they match the turret you actually dial. Group size stays
 //      MOA regardless, since that figure is compared across firearms.
+// v15: ammo.usedUpDate added — when a lot ran out, or null for "used up, date unknown",
+//      which is every lot that was already used up before this existed. Deliberately not
+//      cleared when a purchase is toggled back to in stock, so an accidental un-toggle and
+//      re-toggle is lossless rather than silently restamping the date as today.
 // v14: ammo.rangeAmmo added — false for carry/defensive/match. Stored positively while the
 //      checkbox reads "Not range ammo", because everything you buy is range ammo unless you
 //      say otherwise. Per-round price figures exclude the false ones; totals include them.
@@ -30,7 +34,7 @@
 //      {id, ammo, unit, zeroDistance, distanceUnit, conditions, entries[{distance, come}]}.
 //      The app never computes ballistics; numbers come from whatever solver the user
 //      trusts and are edited by hand.
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 
 // The sentinel value for the "type your own" entry in every picker that offers one —
 // calibers, ammo, optics, tags. These once used two different sentinels, so forms that look
@@ -445,8 +449,18 @@ function migrateData(d) {
 
   // v13 -> v14: everything already logged was bought to shoot, so default it to range ammo.
   if (d.schemaVersion === 13) {
-    (d.ammo || []).forEach(a => { if (a.rangeAmmo === undefined) a.rangeAmmo = true; });
+    (d.ammo || []).forEach(a => {
+    if (a.rangeAmmo === undefined) a.rangeAmmo = true;
+    if (a.usedUpDate === undefined) a.usedUpDate = null;
+  });
     d.schemaVersion = 14;
+  }
+
+  // v14 -> v15: nothing to backfill. A lot already marked used up ran out at an unknown
+  // time, and inventing a date would be worse than admitting that.
+  if (d.schemaVersion === 14) {
+    (d.ammo || []).forEach(a => { if (a.usedUpDate === undefined) a.usedUpDate = null; });
+    d.schemaVersion = 15;
   }
 
   // Defensive: ensure every gun has cleanings + zeros + calibers arrays, and ammo + sellers exist
@@ -2168,7 +2182,8 @@ let ammoReadOnly = false;
 function ammoApplyMode() {
   document.getElementById('modal-ammo').classList.toggle('viewing', ammoReadOnly);
   ['ammo-date', 'ammo-caliber-select', 'ammo-caliber-custom', 'ammo-manufacturer', 'ammo-model',
-   'ammo-quantity', 'ammo-price', 'ammo-seller', 'ammo-status', 'ammo-not-range', 'ammo-notes']
+   'ammo-quantity', 'ammo-price', 'ammo-seller', 'ammo-status', 'ammo-not-range',
+   'ammo-usedup-date', 'ammo-notes']
     .forEach(id => {
       const el = document.getElementById(id);
       if (el) el.disabled = ammoReadOnly;
@@ -2201,9 +2216,11 @@ function openAddAmmo() {
   document.getElementById('ammo-price').value = '';
   document.getElementById('ammo-status').value = 'instock';
   document.getElementById('ammo-not-range').checked = false;
+  document.getElementById('ammo-usedup-date').value = '';
   document.getElementById('ammo-notes').value = '';
   populateAmmoSellerDropdown('');
   populateAmmoCaliberDropdown('');
+  handleAmmoStatusChange();
   ammoApplyMode();
   openModal('modal-ammo');
 }
@@ -2222,9 +2239,11 @@ function openEditAmmo(id, readOnly) {
   document.getElementById('ammo-price').value = a.totalPrice || '';
   document.getElementById('ammo-status').value = a.status || 'instock';
   document.getElementById('ammo-not-range').checked = a.rangeAmmo === false;
+  document.getElementById('ammo-usedup-date').value = a.usedUpDate || '';
   document.getElementById('ammo-notes').value = a.notes || '';
   populateAmmoSellerDropdown(a.sellerId || '');
   populateAmmoCaliberDropdown(a.caliber || '');
+  handleAmmoStatusChange();
   ammoApplyMode();
   openModal('modal-ammo');
 }
@@ -2241,6 +2260,11 @@ function saveAmmo() {
   const status = document.getElementById('ammo-status').value;
   // Inverted on purpose: the box asks the unusual question, the field records the common case.
   const rangeAmmo = !document.getElementById('ammo-not-range').checked;
+  // Only meaningful while used up; kept in storage regardless so a toggle round-trip is
+  // lossless.
+  const usedUpDate = status === 'usedup'
+    ? (document.getElementById('ammo-usedup-date').value || today())
+    : (document.getElementById('ammo-usedup-date').value || null);
   const notes = document.getElementById('ammo-notes').value.trim();
 
   if (!date) { alert('Please select a date.'); return; }
@@ -2251,9 +2275,9 @@ function saveAmmo() {
   if (!Array.isArray(data.ammo)) data.ammo = [];
   if (id) {
     const a = data.ammo.find(x => x.id === id);
-    if (a) Object.assign(a, { date, caliber, manufacturer, model, quantity, totalPrice, sellerId, status, rangeAmmo, notes });
+    if (a) Object.assign(a, { date, caliber, manufacturer, model, quantity, totalPrice, sellerId, status, rangeAmmo, usedUpDate, notes });
   } else {
-    data.ammo.push({ id: uid(), date, caliber, manufacturer, model, quantity, totalPrice, sellerId, status, rangeAmmo, notes });
+    data.ammo.push({ id: uid(), date, caliber, manufacturer, model, quantity, totalPrice, sellerId, status, rangeAmmo, usedUpDate, notes });
   }
   save(data);
   closeModal('modal-ammo');
@@ -2270,9 +2294,25 @@ function deleteAmmo(id) {
 function toggleAmmoStatus(id) {
   const a = (data.ammo || []).find(x => x.id === id);
   if (!a) return;
-  a.status = a.status === 'usedup' ? 'instock' : 'usedup';
+  const nowUsedUp = a.status !== 'usedup';
+  a.status = nowUsedUp ? 'usedup' : 'instock';
+  // Stamp the date the first time a lot runs out, and never restamp it. Going back to in
+  // stock keeps the old date rather than clearing it, so mis-tapping the button and
+  // correcting it leaves the record exactly as it was — which is the whole point, since
+  // the correction would otherwise silently rewrite the date to today.
+  if (nowUsedUp && !a.usedUpDate) a.usedUpDate = today();
   save(data);
   renderAmmo();
+}
+
+// The date only makes sense against a used-up lot; a date sitting on something in stock
+// invites "used up when?" about ammo you still have. The stored value survives either way.
+function handleAmmoStatusChange() {
+  const field = document.getElementById('ammo-usedup-field');
+  const usedUp = document.getElementById('ammo-status').value === 'usedup';
+  if (field) field.style.display = usedUp ? '' : 'none';
+  const input = document.getElementById('ammo-usedup-date');
+  if (usedUp && input && !input.value && !ammoReadOnly) input.value = today();
 }
 
 // ── AMMO RENDER ───────────────────────────────────────────────────
@@ -2348,7 +2388,9 @@ function renderAmmo() {
           <span>${(a.quantity || 0).toLocaleString()}</span> rds &nbsp;·&nbsp;
           <span>$${(a.totalPrice || 0).toFixed(2)}</span> &nbsp;·&nbsp;
           ${fmtDate(a.date)}${sellerLabel ? ` &nbsp;·&nbsp; <span>${sellerLabel}</span>` : ''} &nbsp;·&nbsp;
-          <span class="ammo-status-pill ${isUsedUp ? 'usedup' : ''}">${isUsedUp ? 'Used up' : 'In stock'}</span>
+          <span class="ammo-status-pill ${isUsedUp ? 'usedup' : ''}">${
+            isUsedUp ? (a.usedUpDate ? `Used up ${fmtDate(a.usedUpDate)}` : 'Used up') : 'In stock'
+          }</span>
         </div>
         ${a.notes ? `<div class="ammo-notes">${a.notes}</div>` : ''}
         <div class="ammo-actions">
@@ -5540,7 +5582,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.2.1';
+const APP_VERSION = '7.2.2';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

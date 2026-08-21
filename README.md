@@ -200,6 +200,11 @@ Two things there are deliberately careful:
   record of anything. Trips that predate every purchase of what was shot (real, if you were
   shooting before you started logging) fall back to the earliest price on record and are
   marked `≈` rather than reading $0.
+- **Marking a lot used up records when.** The date is set the first time you mark it, and
+  kept — not cleared — if you toggle back to in stock, so mis-tapping the button and
+  correcting it leaves the record as it was rather than silently restamping it as today. The
+  date is editable on the purchase, and blank is allowed: lots that ran out before the app
+  tracked this have no date, and unknown beats a made-up one.
 - **Carry ammo can be marked "not range ammo"** on a purchase, unchecked by default. A
   20-round box of defensive ammo at five times the price says nothing about what practice
   costs, so per-round prices leave it out — while spend and round totals still include it,

@@ -63,6 +63,44 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
     !document.getElementById('modal-ammo').classList.contains('viewing') &&
     !document.getElementById('ammo-date').disabled));
 
+  // The previous section leaves the add form open; a modal overlay swallows card clicks.
+  await page.click('#ammo-buttons .btn-secondary');
+  await page.waitForTimeout(250);
+
+  // The mis-tap sequence, driven through the actual buttons.
+  await page.selectOption('#ammo-filter-stock', 'all');
+  await page.waitForTimeout(250);
+  const card = () => page.locator('.ammo-card').first();
+  const pill = async () => (await card().locator('.ammo-status-pill').textContent()).trim();
+
+  // Get the first card into a known in-stock state.
+  if (/Used up/.test(await pill())) {
+    await card().locator('.btn-mini', { hasText: /Mark in stock/ }).click();
+    await page.waitForTimeout(300);
+  }
+  await card().locator('.btn-mini', { hasText: /Mark used up/ }).click();
+  await page.waitForTimeout(300);
+  const stamped = await pill();
+  ck('marking used up records the date', /Used up \w/.test(stamped));
+
+  // Mis-tap back, then correct it. The date must be the original, not today's re-stamp.
+  await card().locator('.btn-mini', { hasText: /Mark in stock/ }).click();
+  await page.waitForTimeout(300);
+  await card().locator('.btn-mini', { hasText: /Mark used up/ }).click();
+  await page.waitForTimeout(300);
+  ck('correcting a mis-tap keeps the original date', (await pill()) === stamped);
+
+  // And the date field only appears against a used-up lot.
+  await card().locator('.btn-mini', { hasText: 'Edit' }).click();
+  await page.waitForTimeout(300);
+  ck('the used-up date field is shown for a used-up lot',
+    await page.isVisible('#ammo-usedup-field'));
+  await page.selectOption('#ammo-status', 'instock');
+  await page.waitForTimeout(200);
+  ck('and hidden once it is back in stock', !(await page.isVisible('#ammo-usedup-field')));
+  await page.click('#ammo-buttons .btn-secondary');
+  await page.waitForTimeout(250);
+
   let bad=0;
   checks.forEach(([n,ok])=>{ if(!ok) bad++; console.log(`${ok?'ok  ':'FAIL'} ${n}`); });
   if (errs.length) { bad++; console.log('ERRORS '+[...new Set(errs)].join(' | ')); }

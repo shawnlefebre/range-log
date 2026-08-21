@@ -215,6 +215,22 @@ describe('schema migration', () => {
     assert.strictEqual(out.ammo[1].rangeAmmo, false, 'an existing setting survives');
   });
 
+  test('v14 purchases get an unknown used-up date rather than an invented one', () => {
+    const v14 = {
+      schemaVersion: 14, isDemo: false, firearms: [], locations: [], sellers: [], sessions: [],
+      ammo: [
+        { id: 'a1', date: '2026-01-01', caliber: '9mm', quantity: 500, totalPrice: 120,
+          status: 'usedup', rangeAmmo: true },
+        { id: 'a2', date: '2026-02-01', caliber: '9mm', quantity: 500, totalPrice: 120,
+          status: 'instock', rangeAmmo: true },
+      ],
+    };
+    const out = win.migrateData(JSON.parse(JSON.stringify(v14)));
+    assert.strictEqual(out.ammo[0].usedUpDate, null,
+      'a lot already used up ran out at an unknown time — inventing a date would be worse');
+    assert.strictEqual(out.ammo[1].usedUpDate, null);
+  });
+
   test('the Settings schema badge matches the actual schema version', async () => {
     const badge = win.document.body.textContent.match(/Data schema v(\d+)/);
     assert.ok(badge, 'schema badge not found in Settings');
@@ -1699,6 +1715,106 @@ describe('cost of shooting', () => {
       'a firearm with no priceable ammo drops out of the ranking');
     assert.match(flat(win.document.getElementById('stats-as-cost')), /aren't priced here/i,
       'but its rounds are accounted for in words rather than silently ignored');
+  });
+});
+
+// ── USED-UP DATE ────────────────────────────────────────────────────
+// The failure this exists to prevent: mark a lot used up, mis-tap the button back to in
+// stock, then correct it — and the date silently becomes today instead of when it ran out.
+
+describe('used-up date', () => {
+  const stored = (win, id) =>
+    JSON.parse(win.localStorage.getItem('rangeLogData')).ammo.find(a => a.id === id);
+  const inStockId = win => win.buildDefaultData().ammo.find(a => a.status !== 'usedup').id;
+
+  test('marking a lot used up stamps today', async () => {
+    const win = await ready(loadApp());
+    const id = inStockId(win);
+    win.toggleAmmoStatus(id);
+    const a = stored(win, id);
+    assert.strictEqual(a.status, 'usedup');
+    assert.strictEqual(a.usedUpDate, win.today());
+  });
+
+  test('an accidental un-toggle and correction keeps the original date', async () => {
+    const win = await ready(loadApp());
+    const id = inStockId(win);
+
+    win.toggleAmmoStatus(id);                       // used up, stamped today
+    // Rewrite it to something in the past, as if it had run out a while ago.
+    win.openEditAmmo(id);
+    win.document.getElementById('ammo-usedup-date').value = '2026-03-01';
+    win.saveAmmo();
+    assert.strictEqual(stored(win, id).usedUpDate, '2026-03-01');
+
+    win.toggleAmmoStatus(id);                       // mis-tap: back to in stock
+    assert.strictEqual(stored(win, id).status, 'instock');
+    assert.strictEqual(stored(win, id).usedUpDate, '2026-03-01',
+      'the date survives the un-toggle rather than being cleared');
+
+    win.toggleAmmoStatus(id);                       // correcting the mis-tap
+    assert.strictEqual(stored(win, id).status, 'usedup');
+    assert.strictEqual(stored(win, id).usedUpDate, '2026-03-01',
+      'correcting a mis-tap must not restamp the date as today');
+  });
+
+  test('the date is editable, and blank stays blank when in stock', async () => {
+    const win = await ready(loadApp());
+    const id = inStockId(win);
+    win.openEditAmmo(id);
+    assert.strictEqual(win.document.getElementById('ammo-usedup-date').value, '');
+    win.saveAmmo();
+    assert.strictEqual(stored(win, id).usedUpDate, null,
+      'an in-stock lot with no date keeps none');
+  });
+
+  test('saving a used-up lot with no date entered falls back to today', async () => {
+    const win = await ready(loadApp());
+    const id = inStockId(win);
+    win.openEditAmmo(id);
+    win.document.getElementById('ammo-status').value = 'usedup';
+    win.document.getElementById('ammo-usedup-date').value = '';
+    win.saveAmmo();
+    assert.strictEqual(stored(win, id).usedUpDate, win.today());
+  });
+
+  test('the field only shows against a used-up lot', async () => {
+    const win = await ready(loadApp());
+    win.openEditAmmo(inStockId(win));
+    const field = () => win.document.getElementById('ammo-usedup-field');
+    assert.strictEqual(field().style.display, 'none',
+      'a date on something in stock invites "used up when?" about ammo you still have');
+
+    win.document.getElementById('ammo-status').value = 'usedup';
+    win.handleAmmoStatusChange();
+    assert.notStrictEqual(field().style.display, 'none');
+    assert.strictEqual(win.document.getElementById('ammo-usedup-date').value, win.today(),
+      'and it offers today as the obvious default');
+  });
+
+  test('the list shows when a lot ran out, and says nothing when unknown', async () => {
+    const win = await ready(loadApp());
+    const id = inStockId(win);
+    win.toggleAmmoStatus(id);
+    win.showTab('ammo');
+    // The list defaults to in-stock only, so a lot that just ran out is correctly hidden.
+    win.document.getElementById('ammo-filter-stock').value = 'all';
+    win.renderAmmo();
+    const pills = [...win.document.querySelectorAll('.ammo-status-pill')].map(p => p.textContent);
+    assert.ok(pills.some(t => /Used up \w/.test(t)), 'a known date is shown on the pill');
+
+    // A lot migrated from before the field existed has no date and must not invent one.
+    const other = win.buildDefaultData().ammo.find(a => a.status === 'usedup' && a.id !== id);
+    if (other) {
+      win.openEditAmmo(other.id);
+      win.document.getElementById('ammo-usedup-date').value = '';
+      win.saveAmmo();
+      win.showTab('ammo');
+      win.document.getElementById('ammo-filter-stock').value = 'all';
+      win.renderAmmo();
+      const again = [...win.document.querySelectorAll('.ammo-status-pill')].map(p => p.textContent);
+      assert.ok(again.some(t => t.trim() === 'Used up'), 'unknown stays unqualified');
+    }
   });
 });
 

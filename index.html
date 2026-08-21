@@ -15,7 +15,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.2.1</span>
+    <span id="app-version">v7.2.2</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -278,7 +278,7 @@
         <button class="btn btn-danger" style="width:100%;" onclick="openDeleteAllModal()">Delete All Data</button>
       </div>
     </div>
-    <div class="schema-badge">Data schema v14 · Range Log</div>
+    <div class="schema-badge">Data schema v15 · Range Log</div>
   </section>
 </div>
 
@@ -465,10 +465,16 @@
     </div>
     <div class="form-group">
       <label>Status</label>
-      <select id="ammo-status">
+      <select id="ammo-status" onchange="handleAmmoStatusChange()">
         <option value="instock" selected>In stock</option>
         <option value="usedup">Used up</option>
       </select>
+    </div>
+    <div class="form-group" id="ammo-usedup-field" style="display:none;">
+      <label>Used up on</label>
+      <input type="date" id="ammo-usedup-date">
+      <div class="group-hint">Set when you mark a lot used up. Leave it blank if you don't
+        know &mdash; unknown is a better answer than a made-up date.</div>
     </div>
     <div class="form-group">
       <label class="group-check" for="ammo-not-range">
