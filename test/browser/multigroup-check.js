@@ -21,7 +21,10 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
 
   await page.click('button.btn-clean:has-text("View Details")');
   await page.waitForTimeout(250);
-  const before = await page.locator('#history-groups-list .group-row').count();
+  // Count the stored groups, not the rendered rows: the list caps at 5, so rows would
+  // measure the cap rather than how many groups the rifle actually has.
+  const before = await page.evaluate(() =>
+    data.firearms.find(g => (g.groups || []).length).groups.length);
   await page.click('button.btn-mini:has-text("+ Add Group")');
   await page.waitForTimeout(300);
   await page.setInputFiles('#group-file', path.join(d, 'target.png'));

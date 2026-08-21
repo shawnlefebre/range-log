@@ -76,6 +76,10 @@ const SCROLLER = '#stats-groups-trend .trend-scroll';
   // ── zooming in has to make the plot wider than its window, or there is nothing to pan ──
   const fit = await geom();
   ck('at Fit the whole range is visible without scrolling', fit && fit.scrollW <= fit.viewW + 2);
+  // A year of history once read "Aug 23 – Aug 25" — correct arithmetic, but both ends were
+  // printed without a year, so two different years looked like a two-day window.
+  ck('a span crossing a year names the years',
+    fit && /\d{4}/.test(fit.readout));
 
   await page.click('#stats-groups-trend .trend-ctrl button:nth-child(4)');   // 1 mo
   await page.waitForTimeout(400);

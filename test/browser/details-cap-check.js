@@ -18,7 +18,9 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   const checks=[]; const ck=(n,ok)=>checks.push([n,ok]);
 
   // Give the demo rifle a realistic pile of groups by cloning the ones it ships with.
-  await page.evaluate(() => {
+  // The total is read back rather than hardcoded, so changing how many groups the sample
+  // data carries can't turn this into a false failure.
+  const total = await page.evaluate(() => {
     const gun = data.firearms.find(g => (g.groups || []).length);
     const seed = gun.groups[0];
     for (let i = 0; i < 44; i++) {
@@ -26,6 +28,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
       gun.groups.push({ ...seed, id: 'bulk_' + i, date: d.toISOString().slice(0,10) });
     }
     save(data);
+    return gun.groups.length;
   });
 
   await page.click('button.btn-clean:has-text("View Details")');
@@ -34,7 +37,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   const rowCount = () => page.locator('#history-groups-list > div').count();
   ck('groups land capped at 5', await rowCount() === 5);
   ck('the control names the full count',
-    /Show all 47/.test(await page.locator('#show-all-groups').textContent()));
+    new RegExp(`Show all ${total}`).test(await page.locator('#show-all-groups').textContent()));
 
   const modalH = () => page.evaluate(() =>
     document.querySelector('#modal-history .modal').getBoundingClientRect().height);
@@ -43,12 +46,12 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
 
   await page.click('#show-all-groups');
   await page.waitForTimeout(400);
-  ck('expanding renders every group', await rowCount() === 47);
+  ck('expanding renders every group', await rowCount() === total);
   ck('the control offers the way back',
     /Show fewer/.test(await page.locator('#show-all-groups').textContent()));
 
   const expanded = await modalH();
-  // 47 rows at ~64px each would add roughly 2,700px if the modal simply grew.
+  // Dozens of rows at ~64px each would add thousands of px if the modal simply grew.
   ck('expanding does not stretch the modal past the viewport', expanded < 900 * 1.6);
   ck('the expanded section is a scroll panel', await page.evaluate(() =>
     document.getElementById('history-groups-list').classList.contains('list-scroll')));

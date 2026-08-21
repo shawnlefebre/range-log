@@ -241,15 +241,15 @@ function generateDemoData() {
     });
   });
 
-  // Sample groups so the feature is discoverable on a fresh load. They hang off a real
-  // session — one the rifle actually shot at — so the session scorecard has something to
-  // show. Points are normalized by image width; 0.01 unit == 1 inch at this scale.
+  // Sample groups so the feature is discoverable on a fresh load. They hang off real
+  // sessions the rifle actually shot at, spread across the whole year rather than piled on
+  // one day — a Group Size Over Time chart with a single point demonstrates nothing.
+  // Points are normalized by image width; 0.10 normalized units == 1 inch at this scale.
   {
-    // Hang them off the most recent session the rifle shot at — sessions list newest
-    // first, so a recent one is what you actually see.
-    const host = [...sessions]
+    // Every range day the rifle actually went out on, oldest first.
+    const rifleDays = [...sessions]
       .filter(s => (s.rounds[g1] || 0) > 0)
-      .sort((a, b) => b.date.localeCompare(a.date))[0] || sessions[0];
+      .sort((a, b) => a.date.localeCompare(b.date));
 
     // Fixed seed so demo data stays identical run to run, but scattered like real
     // shooting rather than a perfect circle — including a slight high-right bias, since
@@ -258,31 +258,88 @@ function generateDemoData() {
     const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
     const gauss = () => (rnd() + rnd() + rnd() + rnd() - 2) / 2;
 
-    // 0.10 normalized units == 1 inch at this scale; these land around 1-1.5 MOA at 50 yd.
-    const spreads = [0.085, 0.075, 0.060];
-    spreads.forEach((sd, gi) => {
-      const impacts = [0, 1, 2, 3, 4].map(() => ({
-        x: 0.5 + 0.012 + gauss() * sd,
-        y: 0.5 - 0.010 + gauss() * sd,
-      }));
-      firearms[0].groups.push({
-        id: `dgroup_${gi}`,
-        date: host.date,
-        sessionId: host.id,
-        distance: 50,
-        distanceUnit: 'yd',
-        ammo: 'Example Ammo Co 55gr FMJ',
-        tags: gi === 2 ? ['prone', 'bipod'] : ['bench', 'bags'],
-        bulletDia: 0.224,
-        calMode: 'linear',
-        calInches: 1,
-        calInchesH: 1,
-        calPts: [{ x: 0.30, y: 0.50 }, { x: 0.40, y: 0.50 }],
-        poa: { x: 0.50, y: 0.50 },
-        impacts,
-        photoId: null,
+    // The story the sample data tells: bulk FMJ off bags to begin with, a match load and a
+    // fresh zero around the middle of the year, and groups tightening as both settle in.
+    // Roughly 1.5 MOA at 50 yd down to 0.8 — a believable year, not a straight line.
+    const FMJ = 'Example Ammo Co 55gr FMJ';
+    const MATCH = 'Example Match 69gr HPBT';
+    const rezeroAt = Math.floor(rifleDays.length / 2);
+    // Enough day-to-day scatter to look like shooting, not so much that it buries the
+    // year's improvement — the chart is meant to demonstrate a readable trend.
+    const wobble = [0.002, 0.005, -0.003, 0.004, -0.002, 0.003, -0.004, 0.002, 0.005, -0.003];
+
+    let gi = 0;
+    rifleDays.forEach((host, di) => {
+      // Not every trip is a group-shooting trip; skipping a couple keeps the trend honest
+      // about range days rather than implying you test loads every single time out.
+      if (di % 5 === 4) return;
+      const settled = di >= rezeroAt;
+      // Base dispersion improves across the year, with the load change helping a little.
+      const base = 0.088 - (di / Math.max(1, rifleDays.length - 1)) * 0.038
+        + wobble[di % wobble.length] + (settled ? -0.004 : 0);
+
+      // Two or three groups a day: bench off bags, then prone off a bipod, which is
+      // realistically a touch worse. Every few trips one gets shot at 100 instead of 50.
+      const shots = [
+        { tags: ['bench', 'bags'], mult: 1.00, ammo: settled ? MATCH : FMJ, distance: 50 },
+        { tags: ['prone', 'bipod'], mult: 1.18, ammo: settled ? MATCH : FMJ, distance: 50 },
+      ];
+      if (di % 3 === 1) {
+        shots.push({ tags: ['bench', 'bags'], mult: 1.06,
+          ammo: settled ? FMJ : MATCH, distance: 100 });
+      }
+
+      shots.forEach(s => {
+        const sd = Math.max(0.030, base * s.mult);
+        const impacts = [0, 1, 2, 3, 4].map(() => ({
+          x: 0.5 + 0.012 + gauss() * sd,
+          y: 0.5 - 0.010 + gauss() * sd,
+        }));
+        firearms[0].groups.push({
+          id: `dgroup_${gi++}`,
+          date: host.date,
+          sessionId: host.id,
+          distance: s.distance,
+          distanceUnit: 'yd',
+          ammo: s.ammo,
+          tags: s.tags,
+          bulletDia: 0.224,
+          calMode: 'linear',
+          calInches: 1,
+          calInchesH: 1,
+          calPts: [{ x: 0.30, y: 0.50 }, { x: 0.40, y: 0.50 }],
+          poa: { x: 0.50, y: 0.50 },
+          impacts,
+          photoId: null,
+        });
       });
     });
+
+    // Two zeros on the rifle: the original, and the re-zero that goes with the load change.
+    // Without these the Zeros section is empty and the trend chart never shows the marker
+    // that explains why the groups shift.
+    if (rifleDays.length) {
+      firearms[0].zeros.push({
+        id: 'dzero_1',
+        date: rifleDays[0].date,
+        distance: 100,
+        distanceUnit: 'yd',
+        ammo: FMJ,
+        optic: 'Example 3-18x',
+        notes: 'Initial zero, bulk ammo.',
+      });
+      if (rifleDays[rezeroAt]) {
+        firearms[0].zeros.push({
+          id: 'dzero_2',
+          date: rifleDays[rezeroAt].date,
+          distance: 100,
+          distanceUnit: 'yd',
+          ammo: MATCH,
+          optic: 'Example 3-18x',
+          notes: 'Re-zeroed for the match load.',
+        });
+      }
+    }
   }
 
   // A sample dope table on the rifle, in mils to match its opticUnit. Numbers are
@@ -3625,7 +3682,18 @@ function updateTrendReadout(sc) {
   const width = sc.clientWidth > 0 ? sc.clientWidth : drawnW;
   const lo = at(sc.scrollLeft / scale);
   const hi = at((sc.scrollLeft + width) / scale);
-  out.textContent = `${trendDayLabel(isoDay(lo))} – ${trendDayLabel(isoDay(hi))}`;
+  // Day-and-month alone is a lie across a long span: a full year of history read
+  // "Aug 23 – Aug 25", which looks like a two-day window rather than two different years.
+  const spanDays = (hi - lo) / 86400000;
+  const sameYear = new Date(lo).getFullYear() === new Date(hi).getFullYear();
+  out.textContent = (spanDays > 120 || !sameYear)
+    ? `${trendSpanLabel(lo)} – ${trendSpanLabel(hi)}`
+    : `${trendDayLabel(isoDay(lo))} – ${trendDayLabel(isoDay(hi))}`;
+}
+
+// Month and year, for spans too wide for a day to be meaningful.
+function trendSpanLabel(ms) {
+  return new Date(ms).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
 // Local calendar day for a timestamp. toISOString would shift the date across the UTC
@@ -6005,7 +6073,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.3.1';
+const APP_VERSION = '7.3.2';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

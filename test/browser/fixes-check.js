@@ -26,8 +26,11 @@ require('fs').mkdirSync(ARTIFACTS, { recursive: true });
   check('edit modal is titled Edit Group', (await page.textContent('#group-modal-title')).startsWith('Edit Group'));
   // Compare against what the record actually holds rather than a hardcoded date, so
   // changing the demo data doesn't turn this into a false failure.
+  // The list renders newest first and the click above took the top row, so the date to
+  // expect is the most recent group's — not whichever one happens to sit first in storage.
   const storedDate = await page.evaluate(() =>
-    buildDefaultData().firearms.find(g => g.groups.length).groups[0].date);
+    buildDefaultData().firearms.find(g => g.groups.length)
+      .groups.map(g => g.date).sort().pop());
   check('date loads from the saved group', (await page.inputValue('#group-date')) === storedDate);
   check('distance loads from the saved group', (await page.inputValue('#group-distance')) === '50');
   const heroVisible = await page.locator('.group-hero-num').count();

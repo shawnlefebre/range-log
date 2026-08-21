@@ -27,8 +27,11 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   // Demo data should already carry a sample group on the rifle.
   await page.click('button.btn-clean:has-text("View Details")');
   await page.waitForTimeout(250);
-  const demoRows = await page.locator('#history-groups-list .group-row').count();
-  check('demo groups show in Details', demoRows > 0);
+  check('demo groups show in Details',
+    await page.locator('#history-groups-list .group-row').count() > 0);
+  // Stored count, not rendered rows: the list caps at 5, so rows measure the cap.
+  const demoGroups = await page.evaluate(() =>
+    data.firearms.find(g => (g.groups || []).length).groups.length);
   // MOA leads in this list, since groups shot at different distances sit side by side.
   const demoSize = await page.locator('#history-groups-list .group-row-size').first().textContent();
   check('demo group leads with a computed MOA figure', /^\d+\.\d+ MOA$/.test(demoSize.trim()));
@@ -114,6 +117,12 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   await page.waitForTimeout(400);
   await page.click('button.btn-clean:has-text("View Details")');
   await page.waitForTimeout(300);
+  // The list caps at 5, so expand it before scanning — the saved group has to be found
+  // among all of them, not just the most recent few.
+  if (await page.isVisible('#show-all-groups')) {
+    await page.click('#show-all-groups');
+    await page.waitForTimeout(300);
+  }
   // The saved group is a 2.00 in spread at 50 yd, which is 3.82 MOA.
   const rows = await page.evaluate(() => [...document.querySelectorAll('#history-groups-list .group-row')]
     .map(r => ({
@@ -121,7 +130,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
       inches: r.querySelectorAll('.group-row-sub')[1].textContent.trim(),
     })));
   check('saved group survives reload with computed MOA and inches',
-    rows.length === demoRows + 1 && rows.some(r => r.primary === '3.82 MOA' && r.inches === '2.00"'));
+    rows.length === demoGroups + 1 && rows.some(r => r.primary === '3.82 MOA' && r.inches === '2.00"'));
 
   // Delete must take the photo with it, or blobs orphan in IndexedDB. Target the row we
   // saved specifically — the demo groups carry no photo, so deleting one proves nothing.

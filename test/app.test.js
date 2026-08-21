@@ -507,6 +507,45 @@ describe('demo data generator', () => {
     const todayStr = new Date().toISOString().slice(0, 10);
     demo.sessions.forEach(s => assert.ok(s.date <= todayStr, `session dated ${s.date} is in the future`));
     demo.ammo.forEach(a => assert.ok(a.date <= todayStr, `ammo purchase dated ${a.date} is in the future`));
+    // Groups and zeros are dated off sessions, so a change there could carry them forward too.
+    demo.firearms.forEach(g => {
+      (g.groups || []).forEach(x =>
+        assert.ok(x.date <= todayStr, `group dated ${x.date} is in the future`));
+      (g.zeros || []).forEach(z =>
+        assert.ok(z.date <= todayStr, `zero dated ${z.date} is in the future`));
+    });
+  });
+
+  test('sample groups span the year, so the trend chart demonstrates something', async () => {
+    const win = await ready(loadApp());
+    const demo = win.generateDemoData();
+    const rifle = demo.firearms[0];
+    const days = [...new Set(rifle.groups.map(g => g.date))].sort();
+    // A chart with one point is not a trend — this was the whole reason for the change.
+    assert.ok(days.length >= 6,
+      `expected groups across several range days, got ${days.length}`);
+    const spanDays = (new Date(days[days.length - 1] + 'T12:00')
+      - new Date(days[0] + 'T12:00')) / 86400000;
+    assert.ok(spanDays > 180, `expected months of history, got ${Math.round(spanDays)} days`);
+    // Every group has to hang off a session that exists, or tapping a point opens nothing.
+    const ids = new Set(demo.sessions.map(s => s.id));
+    rifle.groups.forEach(g => assert.ok(ids.has(g.sessionId),
+      `group ${g.id} references a session that is not in the data`));
+    // The comparison views need more than one value to compare.
+    assert.ok(new Set(rifle.groups.map(g => g.ammo)).size >= 2, 'more than one load');
+    assert.ok(new Set(rifle.groups.map(g => g.distance)).size >= 2, 'more than one distance');
+    assert.ok(new Set(rifle.groups.flatMap(g => g.tags || [])).size >= 3, 'a few tags');
+    // Zeros give the trend its re-zero markers and fill the Details section.
+    assert.ok(rifle.zeros.length >= 2, 'at least one re-zero to mark');
+    rifle.zeros.forEach(z => assert.ok(days[0] <= z.date, 'zeros sit within the history'));
+  });
+
+  test('the sample groups are identical run to run', async () => {
+    const win = await ready(loadApp());
+    const a = win.generateDemoData().firearms[0].groups;
+    const b = win.generateDemoData().firearms[0].groups;
+    assert.strictEqual(JSON.stringify(a), JSON.stringify(b),
+      'demo data must be deterministic, or every reload rewrites the sample history');
   });
 
   test('not every session includes every firearm', async () => {
@@ -756,10 +795,14 @@ describe('group analysis math', () => {
 describe('groups linked to sessions', () => {
   test('demo groups attach to a real session and the scorecard reports them', async () => {
     const win = await ready(loadApp());
-    const gun = win.buildDefaultData().firearms.find(g => g.groups.length);
-    const sessionId = gun.groups[0].sessionId;
-    assert.ok(sessionId, 'demo groups should be linked to a session');
-    assert.ok(gun.groups.every(g => g.sessionId === sessionId), 'all demo groups share one session');
+    const demo = win.buildDefaultData();
+    const gun = demo.firearms.find(g => g.groups.length);
+    const ids = new Set(demo.sessions.map(s => s.id));
+    assert.ok(gun.groups[0].sessionId, 'demo groups should be linked to a session');
+    // Sample groups are spread over the year now, so what matters is that each one points
+    // at a session that exists — a dangling link opens nothing when you tap the chart.
+    assert.ok(gun.groups.every(g => ids.has(g.sessionId)),
+      'every demo group links to a session that is really there');
 
     win.showTab('sessions');
     const html = win.document.getElementById('sessions-list').innerHTML;
@@ -871,7 +914,11 @@ describe('stats groups pane', () => {
   test('a zero anchor appears only on Groups, and only with a firearm chosen', async () => {
     const win = await ready(loadApp());
     const gun = win.buildDefaultData().firearms[0];
-    // Demo firearms ship no zeros, so add one through the app.
+    // buildDefaultData() hands back a fresh copy, not the record the app is rendering —
+    // reach the installed one through the stats scope. Start from no zeros so the count
+    // below is about what this test adds, not what the sample data ships with.
+    pick(win, gun.id, null);
+    win.groupsInScope().gun.zeros.length = 0;
     win.openLogZero(gun.id);
     win.document.getElementById('zero-date').value = '2026-01-15';
     win.document.getElementById('zero-distance').value = '50';
@@ -1061,10 +1108,14 @@ describe('group comparison', () => {
   test('a dimension with one bucket says so instead of drawing a one-row chart', async () => {
     const win = await ready(loadApp());
     const gun = gunWithGroups(win);
-    // Demo groups are all at one distance, so this is the real single-bucket case.
-    const distances = new Set(gun.groups.map(g =>
+    // Sample groups span two distances, so collapse them on the live record to set up the
+    // single-bucket case this test is about, rather than depending on the fixture's shape.
+    open(win, gun.id, 'distance');
+    const live = win.groupsInScope().gun;
+    live.groups.forEach(g => { g.distance = 50; g.distanceUnit = 'yd'; });
+    const distances = new Set(live.groups.map(g =>
       win.groupDistanceLabel({ distance: g.distance, distanceUnit: g.distanceUnit })));
-    assert.strictEqual(distances.size, 1, 'precondition: demo groups share a distance');
+    assert.strictEqual(distances.size, 1, 'precondition: the groups now share a distance');
     open(win, gun.id, 'distance');
     const el = win.document.getElementById('stats-groups-compare');
     assert.match(flat(el), /nothing to compare/i);
@@ -1198,7 +1249,10 @@ describe('point of impact map', () => {
     const win = await ready(loadApp());
     const gun = gunWithGroups(win);
 
-    open(win, gun.id, 'ammo');   // demo groups share one ammo → a single bucket
+    open(win, gun.id, 'ammo');
+    const live = win.groupsInScope().gun;
+    live.groups.forEach(g => { g.ammo = live.groups[0].ammo; });   // → a single bucket
+    open(win, gun.id, 'ammo');
     const oneBucket = poi(win).querySelectorAll('.poi-legend span').length;
     assert.strictEqual(oneBucket, 0, 'one bucket needs no legend');
     assert.strictEqual(poi(win).querySelectorAll('.poi-center').length, 0,
@@ -1224,8 +1278,10 @@ describe('point of impact map', () => {
     const dates = [...new Set(gun.groups.map(g => g.date))].sort();
 
     open(win, gun.id, 'ammo');
+    win.groupsInScope().gun.zeros.length = 0;   // clear the sample zeros; this test adds its own
+    open(win, gun.id, 'ammo');
     assert.doesNotMatch(flat(poi(win)), /re-zero falls inside/i,
-      'no zeros logged yet, so nothing to warn about');
+      'with no zeros logged there is nothing to warn about');
 
     // A zero dated after the earliest group and on or before the latest sits inside the span.
     const inside = dates[dates.length - 1];
