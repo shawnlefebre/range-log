@@ -2951,10 +2951,8 @@ function renderCostToShoot() {
           <div class="stats-stat-label">Per Range Trip</div></div>
       </div>
       ${rowsHtml}
-      <div class="stats-note"><b>Estimated.</b> Each trip is priced from the range ammo you had
-        bought <b>by that date</b> — so buying today never changes what last March cost. Rounds
-        are logged per firearm and purchases per caliber, so a firearm's rounds carry the
-        average for its chambering, carry ammo excluded.${
+      <div class="stats-note"><b>Estimated</b> from the range ammo you'd bought by each trip's
+        date, so these don't change when you buy more. Carry ammo excluded.${
         estimated ? ' Some trips predate every purchase of what was shot and fall back to the earliest price on record.' : ''}${
         unpriced ? ` ${unpriced.toLocaleString()} rounds aren't priced here: no ammo logged
         for their chambering.` : ''}</div>
@@ -3039,10 +3037,8 @@ function renderCostPerTrip() {
       </div>
       <div class="trip-list${panel}" id="stats-trip-list">${rowsHtml}</div>
       <div class="stats-note">${rows.length} trips — tap one to open it. The most expensive ran
-        ${(priciest / cheapest).toFixed(1)}× the cheapest. The per-round rate is the tell: a
-        rimfire afternoon and a centerfire one cost very different money for the same round
-        count. Each trip is priced from the ammo you had bought by that date, so these figures
-        don't move when you buy more.${
+        ${(priciest / cheapest).toFixed(1)}× the cheapest, driven by what was shot rather than
+        how much.${
         rows.some(r => r.estimated)
           ? ' Trips marked ≈ predate every purchase of what was shot and use the earliest price on record.'
           : ''}</div>
@@ -3128,11 +3124,9 @@ function renderBurnRate() {
     <div class="stats-chart-card">
       <div class="stats-chart-title">Burn Rate</div>
       ${rowsHtml}
-      <div class="stats-note">Rounds actually fired, from your session log. Grouped by
-        chambering, so a firearm that shoots two calibers counts once — rounds are logged per
-        firearm, and asking which of the two it fired has no answer.
-        <br>This is not inventory: what's left on the shelf can't be computed, since ammo
-        bought before you started logging was never recorded.</div>
+      <div class="stats-note">Rounds actually fired, grouped by chambering, so a two-caliber
+        firearm counts once. <b>Not inventory</b> — what's left on the shelf can't be worked out
+        from logged purchases alone.</div>
     </div>`;
 }
 
@@ -3257,8 +3251,8 @@ function renderGroupsStats() {
         <div class="stats-stat-num">${groups.length}</div>
         <div class="stats-stat-label">Groups · ${days.length} day${days.length === 1 ? '' : 's'}</div></div>
     </div>
-    <div class="stats-note">Mean radius, median across groups. Mean radius uses every shot, so
-      it stays comparable as the number of shots per group changes — extreme spread does not.</div>`;
+    <div class="stats-note">Mean radius, median across groups — comparable across different
+      shot counts, unlike extreme spread.</div>`;
 
   renderGroupTrend(gun, groups);
   renderGroupCompare(groups);
@@ -5728,7 +5722,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.2.6';
+const APP_VERSION = '7.2.7';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

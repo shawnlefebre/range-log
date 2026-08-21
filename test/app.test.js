@@ -1691,14 +1691,15 @@ describe('cost of shooting', () => {
     });
   });
 
-  test('it says it is an estimate, and why it has to be', async () => {
+  test('it is labelled an estimate, and names what shapes it', async () => {
     const win = await ready(loadApp());
     openMoney(win);
     const note = flat(win.document.querySelector('#stats-as-cost .stats-note'));
-    assert.match(note, /estimated/i);
-    assert.match(note, /per firearm/i);
+    assert.match(note, /estimated/i, 'a figure this inferred must not read as exact');
     assert.match(note, /carry ammo excluded/i,
-      'the reason the flag matters belongs on the view it affects');
+      'the flag changes this number, so its effect belongs on the view it affects');
+    assert.match(note, /by each trip.s date/i,
+      "and that history is frozen, since that is the property people would otherwise assume wrong");
   });
 
   test('rounds with no ammo logged for their chambering are reported, not dropped', async () => {
@@ -2370,9 +2371,9 @@ describe('burn rate', () => {
     const win = await ready(loadApp());
     openMoney(win);
     const note = flat(win.document.querySelector('#stats-as-burn .stats-note'));
+    // The one misreading worth guarding against: rounds fired is not what is left.
     assert.match(note, /not inventory/i);
-    assert.match(note, /before you started logging/i,
-      'the reason inventory is uncomputable belongs on screen, not in a commit message');
+    assert.match(note, /left on the shelf/i);
   });
 
   test('too little history draws nothing rather than a rate from one session', async () => {

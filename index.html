@@ -15,7 +15,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.2.6</span>
+    <span id="app-version">v7.2.7</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -211,8 +211,7 @@
         <div class="textsize-picker" id="textsize-picker" role="group" aria-label="Text size"></div>
       </div>
       <div class="textsize-sample" id="textsize-sample"></div>
-      <div class="group-hint">Scales the whole app together, so headings, labels and numbers
-        keep their proportions. Kept on this device rather than in your backup.</div>
+      <div class="group-hint">Scales the whole app together.</div>
     </div>
 
     <div class="section-header" style="margin-top:24px;">
@@ -486,8 +485,7 @@
     <div class="form-group" id="ammo-usedup-field" style="display:none;">
       <label>Used up on</label>
       <input type="date" id="ammo-usedup-date">
-      <div class="group-hint">Set when you mark a lot used up. Leave it blank if you don't
-        know &mdash; unknown is a better answer than a made-up date.</div>
+      <div class="group-hint">Set when you mark a lot used up. Leave blank if you don't know.</div>
     </div>
     <div class="form-group">
       <label class="group-check" for="ammo-not-range">
@@ -653,8 +651,7 @@
     <div class="form-group">
       <label>Conditions (optional)</label>
       <input type="text" id="dope-conditions" placeholder="e.g. trued at 900 ft, 70&deg;F">
-      <div class="group-hint">Dope drifts with altitude and temperature. Noting where these
-        numbers came from keeps the table honest later.</div>
+      <div class="group-hint">Dope drifts with altitude and temperature &mdash; worth noting where these came from.</div>
     </div>
 
     <div class="form-group">
