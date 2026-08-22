@@ -701,6 +701,24 @@ function localISODate(d) {
 }
 function today() { return localISODate(new Date()); }
 
+// Everything a person types here — firearm names, notes, tags, ammo and optic labels — is
+// interpolated into template literals and handed to innerHTML. Anything user-typed must go
+// through this on the way in.
+//
+// The everyday failure is not an attack, it is a note like "Grouped <MOA all day": the
+// parser reads "<MOA " as an unclosed tag and swallows the rest of the line, so the text is
+// safe in localStorage but invisible on screen, which reads as lost data. Escaping quotes
+// matters for the same reason inside title="..." attributes. Backups are files that get
+// mailed between devices and imported, so this is the injection boundary too.
+function esc(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Backwards-compatible caliber accessors: prefer calibers[] but fall back to legacy caliber field
 function gunCalibers(gun) {
   if (Array.isArray(gun.calibers) && gun.calibers.length) return gun.calibers;
@@ -951,9 +969,9 @@ function renderDashboard() {
         <div>
           <div class="gun-name-row">
             ${typeIconSVG(gun.type, 22)}
-            <div class="gun-name">${gun.name}</div>
+            <div class="gun-name">${esc(gun.name)}</div>
           </div>
-          <div class="gun-caliber">${gunCaliberLabel(gun)}</div>
+          <div class="gun-caliber">${esc(gunCaliberLabel(gun))}</div>
           <div class="gun-stats">All-time <span>${(gun.totalRounds||0).toLocaleString()} rds</span> &nbsp;·&nbsp; ${lastCleanedStr}</div>
           <div class="clean-bar"><div class="clean-bar-fill" style="width:${Math.min(cs.pct*100,100)}%;background:${cs.barColor}"></div></div>
         </div>
@@ -977,14 +995,14 @@ function renderLogForm() {
 
   const locSel = document.getElementById('session-location');
   locSel.innerHTML = '<option value="">— Select location —</option>' +
-    data.locations.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+    data.locations.map(l => `<option value="${l.id}">${esc(l.name)}</option>`).join('');
 
   const gunInputs = document.getElementById('gun-inputs');
   gunInputs.innerHTML = data.firearms.map(gun => `
     <div class="gun-row">
       <div>
-        <label>${gun.name}</label>
-        <div class="caliber-tag">${gunCaliberLabel(gun)}</div>
+        <label>${esc(gun.name)}</label>
+        <div class="caliber-tag">${esc(gunCaliberLabel(gun))}</div>
       </div>
       <input type="number" id="rounds-${gun.id}" min="0" placeholder="0" value="">
     </div>
@@ -1050,7 +1068,7 @@ function renderSessions() {
     const rounds = s.rounds && typeof s.rounds === 'object' ? s.rounds : {};
     const pills = Object.entries(rounds).map(([gid, r]) => {
       const gun = data.firearms.find(g => g.id === gid);
-      return `<div class="session-gun-pill">${gun ? gun.name : 'Unknown'} <span>${r}</span></div>`;
+      return `<div class="session-gun-pill">${gun ? esc(gun.name) : 'Unknown'} <span>${r}</span></div>`;
     }).join('');
     return `
       <div class="session-card tappable" onclick="openViewSession('${s.id}')"
@@ -1065,9 +1083,9 @@ function renderSessions() {
             <button class="btn-icon" onclick="event.stopPropagation(); deleteSession('${s.id}')" title="Delete">🗑</button>
           </div>
         </div>
-        ${s.locationId ? `<div class="session-location">${loc ? loc.name : 'Unknown location'}</div>` : ''}
+        ${s.locationId ? `<div class="session-location">${loc ? esc(loc.name) : 'Unknown location'}</div>` : ''}
         <div class="session-rounds">${pills}</div>
-        ${s.notes ? `<div class="session-notes">${s.notes}</div>` : ''}
+        ${s.notes ? `<div class="session-notes">${esc(s.notes)}</div>` : ''}
         ${sessionScorecard(s.id)}
       </div>
     `;
@@ -1108,12 +1126,12 @@ function sessionScorecard(sessionId) {
   // Two lines per row rather than five columns — at phone width a single row would push
   // the MOA figure off the card, and that's the number worth reading.
   const detail = rows.length <= DETAIL_LIMIT ? rows.map(r => {
-    const sub = [r.group.ammo, `${r.group.distance} ${r.group.distanceUnit || 'yd'}`,
+    const sub = [esc(r.group.ammo), `${r.group.distance} ${r.group.distanceUnit || 'yd'}`,
                  `${(r.group.impacts || []).length} shots`].filter(Boolean).join(' · ');
     return `
       <div class="scorecard-row">
         <div class="scorecard-main">
-          <div class="scorecard-gun">${r.gun.name}</div>
+          <div class="scorecard-gun">${esc(r.gun.name)}</div>
           <div class="scorecard-sub">${sub}</div>
         </div>
         <div class="scorecard-moa ${r.moa === best ? 'best' : ''}">${gFmt(r.moa)}<span> MOA</span></div>
@@ -1146,8 +1164,8 @@ function renderSettings() {
       </div>
       ${typeIconSVG(gun.type, 20)}
       <div class="list-item-text">
-        <div class="list-item-name">${gun.name}</div>
-        <div class="list-item-sub">${gunCaliberLabel(gun)} · Clean every ${gun.cleanThreshold} rds</div>
+        <div class="list-item-name">${esc(gun.name)}</div>
+        <div class="list-item-sub">${esc(gunCaliberLabel(gun))} · Clean every ${gun.cleanThreshold} rds</div>
       </div>
       <button class="btn-icon" onclick="openEditGun('${gun.id}')" title="Edit">✏️</button>
       <button class="btn-icon" onclick="deleteGun('${gun.id}')" title="Delete">🗑</button>
@@ -1159,7 +1177,7 @@ function renderSettings() {
   ll.innerHTML = data.locations.map(loc => `
     <div class="list-item">
       <div class="list-item-text">
-        <div class="list-item-name">${loc.name}</div>
+        <div class="list-item-name">${esc(loc.name)}</div>
       </div>
       <button class="btn-icon" onclick="deleteLocation('${loc.id}')" title="Delete">🗑</button>
     </div>
@@ -1170,7 +1188,7 @@ function renderSettings() {
   sl.innerHTML = sellers.map(seller => `
     <div class="list-item">
       <div class="list-item-text">
-        <div class="list-item-name">${seller.name}</div>
+        <div class="list-item-name">${esc(seller.name)}</div>
       </div>
       <button class="btn-icon" onclick="deleteSeller('${seller.id}')" title="Delete">🗑</button>
     </div>
@@ -1186,7 +1204,7 @@ function renderGunCalibersChips() {
     container.innerHTML = '<div class="chips-empty">NO CALIBERS SELECTED</div>';
   } else {
     container.innerHTML = gunModalCalibers.map((c, i) =>
-      `<span class="chip">${c}<span class="remove-x" onclick="removeGunCaliber(${i})">×</span></span>`
+      `<span class="chip">${esc(c)}<span class="remove-x" onclick="removeGunCaliber(${i})">×</span></span>`
     ).join('');
   }
   // Repopulate the add-select excluding already-added
@@ -1194,7 +1212,7 @@ function renderGunCalibersChips() {
   const known = allKnownCalibers().filter(c => !gunModalCalibers.some(x => x.trim().toLowerCase() === c.trim().toLowerCase()));
   sel.innerHTML =
     '<option value="">— Add caliber —</option>' +
-    known.map(c => `<option value="${c}">${c}</option>`).join('') +
+    known.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('') +
     `<option value="${CUSTOM_OPTION}">+ New caliber...</option>`;
   // Reset custom input
   document.getElementById('gun-caliber-custom').style.display = 'none';
@@ -1447,7 +1465,7 @@ function toggleHistorySection(name) {
 function renderGunHistory(gunId) {
   const gun = data.firearms.find(g => g.id === gunId);
   if (!gun) return;
-  document.getElementById('history-title').innerHTML = typeIconSVG(gun.type, 26) + gun.name + ' · Details';
+  document.getElementById('history-title').innerHTML = typeIconSVG(gun.type, 26) + esc(gun.name) + ' · Details';
 
   const rsc = computeRoundsSinceClean(gun);
   const lastDeep = lastDeepCleanDate(gun);
@@ -1464,7 +1482,7 @@ function renderGunHistory(gunId) {
   `;
 
   document.getElementById('history-notes').innerHTML = gun.notes
-    ? `<div class="gun-notes-block">${gun.notes}</div>`
+    ? `<div class="gun-notes-block">${esc(gun.notes)}</div>`
     : '';
 
   // Cleanings list
@@ -1476,7 +1494,7 @@ function renderGunHistory(gunId) {
           <div class="cleaning-type-badge ${c.type}">${typeLabel}</div>
           <div>
             <div class="cleaning-meta-date">${fmtDate(c.date)}</div>
-            ${c.notes ? `<div class="cleaning-meta-notes">${c.notes}</div>` : ''}
+            ${c.notes ? `<div class="cleaning-meta-notes">${esc(c.notes)}</div>` : ''}
           </div>
           <div style="display:flex;gap:4px;">
             <button class="btn-icon" onclick="openLogCleaning('${gunId}','${c.id}')" title="Edit">✏️</button>
@@ -1491,15 +1509,15 @@ function renderGunHistory(gunId) {
   paintHistorySection('zeros', zeros.map(z => {
       const distLabel = z.distance ? `${z.distance} ${z.distanceUnit || 'yd'}` : '—';
       const subParts = [];
-      if (z.ammo) subParts.push(z.ammo);
-      if (z.optic) subParts.push(z.optic);
+      if (z.ammo) subParts.push(esc(z.ammo));
+      if (z.optic) subParts.push(esc(z.optic));
       return `
         <div class="cleaning-row tappable" onclick="openViewZero('${gunId}','${z.id}')"
              role="button" tabindex="0" title="View this zero">
           <div class="cleaning-type-badge zero">${distLabel}</div>
           <div>
             <div class="cleaning-meta-date">${fmtDate(z.date)}${subParts.length ? ' · ' : ''}<span style="color:var(--text-muted);font-weight:normal;">${subParts.join(' · ')}</span></div>
-            ${z.notes ? `<div class="cleaning-meta-notes">${z.notes}</div>` : ''}
+            ${z.notes ? `<div class="cleaning-meta-notes">${esc(z.notes)}</div>` : ''}
           </div>
           <div style="display:flex;gap:4px;">
             <button class="btn-icon" onclick="event.stopPropagation(); openLogZero('${gunId}','${z.id}')" title="Edit">✏️</button>
@@ -1526,9 +1544,9 @@ function renderGunHistory(gunId) {
       const sub = [`${g.distance} ${g.distanceUnit || 'yd'}`, `${(g.impacts || []).length} shots`];
       // Shortened here as everywhere else: the full load name runs to three lines on a phone
       // and pushes every other group off the panel. Tapping the row shows it in full.
-      if (g.ammo) sub.push(shortLoadName(g.ammo));
+      if (g.ammo) sub.push(esc(shortLoadName(g.ammo)));
       const tagLine = (g.tags || []).length
-        ? `<div class="group-row-tags">${g.tags.map(t => `<span class="tag-pill">${t}</span>`).join('')}</div>`
+        ? `<div class="group-row-tags">${g.tags.map(t => `<span class="tag-pill">${esc(t)}</span>`).join('')}</div>`
         : '';
       return `
         <div class="group-row tappable" onclick="openViewGroup('${gunId}','${g.id}')"
@@ -1588,7 +1606,7 @@ function populateAmmoDropdown(gun, selectedAmmoText, selectId, customId) {
     inStock.forEach(a => {
       const label = ammoDisplayLabel(a);
       const sel = label === selectedAmmoText ? ' selected' : '';
-      html += `<option value="${label.replace(/"/g, '&quot;')}"${sel}>${label}</option>`;
+      html += `<option value="${esc(label)}"${sel}>${esc(label)}</option>`;
     });
     html += '</optgroup>';
   }
@@ -1597,7 +1615,7 @@ function populateAmmoDropdown(gun, selectedAmmoText, selectId, customId) {
     usedUp.forEach(a => {
       const label = ammoDisplayLabel(a);
       const sel = label === selectedAmmoText ? ' selected' : '';
-      html += `<option value="${label.replace(/"/g, '&quot;')}"${sel}>${label}</option>`;
+      html += `<option value="${esc(label)}"${sel}>${esc(label)}</option>`;
     });
     html += '</optgroup>';
   }
@@ -1605,7 +1623,7 @@ function populateAmmoDropdown(gun, selectedAmmoText, selectId, customId) {
     html += '<optgroup label="◇ Text-only (from past entries)">';
     textOnly.forEach(t => {
       const sel = t === selectedAmmoText ? ' selected' : '';
-      html += `<option value="${t.replace(/"/g, '&quot;')}"${sel}>${t}</option>`;
+      html += `<option value="${esc(t)}"${sel}>${esc(t)}</option>`;
     });
     html += '</optgroup>';
   }
@@ -1660,7 +1678,7 @@ function populateZeroOpticDropdown(gun, selectedOptic) {
   let html = '<option value="">— Select optic —</option>';
   optics.forEach(o => {
     const s = o === selectedOptic ? ' selected' : '';
-    html += `<option value="${o.replace(/"/g, '&quot;')}"${s}>${o}</option>`;
+    html += `<option value="${esc(o)}"${s}>${esc(o)}</option>`;
   });
   html += `<option value="${CUSTOM_OPTION}">+ Custom...</option>`;
   sel.innerHTML = html;
@@ -1848,9 +1866,9 @@ function renderDopeCards(gunId) {
            role="button" tabindex="0" title="View this table">
         <div class="dope-head">
           <div>
-            <div class="dope-ammo">${t.ammo || '(no ammo)'}</div>
+            <div class="dope-ammo">${esc(t.ammo || '(no ammo)')}</div>
             <div class="dope-meta">${meta.join(' · ')}</div>
-            <div class="dope-conditions">${t.conditions || 'no conditions recorded'}</div>
+            <div class="dope-conditions">${esc(t.conditions) || 'no conditions recorded'}</div>
           </div>
           <div style="display:flex;gap:4px;">
             <button class="btn-icon" onclick="event.stopPropagation(); openDope('${gunId}','${t.id}')" title="Edit">✏️</button>
@@ -2088,15 +2106,15 @@ function openEditSession(id, readOnly) {
 
   const locSel = document.getElementById('session-edit-location');
   locSel.innerHTML = '<option value="">— Select location —</option>' +
-    data.locations.map(l => `<option value="${l.id}" ${l.id === s.locationId ? 'selected' : ''}>${l.name}</option>`).join('');
+    data.locations.map(l => `<option value="${l.id}" ${l.id === s.locationId ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
 
   const sessionRounds = s.rounds && typeof s.rounds === 'object' ? s.rounds : {};
   const gunInputs = document.getElementById('session-edit-gun-inputs');
   gunInputs.innerHTML = data.firearms.map(gun => `
     <div class="gun-row">
       <div>
-        <label>${gun.name}</label>
-        <div class="caliber-tag">${gunCaliberLabel(gun)}</div>
+        <label>${esc(gun.name)}</label>
+        <div class="caliber-tag">${esc(gunCaliberLabel(gun))}</div>
       </div>
       <input type="number" id="edit-rounds-${gun.id}" min="0" placeholder="0" value="${sessionRounds[gun.id] || ''}">
     </div>
@@ -2226,7 +2244,7 @@ function populateAmmoSellerDropdown(selectedId) {
   const sel = document.getElementById('ammo-seller');
   const sellers = data.sellers || [];
   sel.innerHTML = '<option value="">— Not specified —</option>' +
-    sellers.map(s => `<option value="${s.id}"${s.id === selectedId ? ' selected' : ''}>${s.name}</option>`).join('');
+    sellers.map(s => `<option value="${s.id}"${s.id === selectedId ? ' selected' : ''}>${esc(s.name)}</option>`).join('');
 }
 
 function allKnownCalibers() {
@@ -2277,7 +2295,7 @@ function populateAmmoCaliberDropdown(selectedCaliber) {
 
   sel.innerHTML =
     '<option value="">— Select caliber —</option>' +
-    known.map(c => `<option value="${c}"${c === selectedCaliber ? ' selected' : ''}>${c}</option>`).join('') +
+    known.map(c => `<option value="${esc(c)}"${c === selectedCaliber ? ' selected' : ''}>${esc(c)}</option>`).join('') +
     `<option value="${CUSTOM_OPTION}">+ New caliber...</option>`;
 
   if (selectedCaliber && !isKnown) {
@@ -2460,7 +2478,7 @@ function renderAmmo() {
   const currentCal = calSel.value;
   const calibers = [...new Set(ammo.map(a => a.caliber).filter(Boolean))].sort();
   calSel.innerHTML = '<option value="">All calibers</option>' +
-    calibers.map(c => `<option value="${c}"${c === currentCal ? ' selected' : ''}>${c}</option>`).join('');
+    calibers.map(c => `<option value="${esc(c)}"${c === currentCal ? ' selected' : ''}>${esc(c)}</option>`).join('');
 
   const filterCal = calSel.value;
   const filterStock = document.getElementById('ammo-filter-stock').value;
@@ -2513,8 +2531,8 @@ function renderAmmo() {
            title="View this purchase">
         <div class="ammo-card-header">
           <div style="flex:1;min-width:0;">
-            <div class="ammo-caliber-badge">${a.caliber}</div>
-            <div class="ammo-name">${name}</div>
+            <div class="ammo-caliber-badge">${esc(a.caliber)}</div>
+            <div class="ammo-name">${esc(name)}</div>
           </div>
           <div>
             <div class="ammo-cpr">$${cpr.toFixed(3)}</div>
@@ -2524,12 +2542,12 @@ function renderAmmo() {
         <div class="ammo-meta">
           <span>${(a.quantity || 0).toLocaleString()}</span> rds &nbsp;·&nbsp;
           <span>$${(a.totalPrice || 0).toFixed(2)}</span> &nbsp;·&nbsp;
-          ${fmtDate(a.date)}${sellerLabel ? ` &nbsp;·&nbsp; <span>${sellerLabel}</span>` : ''} &nbsp;·&nbsp;
+          ${fmtDate(a.date)}${sellerLabel ? ` &nbsp;·&nbsp; <span>${esc(sellerLabel)}</span>` : ''} &nbsp;·&nbsp;
           <span class="ammo-status-pill ${isUsedUp ? 'usedup' : ''}">${
             isUsedUp ? (a.usedUpDate ? `Used up ${fmtDate(a.usedUpDate)}` : 'Used up') : 'In stock'
           }</span>
         </div>
-        ${a.notes ? `<div class="ammo-notes">${a.notes}</div>` : ''}
+        ${a.notes ? `<div class="ammo-notes">${esc(a.notes)}</div>` : ''}
         <div class="ammo-actions">
           <button class="btn-mini" onclick="event.stopPropagation(); toggleAmmoStatus('${a.id}')">${isUsedUp ? 'Mark in stock' : 'Mark used up'}</button>
           <button class="btn-mini" onclick="event.stopPropagation(); openEditAmmo('${a.id}')">Edit</button>
@@ -2628,12 +2646,12 @@ function populateStatsFilterDropdowns() {
   const loc = document.getElementById('stats-location');
   const curLoc = loc.value;
   loc.innerHTML = '<option value="">All Locations</option>' +
-    data.locations.map(l => `<option value="${l.id}"${l.id === curLoc ? ' selected' : ''}>${l.name}</option>`).join('');
+    data.locations.map(l => `<option value="${l.id}"${l.id === curLoc ? ' selected' : ''}>${esc(l.name)}</option>`).join('');
 
   const gun = document.getElementById('stats-firearm');
   const curGun = gun.value;
   gun.innerHTML = '<option value="">All Firearms</option>' +
-    data.firearms.map(g => `<option value="${g.id}"${g.id === curGun ? ' selected' : ''}>${g.name}</option>`).join('');
+    data.firearms.map(g => `<option value="${g.id}"${g.id === curGun ? ' selected' : ''}>${esc(g.name)}</option>`).join('');
 
   // Both individual calibers and the merged groups, because the two answer different
   // questions. Rounds fired through a firearm chambered .223/5.56 cannot be attributed to
@@ -2647,12 +2665,12 @@ function populateStatsFilterDropdowns() {
   const singles = allKnownCalibers();
   let calHtml = '<option value="">All Calibers</option>';
   calHtml += singles.map(c =>
-    `<option value="${c}"${c === curCal ? ' selected' : ''}>${c}</option>`).join('');
+    `<option value="${esc(c)}"${c === curCal ? ' selected' : ''}>${esc(c)}</option>`).join('');
   // Only listed where a merge actually exists — a single-token group would just duplicate
   // the entry above it.
   if (merged.length) {
     calHtml += '<optgroup label="Shared chambers">' + merged.map(g =>
-      `<option value="${g.value}"${g.value === curCal ? ' selected' : ''}>${g.label}</option>`).join('') +
+      `<option value="${esc(g.value)}"${g.value === curCal ? ' selected' : ''}>${esc(g.label)}</option>`).join('') +
       '</optgroup>';
   }
   cal.innerHTML = calHtml;
@@ -3080,7 +3098,7 @@ function renderCostToShoot() {
   const rowsHtml = rows.map(r => `
     <div class="breakdown-row">
       <div class="breakdown-top">
-        <span class="breakdown-name">${r.name}</span>
+        <span class="breakdown-name">${esc(r.name)}</span>
         <span class="breakdown-val">$${r.cost.toFixed(2)}</span>
       </div>
       <div class="breakdown-bar-track">
@@ -3157,15 +3175,15 @@ function renderCostPerTrip() {
           <div class="breakdown-bar-fill" style="width:${Math.round((r.cost / max) * 100)}%"></div>
         </div>
         <div class="breakdown-pct">${r.rounds.toLocaleString()} rounds at $${r.cpr.toFixed(3)}/rd${
-          loc ? ` · ${loc.name}` : ''}</div>
+          loc ? ` · ${esc(loc.name)}` : ''}</div>
         <div class="trip-guns">${guns.map(g =>
-          `<span>${g.name} <b>$${g.cost.toFixed(2)}</b> <i>${g.rounds} rds</i></span>`).join('')}</div>
+          `<span>${esc(g.name)} <b>$${g.cost.toFixed(2)}</b> <i>${g.rounds} rds</i></span>`).join('')}</div>
         ${r.s.notes && r.s.notes.trim()
           // One line, clipped. Most notes fit whole; the long ones give their gist, and the
           // row opens the session for the rest. A note is why the trip was what it was —
           // "first time with AR15", "indoor qual" — so it earns the line.
-          ? `<div class="trip-note" title="${r.s.notes.replace(/"/g, '&quot;')}">${
-              r.s.notes.replace(/\s*\n+\s*/g, ' · ')}</div>`
+          ? `<div class="trip-note" title="${esc(r.s.notes)}">${
+              esc(r.s.notes).replace(/\s*\n+\s*/g, ' · ')}</div>`
           : ''}
       </div>`;
   }).join('');
@@ -3260,7 +3278,7 @@ function renderBurnRate() {
   const rowsHtml = rows.map(r => `
     <div class="breakdown-row">
       <div class="breakdown-top">
-        <span class="breakdown-name">${r.label}</span>
+        <span class="breakdown-name">${esc(r.label)}</span>
         <span class="breakdown-val" style="color:${'#1f68bc'}">${Math.round(r.rate).toLocaleString()} / mo</span>
       </div>
       <div class="breakdown-bar-track">
@@ -3380,7 +3398,7 @@ function renderGroupsStats() {
   if (!groups.length) {
     document.getElementById('stats-groups-stats').innerHTML =
       `<div class="empty-state" style="padding:20px 16px;">
-        No measurable groups for ${gun.name} in this range.</div>`;
+        No measurable groups for ${esc(gun.name)} in this range.</div>`;
     document.getElementById('stats-groups-trend').innerHTML = '';
     document.getElementById('stats-groups-compare').innerHTML = '';
     document.getElementById('stats-groups-poi').innerHTML = '';
@@ -3815,8 +3833,8 @@ function renderGroupCompare(groups) {
       `<span class="cmp-dot" style="left:${pct(g.mrMOA)}%;background:${c}"></span>`).join('');
     return `
       <div class="cmp-row">
-        <div class="cmp-name" title="${r.key.replace(/"/g, '&quot;')}">
-          <span class="cmp-name-t">${r.label}</span>
+        <div class="cmp-name" title="${esc(r.key)}">
+          <span class="cmp-name-t">${esc(r.label)}</span>
           <span>n=${r.gs.length}${r.days === 1 && key !== 'day' ? ' · 1 day' : ''}</span>
         </div>
         <div class="cmp-track">
@@ -3928,7 +3946,7 @@ function renderGroupPOI(gun, groups) {
   const legend = colored
     ? `<div class="poi-legend">${names.map((n, i) =>
         `<span><i style="background:${SERIES[i % SERIES.length]}"></i>${
-          key === 'day' ? fmtDate(n) : shortLoadName(n)}</span>`).join('')}</div>`
+          key === 'day' ? fmtDate(n) : esc(shortLoadName(n))}</span>`).join('')}</div>`
     : '';
 
   const mx = statsMedian(usable.map(g => g.offXMOA));
@@ -4000,7 +4018,7 @@ function renderUpkeepStats() {
     return `
       <div class="breakdown-row">
         <div class="breakdown-top">
-          <span class="breakdown-name">${r.gun.name}</span>
+          <span class="breakdown-name">${esc(r.gun.name)}</span>
           <span class="breakdown-val" style="color:var(--${state})">${r.since}${r.thr ? ` / ${r.thr}` : ''} rds</span>
         </div>
         <div class="breakdown-bar-track">
@@ -4057,7 +4075,7 @@ function renderRoundsFiredStats() {
       .map(gid => data.firearms.find(g => g.id === gid))
       .filter(gun => gun && gunCalibers(gun).some(t => !selectedTokens.has(t.trim())));
     if (mixedGuns.length) {
-      const parts = mixedGuns.map(g => `${g.name} (${gunCaliberLabel(g)})`);
+      const parts = mixedGuns.map(g => `${esc(g.name)} (${esc(gunCaliberLabel(g))})`);
       const joined = parts.length === 1 ? parts[0]
         : parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
       const verb = mixedGuns.length === 1 ? 'is' : 'are';
@@ -4139,7 +4157,7 @@ function renderRoundsFiredStats() {
       const barPct = Math.round((x.r / maxR) * 100);
       return `
         <div class="breakdown-row">
-          <div class="breakdown-top"><span class="breakdown-name">${x.gun.name}</span><span class="breakdown-val">${x.r.toLocaleString()} rds</span></div>
+          <div class="breakdown-top"><span class="breakdown-name">${esc(x.gun.name)}</span><span class="breakdown-val">${x.r.toLocaleString()} rds</span></div>
           <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${barPct}%"></div></div>
           <div class="breakdown-pct">${pct}% of total</div>
         </div>
@@ -4225,7 +4243,7 @@ function renderAmmoSpendStats() {
   if (scopeNote) {
     scopeNote.innerHTML = gun
       ? `<div class="caliber-disclaimer"><span>&#9432;</span><div>Showing
-           <strong>${[...tokens].join(' / ') || '—'}</strong> — the calibers ${gun.name} uses.
+           <strong>${esc([...tokens].join(' / ')) || '—'}</strong> — the calibers ${esc(gun.name)} uses.
            Purchases aren't tied to a firearm, so this covers any other firearm chambered the
            same way. It is what you spent on ammo this one <em>can</em> use, not what it
            consumed.</div></div>`
@@ -4298,7 +4316,7 @@ function renderAmmoSpendStats() {
       const barPct = Math.round((x.spend / maxSpend) * 100);
       return `
         <div class="breakdown-row">
-          <div class="breakdown-top"><span class="breakdown-name">${x.cal}</span><span class="breakdown-val">$${x.spend.toFixed(2)}</span></div>
+          <div class="breakdown-top"><span class="breakdown-name">${esc(x.cal)}</span><span class="breakdown-val">$${x.spend.toFixed(2)}</span></div>
           <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${barPct}%"></div></div>
           <div class="breakdown-pct">${pct}% of total spend</div>
         </div>
@@ -4321,7 +4339,7 @@ function renderAmmoSpendStats() {
       const barPct = Math.round((x.rounds / maxRounds) * 100);
       return `
         <div class="breakdown-row">
-          <div class="breakdown-top"><span class="breakdown-name">${x.cal}</span><span class="breakdown-val" style="color:#7a92a3;">${x.rounds.toLocaleString()} rds</span></div>
+          <div class="breakdown-top"><span class="breakdown-name">${esc(x.cal)}</span><span class="breakdown-val" style="color:#7a92a3;">${x.rounds.toLocaleString()} rds</span></div>
           <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${barPct}%;background:#7a92a3;"></div></div>
           <div class="breakdown-pct">${pct}% of total rounds</div>
         </div>
@@ -4387,11 +4405,11 @@ function renderSellerSpend(purchases, tokens, rangeOnly) {
     const pct = total > 0 ? Math.round((r.spend / total) * 100) : 0;
     const sub = comparable && r.cpr != null
       ? `${pct}% of spend · $${r.cpr.toFixed(3)}/rd · ${r.rounds.toLocaleString()} rds`
-      : `${pct}% of spend · ${r.buys} purchase${r.buys === 1 ? '' : 's'} · ${[...r.cals].join(', ') || '—'}`;
+      : `${pct}% of spend · ${r.buys} purchase${r.buys === 1 ? '' : 's'} · ${esc([...r.cals].join(', ')) || '—'}`;
     return `
       <div class="breakdown-row">
         <div class="breakdown-top">
-          <span class="breakdown-name">${r.name}</span>
+          <span class="breakdown-name">${esc(r.name)}</span>
           <span class="breakdown-val">$${r.spend.toFixed(2)}</span>
         </div>
         <div class="breakdown-bar-track">
@@ -5225,7 +5243,7 @@ function populateGroupSessionDropdown(selectedId, groupDate) {
   sel.innerHTML = '<option value="">— Not linked to a session —</option>' +
     sessions.map(s => {
       const loc = data.locations.find(l => l.id === s.locationId);
-      const label = `${fmtDate(s.date)}${loc ? ' · ' + loc.name : ''}`;
+      const label = `${fmtDate(s.date)}${loc ? ' · ' + esc(loc.name) : ''}`;
       return `<option value="${s.id}">${label}</option>`;
     }).join('');
 
@@ -5965,7 +5983,7 @@ function renderGroupTagChips() {
     container.innerHTML = `<div class="chips-empty">${viewing ? 'NO TAGS' : 'NO TAGS ADDED'}</div>`;
   } else {
     container.innerHTML = groupModalTags.map((t, i) =>
-      `<span class="chip">${t}${viewing ? '' : `<span class="remove-x" onclick="removeGroupTag(${i})">×</span>`}</span>`
+      `<span class="chip">${esc(t)}${viewing ? '' : `<span class="remove-x" onclick="removeGroupTag(${i})">×</span>`}</span>`
     ).join('');
   }
 
@@ -5974,7 +5992,7 @@ function renderGroupTagChips() {
     !groupModalTags.some(x => x.trim().toLowerCase() === t.trim().toLowerCase()));
   sel.innerHTML =
     '<option value="">— Add tag —</option>' +
-    known.map(t => `<option value="${t.replace(/"/g, '&quot;')}">${t}</option>`).join('') +
+    known.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('') +
     `<option value="${CUSTOM_OPTION}">+ New tag...</option>`;
   const custom = document.getElementById('group-tag-custom');
   custom.style.display = 'none';
@@ -6154,7 +6172,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.4.1';
+const APP_VERSION = '7.4.2';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

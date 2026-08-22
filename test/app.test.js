@@ -598,6 +598,120 @@ describe('local calendar day', () => {
   });
 });
 
+// ── TEXT ESCAPING ───────────────────────────────────────────────────
+// Every render path interpolates user-typed text into a template literal and assigns it to
+// innerHTML. The everyday failure is not an attack: a note like "Grouped <MOA all day" gets
+// read as an unclosed tag, so the rest of the line disappears from the screen while sitting
+// intact in localStorage — which looks exactly like lost data.
+
+describe('user text is escaped, not parsed as markup', () => {
+  // Two strings: one an ordinary range note that happens to contain "<", one a deliberate
+  // injection. Both must come back as literal text.
+  const PLAIN = 'Grouped <MOA all day & "felt" great — 1/2\' left';
+  const HOSTILE = '<img src=x onerror="window.__pwned=1">';
+
+  // Seeds one hostile value into every free-text field the app stores, then renders
+  // everything. `data` is a top-level `let`, so it is reachable through eval but not as a
+  // window property.
+  function seed(win, text) {
+    win.eval(`data = {
+      schemaVersion: buildDefaultData().schemaVersion,
+      isDemo: false,
+      firearms: [{
+        id: 'g1', name: ${JSON.stringify(text)}, type: 'rifle',
+        calibers: [${JSON.stringify(text)}], opticUnit: 'moa',
+        cleanThreshold: 500, totalRounds: 120, notes: ${JSON.stringify(text)},
+        cleanings: [{ id: 'c1', date: '2026-08-01', type: 'deep', notes: ${JSON.stringify(text)} }],
+        zeros: [{ id: 'z1', date: '2026-08-02', distance: 100, distanceUnit: 'yd',
+                  ammo: ${JSON.stringify(text)}, optic: ${JSON.stringify(text)},
+                  notes: ${JSON.stringify(text)} }],
+        dope: [{ id: 'd1', ammo: ${JSON.stringify(text)}, unit: 'moa', distanceUnit: 'yd',
+                 zeroDistance: 100, conditions: ${JSON.stringify(text)},
+                 entries: [{ distance: 200, come: 2.5 }] }],
+        groups: [{ id: 'gr1', date: '2026-08-03', sessionId: 's1', distance: 100,
+                   distanceUnit: 'yd', calMode: 'linear', calInches: 1,
+                   calPts: [{ x: 0.4, y: 0.5 }, { x: 0.5, y: 0.5 }],
+                   impacts: [{ x: 0.5, y: 0.5 }, { x: 0.52, y: 0.51 }, { x: 0.49, y: 0.52 }],
+                   ammo: ${JSON.stringify(text)}, tags: [${JSON.stringify(text)}],
+                   notes: ${JSON.stringify(text)} }]
+      }],
+      locations: [{ id: 'l1', name: ${JSON.stringify(text)} }],
+      sellers: [{ id: 'sel1', name: ${JSON.stringify(text)} }],
+      sessions: [{ id: 's1', date: '2026-08-03', locationId: 'l1', rounds: { g1: 60 },
+                   totalRounds: 60, notes: ${JSON.stringify(text)} }],
+      ammo: [{ id: 'a1', date: '2026-08-01', caliber: ${JSON.stringify(text)},
+               manufacturer: ${JSON.stringify(text)}, model: ${JSON.stringify(text)},
+               quantity: 100, totalPrice: 40, sellerId: 'sel1', status: 'instock',
+               rangeAmmo: true, notes: ${JSON.stringify(text)} }]
+    };`);
+  }
+
+  function renderEverything(win) {
+    win.renderAll();
+    win.showTab('stats');
+    ['groups', 'practice', 'money', 'upkeep'].forEach(sec => win.showStatsSection(sec));
+    win.openGunHistory('g1');
+  }
+
+  test('an ordinary note containing "<" survives to the screen intact', async () => {
+    const win = await ready(loadApp());
+    seed(win, PLAIN);
+    renderEverything(win);
+    // The session card is the plainest case: a note the user typed, shown back to them.
+    const card = flat(win.document.getElementById('sessions-list'));
+    assert.ok(card.includes('Grouped <MOA all day'),
+      `the note was truncated at the "<". Rendered: ${card}`);
+    assert.ok(card.includes('"felt" great'), 'quotes must survive too');
+  });
+
+  test('an ampersand in a name is shown once, not as "&amp;"', async () => {
+    const win = await ready(loadApp());
+    // The failure this guards is escaping something twice — a real risk now that helpers
+    // like gunCaliberLabel are escaped at each interpolation site rather than internally.
+    // "Smith & Wesson" is the everyday case; it must read as typed.
+    seed(win, 'Smith & Wesson');
+    renderEverything(win);
+    const cards = flat(win.document.getElementById('gun-cards'));
+    assert.ok(cards.includes('Smith & Wesson'), `rendered: ${cards}`);
+    assert.ok(!win.document.getElementById('gun-cards').textContent.includes('&amp;'),
+      'the name was escaped twice, so the user sees the entity instead of the character');
+  });
+
+  test('markup in any stored field renders as text, creating no elements', async () => {
+    const win = await ready(loadApp());
+    seed(win, HOSTILE);
+    renderEverything(win);
+    assert.strictEqual(win.__pwned, undefined, 'an onerror handler executed');
+    assert.strictEqual(win.document.querySelectorAll('img[src="x"]').length, 0,
+      'stored text was parsed into a real element instead of being shown as text');
+  });
+
+  test('the escape helper leaves ordinary text alone', async () => {
+    const win = await ready(loadApp());
+    assert.strictEqual(win.esc('Example Rifle'), 'Example Rifle');
+    assert.strictEqual(win.esc(''), '');
+    assert.strictEqual(win.esc(null), '', 'null must not render as the word "null"');
+    assert.strictEqual(win.esc(undefined), '');
+    assert.strictEqual(win.esc(0), '0', 'zero is a real value, not an empty one');
+    assert.strictEqual(win.esc('a & b'), 'a &amp; b');
+    assert.strictEqual(win.esc('<b>'), '&lt;b&gt;');
+  });
+
+  test('escaped text round-trips through a select value unchanged', async () => {
+    const win = await ready(loadApp());
+    seed(win, PLAIN);
+    win.renderAll();
+    // Ammo dropdowns carry the label in the option's value and read it back on save, so
+    // escaping the attribute must not change what getSelectedAmmo returns.
+    win.openLogZero('g1');
+    const sel = win.document.getElementById('zero-ammo-select');
+    const withText = [...sel.options].find(o => o.value.includes('Grouped'));
+    assert.ok(withText, 'the ammo option should be present');
+    assert.ok(withText.value.includes('<MOA'),
+      `the DOM value must decode back to the original text, got: ${withText.value}`);
+  });
+});
+
 // ── DEMO DATA GENERATOR ─────────────────────────────────────────────
 
 describe('demo data generator', () => {
