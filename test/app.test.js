@@ -712,6 +712,146 @@ describe('user text is escaped, not parsed as markup', () => {
   });
 });
 
+// ── EXPORT / IMPORT / SAVE ──────────────────────────────────────────
+
+describe('CSV export quotes fields instead of mangling them', () => {
+  function seedSession(win, notes, locName = 'North Range', gunName = 'Bolt Gun') {
+    win.eval(`data = {
+      schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      firearms: [{ id: 'g1', name: ${JSON.stringify(gunName)}, type: 'rifle',
+        calibers: ['.223 Rem'], cleanThreshold: 500, totalRounds: 60, notes: '',
+        cleanings: [], zeros: [], dope: [], groups: [] }],
+      locations: [{ id: 'l1', name: ${JSON.stringify(locName)} }],
+      sellers: [],
+      sessions: [{ id: 's1', date: '2026-08-03', locationId: 'l1', rounds: { g1: 60 },
+                   totalRounds: 60, notes: ${JSON.stringify(notes)} }],
+      ammo: []
+    };`);
+  }
+
+  test('commas in a note are kept, not stripped out of the text', async () => {
+    const win = await ready(loadApp());
+    seedSession(win, 'Windy, cold, still shot well');
+    const csv = win.buildSessionCSV();
+    assert.ok(csv.includes('"Windy, cold, still shot well"'),
+      `the note must be quoted and intact, got: ${csv}`);
+  });
+
+  test('a note with a newline stays inside its own row', async () => {
+    const win = await ready(loadApp());
+    seedSession(win, 'Line one\nLine two');
+    const csv = win.buildSessionCSV();
+    // Records are separated by CRLF; the newline inside the quoted note is a bare LF and
+    // must not be read as a record break. Header + one session = two records.
+    assert.strictEqual(csv.split('\r\n').length, 2,
+      `an unquoted newline split the row: ${JSON.stringify(csv)}`);
+    assert.ok(csv.includes('"Line one\nLine two"'), 'the newline itself must be preserved');
+  });
+
+  test('quotes in a note are doubled per RFC 4180', async () => {
+    const win = await ready(loadApp());
+    seedSession(win, 'Shot the "good" lot');
+    assert.ok(win.buildSessionCSV().includes('"Shot the ""good"" lot"'));
+  });
+
+  test('a comma in a location or firearm name does not shift the columns', async () => {
+    const win = await ready(loadApp());
+    seedSession(win, 'fine', 'Smith, County Range', 'Rifle, No. 2');
+    const csv = win.buildSessionCSV();
+    assert.ok(csv.includes('"Smith, County Range"'));
+    assert.ok(csv.includes('"Rifle, No. 2"'));
+  });
+
+  test('ordinary values are not quoted, so the file stays readable', async () => {
+    const win = await ready(loadApp());
+    seedSession(win, 'clean run');
+    const line = win.buildSessionCSV().split('\r\n')[1];
+    assert.strictEqual(line, '2026-08-03,North Range,Bolt Gun,.223 Rem,60,clean run');
+  });
+});
+
+describe('importing a backup', () => {
+  function importPayload(win, payload) {
+    let alerted = '';
+    win.alert = m => { alerted = m; };
+    const before = JSON.stringify(win.eval('data'));
+    // importJSON reads a File; drive the reader callback directly with the JSON text.
+    win.eval(`(${function (text) {
+      const fake = { files: [{}], value: '' };
+      const RealFR = window.FileReader;
+      window.FileReader = function () {
+        this.readAsText = () => { this.onload({ target: { result: text } }); };
+      };
+      try { importJSON(fake); } finally { window.FileReader = RealFR; }
+    }.toString()})(${JSON.stringify(JSON.stringify(payload))})`);
+    return { alerted, before };
+  }
+
+  test('a backup from a newer schema is refused rather than silently loaded', async () => {
+    const win = await ready(loadApp());
+    const current = win.buildDefaultData().schemaVersion;
+    const { alerted, before } = importPayload(win, {
+      schemaVersion: current + 1,
+      firearms: [{ id: 'gX', name: 'From The Future' }],
+      sessions: [], locations: [], sellers: [], ammo: [],
+    });
+    assert.match(alerted, /newer version/i, `expected a refusal, got: ${alerted}`);
+    assert.match(alerted, new RegExp(`v${current + 1}`), 'it should name the incoming version');
+    assert.strictEqual(JSON.stringify(win.eval('data')), before,
+      'the existing data must be left exactly as it was');
+  });
+
+  test('a backup at the current schema still imports', async () => {
+    const win = await ready(loadApp());
+    const current = win.buildDefaultData().schemaVersion;
+    const { alerted } = importPayload(win, {
+      schemaVersion: current, isDemo: false,
+      firearms: [{ id: 'gX', name: 'Imported Rifle', type: 'rifle', calibers: ['9mm'],
+                   cleanThreshold: 500, totalRounds: 0, notes: '',
+                   cleanings: [], zeros: [], dope: [], groups: [] }],
+      sessions: [], locations: [], sellers: [], ammo: [],
+    });
+    assert.doesNotMatch(alerted, /newer version/i);
+    assert.strictEqual(win.eval('data.firearms[0].name'), 'Imported Rifle');
+  });
+
+  test('firearms as a non-array is rejected as an invalid file', async () => {
+    const win = await ready(loadApp());
+    const { alerted, before } = importPayload(win, {
+      schemaVersion: 1, firearms: { nope: true }, sessions: [],
+    });
+    assert.match(alerted, /invalid backup/i);
+    assert.strictEqual(JSON.stringify(win.eval('data')), before);
+  });
+});
+
+describe('a failed save is surfaced, not swallowed', () => {
+  test('save() reports failure and tells the user their change is unsaved', async () => {
+    const win = await ready(loadApp());
+    let alerted = '';
+    win.alert = m => { alerted = m; };
+    // Patched on the prototype: jsdom's localStorage is a Proxy, so assigning setItem on
+    // the instance is silently dropped and the write would succeed anyway.
+    const realSetItem = win.Storage.prototype.setItem;
+    win.Storage.prototype.setItem = () => {
+      const e = new Error('quota'); e.name = 'QuotaExceededError'; throw e;
+    };
+    try {
+      const ok = win.eval('save(data)');
+      assert.strictEqual(ok, false, 'save must report that the write did not land');
+      assert.match(alerted, /not stored yet|do not reload/i,
+        `the user needs to be told the change is unsaved, got: ${alerted}`);
+    } finally {
+      win.Storage.prototype.setItem = realSetItem;
+    }
+  });
+
+  test('save() returns true on the normal path', async () => {
+    const win = await ready(loadApp());
+    assert.strictEqual(win.eval('save(data)'), true);
+  });
+});
+
 // ── DEMO DATA GENERATOR ─────────────────────────────────────────────
 
 describe('demo data generator', () => {

@@ -608,8 +608,22 @@ function migrateData(d) {
   return d;
 }
 
+// Returns whether the write landed. A failure here is otherwise completely invisible: the
+// in-memory `data` has already been mutated and the caller re-renders from it, so the app
+// shows the change and looks saved right up until the next reload drops it. Quota is the
+// usual cause; Safari with storage blocked throws here too.
 function save(d) {
-  localStorage.setItem('rangeLogData', JSON.stringify(d));
+  try {
+    localStorage.setItem('rangeLogData', JSON.stringify(d));
+    return true;
+  } catch (e) {
+    console.error('Range Log: could not write to localStorage', e);
+    alert('Could not save — this device would not accept the write.\n\n' +
+      'Your last change is on screen but is not stored yet, so do not reload. ' +
+      'Export a backup from Setup to keep it. If storage is full, Setup also has a ' +
+      'photo storage readout and a way to reclaim space.');
+    return false;
+  }
 }
 
 applyTextSize();
@@ -5903,12 +5917,21 @@ function exportJSON() {
   URL.revokeObjectURL(url);
 }
 
-function exportCSV() {
+// One CSV field. Notes used to have their commas stripped, which silently rewrote what the
+// user wrote and still left newlines free to break the row in half. Quoting per RFC 4180
+// handles commas, quotes and newlines alike, and gives the text back unaltered.
+function csvCell(v) {
+  const s = String(v ?? '');
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// Split out from exportCSV so the escaping can be tested without a download.
+function buildSessionCSV() {
   const rows = [['Date','Location','Firearm','Caliber','Rounds','Notes']];
   const sorted = [...data.sessions].sort((a,b) => a.date.localeCompare(b.date));
   sorted.forEach(s => {
     const loc = data.locations.find(l => l.id === s.locationId);
-    Object.entries(s.rounds).forEach(([gid, r]) => {
+    Object.entries(s.rounds || {}).forEach(([gid, r]) => {
       const gun = data.firearms.find(g => g.id === gid);
       rows.push([
         s.date,
@@ -5916,12 +5939,15 @@ function exportCSV() {
         gun ? gun.name : gid,
         gun ? gunCaliberLabel(gun) : '',
         r,
-        (s.notes || '').replace(/,/g,'')
+        s.notes || ''
       ]);
     });
   });
-  const csv = rows.map(r => r.join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
+  return rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+}
+
+function exportCSV() {
+  const blob = new Blob([buildSessionCSV()], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -5937,8 +5963,17 @@ function importJSON(input) {
   reader.onload = async e => {
     try {
       const imported = JSON.parse(e.target.result);
-      if (!imported.schemaVersion || !imported.firearms || !imported.sessions) {
+      if (!imported.schemaVersion || !Array.isArray(imported.firearms) || !Array.isArray(imported.sessions)) {
         alert('Invalid backup file.'); return;
+      }
+      // Migrations only run forward. A backup written by a newer version falls through
+      // every step untouched and loads as-is, so fields this version does not understand
+      // would be read with the wrong shape — and then saved back over the good data.
+      if (imported.schemaVersion > SCHEMA_VERSION) {
+        alert(`This backup is from a newer version of Range Log (data schema v${imported.schemaVersion}; ` +
+          `this copy understands up to v${SCHEMA_VERSION}).\n\n` +
+          'Update the app on this device first, then import again.');
+        return;
       }
       if (!confirm('This will replace all current data with the imported backup. Continue?')) return;
       data = migrateData(imported);
@@ -6172,7 +6207,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.4.2';
+const APP_VERSION = '7.4.3';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

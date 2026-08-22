@@ -1,14 +1,12 @@
 // Range Log service worker
 // Strategy: network-first for HTML so app updates propagate quickly.
 // Bump APP_VERSION whenever the HTML changes to force a new SW install.
-const APP_VERSION = '7.4.2';
+const APP_VERSION = '7.4.3';
 const CACHE_NAME = `range-log-${APP_VERSION}`;
 
-self.addEventListener('install', event => {
-  // Do not skipWaiting automatically — let the client trigger it after user confirms
-  // so we don't disrupt an in-progress session.
-  self.skipWaiting = self.skipWaiting; // no-op reference
-});
+// No install handler on purpose: skipWaiting is not called here. The new worker waits until
+// the client sends SKIP_WAITING below, after the user accepts the update banner, so a
+// reload is never forced mid-session.
 
 self.addEventListener('activate', event => {
   event.waitUntil(
