@@ -712,6 +712,218 @@ describe('user text is escaped, not parsed as markup', () => {
   });
 });
 
+// ── GROUPS SCOPE ────────────────────────────────────────────────────
+// Ammo, distance and tag narrow every chart in the pane. The reason they exist is that point
+// of impact is only one measurement within a single distance and load: at another distance
+// you dial a different come-up, and if it is wrong its groups land elsewhere and drag the
+// median with them.
+
+describe('groups scope narrows the pane', () => {
+  function grp(id, date, ammo, distance, tags, offX = 0.3, offY = 0.3) {
+    const poa = { x: 0.5, y: 0.5 };
+    const c = { x: poa.x + offX / 100, y: poa.y - offY / 100 };
+    return {
+      id, date, ammo, tags, distance, distanceUnit: 'yd',
+      calMode: 'linear', calInches: 1,
+      calPts: [{ x: 0.40, y: 0.50 }, { x: 0.41, y: 0.50 }],
+      poa,
+      impacts: [
+        { x: c.x + 0.0005, y: c.y },
+        { x: c.x - 0.0005, y: c.y + 0.0005 },
+        { x: c.x, y: c.y - 0.0005 },
+      ],
+    };
+  }
+
+  // Two loads x two distances, plus tags, so every dimension has something to narrow.
+  const GROUPS = [
+    grp('a', '2026-05-01', '77gr TMK', 50, ['prone']),
+    grp('b', '2026-05-02', '77gr TMK', 50, ['prone']),
+    grp('c', '2026-05-03', '77gr TMK', 100, ['bench']),
+    grp('d', '2026-05-04', '55gr FMJ', 50, ['bench']),
+    grp('e', '2026-05-05', '55gr FMJ', 100, []),
+  ];
+
+  async function app(groups = GROUPS, gunId = 'g1') {
+    const win = await ready(loadApp());
+    win.eval(`data = {
+      schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      firearms: [
+        { id: 'g1', name: 'Rifle One', type: 'rifle', calibers: ['.223 Rem'], opticUnit: 'moa',
+          cleanThreshold: 500, totalRounds: 0, notes: '', cleanings: [], zeros: [], dope: [],
+          groups: ${JSON.stringify(groups)} },
+        { id: 'g2', name: 'Rifle Two', type: 'rifle', calibers: ['.223 Rem'], opticUnit: 'moa',
+          cleanThreshold: 500, totalRounds: 0, notes: '', cleanings: [], zeros: [], dope: [],
+          groups: ${JSON.stringify(GROUPS.map(g => ({ ...g, id: 'x' + g.id })))} }
+      ],
+      locations: [], sellers: [], sessions: [], ammo: [] };`);
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-range').value = 'all';
+    win.document.getElementById('stats-firearm').value = gunId;
+    win.renderStats();
+    return win;
+  }
+
+  const scopeEl = win => win.document.getElementById('stats-groups-scope');
+  const rowFor = (win, label) => [...scopeEl(win).querySelectorAll('.scope-row')]
+    .find(r => flat(r.querySelector('.filter-label')) === label);
+  const chip = (win, label, text) => [...rowFor(win, label).querySelectorAll('.scope-chip')]
+    .find(c => flat(c).startsWith(text));
+  const click = (win, el) => win.eval(el.getAttribute('onclick'));
+  const dots = win => win.document.getElementById('stats-groups-poi')
+    .querySelectorAll('circle[r="4"]').length;
+
+  test('a row appears per dimension that can actually narrow', async () => {
+    const win = await app();
+    ['Ammo', 'Distance', 'Tag'].forEach(l =>
+      assert.ok(rowFor(win, l), `expected a ${l} row`));
+  });
+
+  test('a dimension with one value gets no row, since it cannot narrow', async () => {
+    const win = await app(GROUPS.map(g => ({ ...g, ammo: '77gr TMK' })));
+    assert.ok(!rowFor(win, 'Ammo'), 'one load is not a choice');
+    assert.ok(rowFor(win, 'Distance'), 'distance still varies');
+  });
+
+  test('everything starts unfiltered, matching how the pane behaved before', async () => {
+    const win = await app();
+    assert.ok(chip(win, 'Ammo', 'All').classList.contains('on'));
+    assert.strictEqual(flat(scopeEl(win).querySelector('.scope-summary')), 'all 5 groups');
+    assert.strictEqual(dots(win), 5);
+  });
+
+  test('picking a distance narrows every chart, not just one', async () => {
+    const win = await app();
+    click(win, chip(win, 'Distance', '50 yd'));
+    assert.strictEqual(dots(win), 3, 'point of impact follows the scope');
+    assert.match(flat(win.document.getElementById('stats-groups-stats')), /\b3\b/,
+      'the group count follows too');
+    assert.match(flat(scopeEl(win).querySelector('.scope-summary')), /3 of 5 groups/);
+  });
+
+  test('two chips in one dimension read as OR', async () => {
+    const win = await app();
+    click(win, chip(win, 'Ammo', '77gr'));
+    assert.strictEqual(dots(win), 3);
+    click(win, chip(win, 'Ammo', '55gr'));
+    assert.strictEqual(dots(win), 5, 'both loads selected is every group again');
+  });
+
+  test('dimensions combine as AND — one load at one distance', async () => {
+    const win = await app();
+    click(win, chip(win, 'Ammo', '77gr'));
+    click(win, chip(win, 'Distance', '50 yd'));
+    assert.strictEqual(dots(win), 2, '77gr at 50 yd is two groups');
+    const summary = flat(scopeEl(win).querySelector('.scope-summary'));
+    assert.match(summary, /2 of 5 groups/);
+    assert.match(summary, /77gr/);
+    assert.match(summary, /50 yd/);
+  });
+
+  test('counts answer "how many if I click this", not "how many exist"', async () => {
+    const win = await app();
+    click(win, chip(win, 'Distance', '100 yd'));
+    // At 100 yd there is one group of each load, not the three and two overall.
+    assert.strictEqual(flat(chip(win, 'Ammo', '77gr')).match(/(\d+)$/)[1], '1');
+    assert.strictEqual(flat(chip(win, 'Ammo', '55gr')).match(/(\d+)$/)[1], '1');
+  });
+
+  test('a combination with nothing in it is disabled rather than offered', async () => {
+    const win = await app();
+    click(win, chip(win, 'Distance', '100 yd'));
+    const untagged = chip(win, 'Tag', 'prone');   // no prone groups at 100 yd
+    assert.ok(untagged.classList.contains('dead'), 'should be visibly inert');
+    assert.ok(untagged.hasAttribute('disabled'), 'and actually unclickable');
+  });
+
+  test('All clears that dimension without touching the others', async () => {
+    const win = await app();
+    click(win, chip(win, 'Ammo', '77gr'));
+    click(win, chip(win, 'Distance', '50 yd'));
+    click(win, chip(win, 'Ammo', 'All'));
+    assert.strictEqual(dots(win), 3, 'back to every load at 50 yd');
+    assert.ok(chip(win, 'Distance', '50 yd').classList.contains('on'), 'distance survives');
+  });
+
+  test('switching firearm clears the scope rather than carrying it over', async () => {
+    const win = await app();
+    click(win, chip(win, 'Ammo', '77gr'));
+    click(win, chip(win, 'Distance', '100 yd'));
+    win.document.getElementById('stats-firearm').value = 'g2';
+    win.renderStats();
+    assert.ok(chip(win, 'Ammo', 'All').classList.contains('on'),
+      'a selection from another rifle would empty the pane for no visible reason');
+    assert.strictEqual(dots(win), 5);
+  });
+
+  test('a selection whose value leaves the range is dropped, not left stuck', async () => {
+    const win = await app();
+    click(win, chip(win, 'Ammo', '55gr'));
+    assert.strictEqual(dots(win), 2);
+    // Narrow the date range so no 55gr group survives.
+    win.document.getElementById('stats-range').value = 'custom';
+    win.handleStatsRangeChange();
+    win.document.getElementById('stats-start').value = '2026-05-01';
+    win.document.getElementById('stats-end').value = '2026-05-03';
+    win.renderStats();
+    assert.strictEqual(win.eval('groupScope.ammo.size'), 0, 'the dead selection is pruned');
+    assert.strictEqual(dots(win), 3, 'and the pane shows what is left rather than nothing');
+  });
+
+  test('an empty combination says so instead of drawing blank charts', async () => {
+    const win = await app();
+    // Reach an empty set directly: prone exists only at 50 yd.
+    win.eval("groupScope.distance = new Set(['100 yd']); groupScope.tag = new Set(['prone']);");
+    win.renderStats();
+    assert.match(flat(win.document.getElementById('stats-groups-stats')), /Nothing matches/i);
+    assert.strictEqual(win.document.getElementById('stats-groups-poi').innerHTML, '');
+  });
+});
+
+describe('point of impact warns when distances are mixed', () => {
+  const caveat = win => win.document.getElementById('stats-groups-poi')
+    .querySelector('.poi-caveat');
+
+  test('mixed distances are called out rather than silently averaged', async () => {
+    const win = await ready(loadApp());
+    win.eval(`data = migrateData(JSON.parse(JSON.stringify(buildDefaultData())));`);
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-range').value = 'all';
+    const gun = win.eval(`data.firearms.find(g => {
+      const d = new Set((g.groups||[]).map(x => x.distance + (x.distanceUnit||'yd')));
+      return d.size > 1; })`);
+    // Asserted rather than skipped: a silent return here would let this pass forever if the
+    // demo generator ever stopped producing mixed distances.
+    assert.ok(gun, 'demo data must include a firearm shot at more than one distance');
+    win.document.getElementById('stats-firearm').value = gun.id;
+    win.renderStats();
+    const c = caveat(win);
+    assert.ok(c, 'two distances in one plot needs saying');
+    assert.match(flat(c), /distances in scope/i);
+    assert.ok(c.innerHTML.includes('scopeToSingleDistance()'), 'and a way out of it');
+  });
+
+  test('picking one distance removes the warning', async () => {
+    const win = await ready(loadApp());
+    win.eval(`data = migrateData(JSON.parse(JSON.stringify(buildDefaultData())));`);
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-range').value = 'all';
+    const gun = win.eval(`data.firearms.find(g => {
+      const d = new Set((g.groups||[]).map(x => x.distance + (x.distanceUnit||'yd')));
+      return d.size > 1; })`);
+    assert.ok(gun, 'demo data must include a firearm shot at more than one distance');
+    win.document.getElementById('stats-firearm').value = gun.id;
+    win.renderStats();
+    assert.ok(caveat(win), 'precondition: it is warning');
+    win.scopeToSingleDistance();
+    assert.ok(!caveat(win), 'one distance is one measurement, so nothing to warn about');
+    assert.strictEqual(win.eval('groupScope.distance.size'), 1);
+  });
+});
+
 // ── POINT OF IMPACT: THE MEDIAN MARKER ──────────────────────────────
 // The cross is the answer to "where is this rifle actually hitting". It used to be drawn
 // only when the dots were colored by bucket, which needs 2–4 buckets — so a rifle shot

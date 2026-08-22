@@ -143,6 +143,19 @@ picker offers your zeros as anchors: **Since last zero**, and each earlier one. 
 the same day as a zero count as *after* it, since neither carries a time and you zero before
 you shoot groups.
 
+**Narrowing what's in play.** Above the charts sit three rows of chips — **ammo**, **distance**
+and **tag** — and everything below them follows: the trend, the comparison, and point of
+impact. Pick several within a row to mean *or*; pick across rows to mean *and*. So *77gr TMK*
+plus *50 yd* is "that load at that distance," which is the combination a zero actually lives
+at. A row only appears when it has more than one value to choose between, since one chip that
+changes nothing is just clutter.
+
+Each chip carries the number of groups you'd get **if you clicked it**, not how many exist —
+select 100 yd and the ammo counts redraw to what's available at 100 yd. A combination with
+nothing in it is dimmed rather than offered. Selections belong to the firearm you're looking
+at and reset when you switch, and if a load drops out of your date range its selection is
+dropped with it rather than silently emptying the pane.
+
 **Comparing groups** puts a **Compare by** control over one chart: ammo, tag, range day, or
 distance. Prone versus bench is the same question as Norma versus CCI — one dot per group, a
 median tick, the spread as a bar — so it's one view rather than three.
@@ -172,7 +185,15 @@ to read against rather than an empty plot.
 It's colored by whatever **Compare by** is set to, so the two charts read together, with a
 cross marking each row's median. Beyond four rows it stops coloring: the palette is
 validated for four series against the dark background, and a fifth can't be added without
-failing colorblind separation.
+failing colorblind separation. When the dots aren't split into rows — one load, or more rows
+than the palette can carry — there's a single cross for the whole set, so the typical point
+of impact is always drawn and not merely described.
+
+**If more than one distance is in scope, it says so.** Offsets are angular, so a correctly
+dialed rifle lands on aim at any distance and mixing them is fine in principle. In practice
+the come-up is the thing in question: a wrong one at 100 puts those groups somewhere else
+entirely and drags the median with them, which reads as a zero problem at 50. The plot names
+the distances it's mixing and offers to narrow to one.
 
 Underneath, it says in words where things actually sit — *"typical center is 0.74 MOA high
 and 0.48 MOA right of aim across 15 groups"* — which is usually the sentence you wanted. Both

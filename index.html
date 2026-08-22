@@ -15,7 +15,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.5.2</span>
+    <span id="app-version">v7.5.3</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -150,6 +150,10 @@
     <div id="statspane-groups" class="stats-pane">
       <div id="stats-groups-prompt"></div>
       <div id="stats-groups-body">
+        <!-- Narrows every chart below. Ammo, distance and tag are group-only ideas, so they
+             live here rather than in the shared filter bar, where they would sit dimmed on
+             the other three panes. -->
+        <div id="stats-groups-scope"></div>
         <div id="stats-groups-stats"></div>
         <div id="stats-groups-trend"></div>
         <div class="stats-chart-card">

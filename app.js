@@ -3510,12 +3510,144 @@ function groupsInScope() {
   return { gun, groups };
 }
 
+// ── GROUPS SCOPE ──────────────────────────────────────────────────
+// Ammo, distance and tag narrow every chart in the Groups pane. They exist because point of
+// impact is only one measurement within a single distance: at another distance you dial a
+// different come-up, so if that come-up is wrong its groups land somewhere else and drag the
+// median with them. Same for ammo, which has its own point of impact. Reading a zero means
+// pinning both, and that is what these are for.
+//
+// An empty set means "all", so the default state costs nothing and matches how the pane
+// behaved before this existed.
+const GROUP_SCOPE_DIMS = {
+  ammo:     { label: 'Ammo',     of: g => [g.ammo], short: v => shortLoadName(v) },
+  distance: { label: 'Distance', of: g => [groupDistanceLabel(g.raw)], short: v => v },
+  tag:      { label: 'Tag',      of: g => (g.tags.length ? g.tags : ['Untagged']), short: v => v },
+};
+
+let groupScope = { ammo: new Set(), distance: new Set(), tag: new Set() };
+let groupScopeGunId = null;
+
+// Selections belong to a firearm: 77gr at 50 yd means nothing once you switch to a different
+// rifle, and silently carrying it over would show an empty pane for no visible reason.
+function resetGroupScopeIfGunChanged(gunId) {
+  if (groupScopeGunId === gunId) return;
+  groupScopeGunId = gunId;
+  groupScope = { ammo: new Set(), distance: new Set(), tag: new Set() };
+}
+
+// True when the group satisfies every dimension except the one named — the basis for facet
+// counts, which have to answer "how many would I get if I clicked this" rather than "how
+// many exist in total", or the numbers contradict what the chart then shows.
+function groupMatchesScope(g, except) {
+  return Object.keys(GROUP_SCOPE_DIMS).every(dim => {
+    if (dim === except) return true;
+    const sel = groupScope[dim];
+    if (!sel.size) return true;
+    return GROUP_SCOPE_DIMS[dim].of(g).some(v => sel.has(v));
+  });
+}
+
+function applyGroupScope(groups) {
+  return groups.filter(g => groupMatchesScope(g, null));
+}
+
+function toggleGroupScope(dim, value) {
+  const sel = groupScope[dim];
+  if (!sel) return;
+  if (value === null) sel.clear();                 // the "All" chip
+  else if (sel.has(value)) sel.delete(value);
+  else sel.add(value);
+  renderStats();
+}
+
+// Offered by the mixed-distance note, which is usually the first sign the mix is a problem.
+// Picks the best-supported distance rather than the nearest or the first, since that is the
+// one with enough groups to read a median from.
+function scopeToSingleDistance() {
+  const { gun, groups } = groupsInScope();
+  if (!gun || !groups.length) return;
+  const counts = {};
+  groups.forEach(g => {
+    const k = groupDistanceLabel(g.raw);
+    counts[k] = (counts[k] || 0) + 1;
+  });
+  const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  if (!best) return;
+  groupScope.distance = new Set([best[0]]);
+  renderStats();
+}
+
+// Drops selections whose value is no longer present — narrowing the date range can remove a
+// load entirely, and a selection you cannot see or clear would silently empty the pane.
+function pruneGroupScope(groups) {
+  Object.keys(GROUP_SCOPE_DIMS).forEach(dim => {
+    const live = new Set(groups.flatMap(g => GROUP_SCOPE_DIMS[dim].of(g)));
+    [...groupScope[dim]].forEach(v => { if (!live.has(v)) groupScope[dim].delete(v); });
+  });
+}
+
+function renderGroupScope(groups) {
+  const el = document.getElementById('stats-groups-scope');
+  if (!el) return;
+
+  const rows = Object.entries(GROUP_SCOPE_DIMS).map(([dim, cfg]) => {
+    const values = [...new Set(groups.flatMap(g => cfg.of(g)))]
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    // A dimension with one value cannot narrow anything, so it would be a row of one chip
+    // that does nothing. Tags are the common case — most groups carry none.
+    if (values.length < 2) return '';
+
+    const sel = groupScope[dim];
+    const chips = values.map(v => {
+      const n = groups.filter(g => cfg.of(g).includes(v) && groupMatchesScope(g, dim)).length;
+      const on = sel.has(v);
+      // Zero here means the other dimensions already exclude it. Left visible so the set of
+      // choices does not shift under your finger, but inert — clicking it empties the pane.
+      const dead = n === 0 && !on;
+      // Label and count are separate elements so the label can ellipsize without taking the
+      // count with it — .22 match ammo names run long enough to fill the row on their own,
+      // and the count is the part you are scanning for. Full name stays in the title.
+      return `<button class="scope-chip${on ? ' on' : ''}${dead ? ' dead' : ''}"
+                ${dead ? 'disabled' : ''} aria-pressed="${on}"
+                onclick="toggleGroupScope('${dim}', ${JSON.stringify(v).replace(/"/g, '&quot;')})"
+                title="${esc(v)}"><span class="scope-chip-t">${esc(cfg.short(v))}</span><b>${n}</b></button>`;
+    }).join('');
+
+    return `
+      <div class="scope-row">
+        <label class="filter-label">${cfg.label}</label>
+        <div class="scope-chips">
+          <button class="scope-chip scope-all${sel.size ? '' : ' on'}"
+                  aria-pressed="${!sel.size}"
+                  onclick="toggleGroupScope('${dim}', null)">All</button>
+          ${chips}
+        </div>
+      </div>`;
+  }).filter(Boolean).join('');
+
+  if (!rows) { el.innerHTML = ''; return; }
+
+  const scoped = applyGroupScope(groups);
+  const active = Object.entries(groupScope).filter(([, s]) => s.size);
+  const summary = active.length
+    ? `${scoped.length} of ${groups.length} groups · ` +
+      active.map(([dim, s]) => [...s].map(v => esc(GROUP_SCOPE_DIMS[dim].short(v))).join(' or '))
+        .join(' · ')
+    : `all ${groups.length} groups`;
+
+  el.innerHTML = `<div class="stats-chart-card scope-card">
+      ${rows}
+      <div class="scope-summary">${summary}</div>
+    </div>`;
+}
+
 function renderGroupsStats() {
   const promptEl = document.getElementById('stats-groups-prompt');
   const bodyEl = document.getElementById('stats-groups-body');
   if (!promptEl || !bodyEl) return;
 
-  const { gun, groups } = groupsInScope();
+  const { gun, groups: unscoped } = groupsInScope();
   if (!gun) {
     bodyEl.style.display = 'none';
     promptEl.innerHTML = `<div class="empty-state" style="padding:26px 16px;">
@@ -3528,10 +3660,30 @@ function renderGroupsStats() {
   promptEl.innerHTML = '';
   bodyEl.style.display = '';
 
-  if (!groups.length) {
+  if (!unscoped.length) {
+    document.getElementById('stats-groups-scope').innerHTML = '';
     document.getElementById('stats-groups-stats').innerHTML =
       `<div class="empty-state" style="padding:20px 16px;">
         No measurable groups for ${esc(gun.name)} in this range.</div>`;
+    document.getElementById('stats-groups-trend').innerHTML = '';
+    document.getElementById('stats-groups-compare').innerHTML = '';
+    document.getElementById('stats-groups-poi').innerHTML = '';
+    return;
+  }
+
+  // Scope is per firearm and only over what the shared filters already left in play, so it
+  // is reset and pruned before the chips are drawn from it.
+  resetGroupScopeIfGunChanged(gun.id);
+  pruneGroupScope(unscoped);
+  renderGroupScope(unscoped);
+  const groups = applyGroupScope(unscoped);
+
+  if (!groups.length) {
+    document.getElementById('stats-groups-stats').innerHTML =
+      `<div class="empty-state" style="padding:20px 16px;">
+        Nothing matches this combination.<br>
+        <span style="font-size:0.72rem;color:var(--text-dim);">
+          Clear a filter above to widen it.</span></div>`;
     document.getElementById('stats-groups-trend').innerHTML = '';
     document.getElementById('stats-groups-compare').innerHTML = '';
     document.getElementById('stats-groups-poi').innerHTML = '';
@@ -4113,6 +4265,19 @@ function renderGroupPOI(gun, groups) {
     (!start || z.date >= start) && (!end || z.date <= end) &&
     z.date > dates[0] && z.date <= dates[dates.length - 1]);
 
+  // Offsets are angular, so a correctly dialled rifle lands on aim at any distance and
+  // mixing them is fine in principle. In practice it is the come-up that is in question: a
+  // wrong one at 100 puts its groups somewhere else entirely and drags the median with them,
+  // which reads as a zero problem at 50. Said plainly rather than silently averaged.
+  const distances = [...new Set(usable.map(g => groupDistanceLabel(g.raw)))];
+  const distanceNote = distances.length > 1
+    ? `<div class="poi-caveat"><span class="i">⚠</span><span>${distances.length} distances in
+         scope (${esc(distances.join(', '))}). These are one measurement only if your come-ups
+         are right — a wrong one shifts its own groups here.
+         <button class="linkish" onclick="scopeToSingleDistance()">Pick one distance</button>
+         to read your zero.</span></div>`
+    : '';
+
   el.innerHTML = `
     <div class="stats-chart-card">
       <div class="stats-chart-title">Point of Impact</div>
@@ -4131,6 +4296,7 @@ function renderGroupPOI(gun, groups) {
              so these dots are not one measurement — anchor the range to a zero to read them
              as one.`
           : ''}</div>
+      ${distanceNote}
     </div>`;
 }
 
@@ -6338,7 +6504,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.5.2';
+const APP_VERSION = '7.5.3';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

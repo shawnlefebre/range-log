@@ -1696,6 +1696,87 @@
 
   /* Point-of-impact legend. Identity never rests on color alone — the row name sits beside
      the swatch, and the same buckets are labelled in the comparison chart above it. */
+  /* ── Groups scope chips ───────────────────────────────────────────
+     Multi-select, so these are toggles rather than a <select>: on a phone a native
+     multi-select is a modal list you cannot see the chart behind. Rows scroll sideways
+     rather than wrapping, so adding a load never pushes the charts down the screen. */
+  .scope-card { padding-bottom: 10px; }
+  .scope-row { margin-bottom: 10px; }
+  .scope-chips {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .scope-chips::-webkit-scrollbar { height: 0; }
+  .scope-chip {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 999px;
+    padding: 6px 11px;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  /* Capped so one long load name cannot take the whole row and push its count out of sight.
+     The full name is on the button's title. */
+  .scope-chip-t {
+    max-width: 10.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Selection is not carried by color alone — the border weight and the count both change,
+     so the state survives a color-blind reader and a washed-out phone screen in daylight. */
+  .scope-chip.on {
+    background: #2a2617;
+    border-color: var(--accent-dim);
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .scope-chip b { font-weight: 500; opacity: 0.6; font-size: 0.62rem; flex-shrink: 0; }
+  .scope-chip.dead { opacity: 0.32; cursor: default; }
+  .scope-chip.scope-all { border-style: dashed; }
+  .scope-summary {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  /* Caveat under the point-of-impact plot. Deliberately the accent well rather than --warn:
+     mixed distances are a caveat about how to read the chart, not a fault state. */
+  .poi-caveat {
+    display: flex;
+    gap: 8px;
+    background: #2a2210;
+    border: 1px solid var(--accent-dim);
+    border-radius: var(--radius);
+    padding: 9px 11px;
+    margin-top: 10px;
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+  .poi-caveat .i { color: var(--accent); flex-shrink: 0; }
+  .linkish {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--accent);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
   .poi-legend {
     display: flex;
     flex-wrap: wrap;
