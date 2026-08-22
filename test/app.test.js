@@ -61,6 +61,16 @@ function ready(dom) {
   });
 }
 
+// Local calendar day, computed independently of the app. Tests that assert on dates need
+// an oracle the app cannot influence — deriving one from the app's own today() would let a
+// bug in it validate itself. Deliberately not toISOString(), which yields the UTC day.
+function localToday(offsetDays = 0) {
+  const d = new Date();
+  if (offsetDays) d.setDate(d.getDate() + offsetDays);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 // ── SCHEMA MIGRATION ────────────────────────────────────────────────
 
 describe('schema migration', () => {
@@ -401,8 +411,8 @@ describe('stats chart bucket granularity', () => {
   test('100-day custom range uses weekly, 101-day uses monthly (threshold boundary)', async () => {
     const win = await ready(loadApp());
     win.showTab('stats');
-    const isoMinusDays = d => { const dt = new Date(); dt.setDate(dt.getDate() - d); return dt.toISOString().slice(0, 10); };
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const isoMinusDays = d => localToday(-d);
+    const todayStr = localToday();
 
     win.document.getElementById('stats-range').value = 'custom';
     win.handleStatsRangeChange();
@@ -498,13 +508,107 @@ describe('stats chart bucket granularity', () => {
   });
 });
 
+// ── LOCAL CALENDAR DAY ──────────────────────────────────────────────
+// today() used to be toISOString().slice(0,10), which is the UTC day. West of Greenwich
+// that is already tomorrow during the user's evening, so logging a range trip after dark
+// prefilled tomorrow's date.
+//
+// Each of these forces a timezone AND pins the clock. Both are needed: forcing the zone
+// alone leaves the assertions dependent on what time CI happens to run, which is exactly
+// how the original guard managed to pass for months. Pinned, they fail against the old
+// UTC implementation in every timezone, including the UTC that CI runs in.
+
+describe('local calendar day', () => {
+  // 2026-08-22T01:31:00Z is 2026-08-21 21:31 EDT — the UTC day and the New York day differ.
+  const INSTANT = Date.UTC(2026, 7, 22, 1, 31, 0);
+
+  function withTZ(tz, fn) {
+    const prev = process.env.TZ;
+    process.env.TZ = tz;
+    try { return fn(); } finally {
+      if (prev === undefined) delete process.env.TZ; else process.env.TZ = prev;
+    }
+  }
+
+  // Freezes the window's clock at `ms`. The app is a classic script, so its bare `new Date()`
+  // resolves `Date` off the window at call time and picks this up. Date.UTC/parse come along
+  // as inherited statics, so date arithmetic elsewhere is unaffected.
+  function withPinnedClock(win, ms, fn) {
+    const Real = win.Date;
+    class Pinned extends Real {
+      constructor(...args) { super(...(args.length ? args : [ms])); }
+      static now() { return ms; }
+    }
+    win.Date = Pinned;
+    try { return fn(); } finally { win.Date = Real; }
+  }
+
+  function atNewYorkEvening(win, fn) {
+    return withTZ('America/New_York', () => withPinnedClock(win, INSTANT, fn));
+  }
+
+  test('localISODate returns the local day, not the UTC day', async () => {
+    const win = await ready(loadApp());
+    withTZ('America/New_York', () => {
+      assert.strictEqual(win.localISODate(new Date(INSTANT)), '2026-08-21',
+        'evening in New York is still the 21st, even though UTC has ticked over to the 22nd');
+    });
+    withTZ('UTC', () => {
+      assert.strictEqual(win.localISODate(new Date(INSTANT)), '2026-08-22',
+        'the same instant genuinely is the 22nd in UTC');
+    });
+  });
+
+  test('isoDay and localISODate agree, so there is one notion of a day', async () => {
+    const win = await ready(loadApp());
+    withTZ('America/New_York', () => {
+      assert.strictEqual(win.isoDay(INSTANT), win.localISODate(new Date(INSTANT)));
+    });
+  });
+
+  test('today() is the local day at 9:31pm in New York, not the UTC day', async () => {
+    const win = await ready(loadApp());
+    atNewYorkEvening(win, () => {
+      assert.strictEqual(win.today(), '2026-08-21',
+        'toISOString() would report 2026-08-22 here — tomorrow, from the user\'s point of view');
+    });
+  });
+
+  test('a session logged in the evening does not prefill tomorrow', async () => {
+    const win = await ready(loadApp());
+    win.showTab('log');
+    atNewYorkEvening(win, () => win.renderLogForm());
+    assert.strictEqual(win.document.getElementById('session-date').value, '2026-08-21',
+      'a trip logged at 9:31pm must default to that evening, not the next morning');
+  });
+
+  test('Stats range ends on the same day basis its starts are built from', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    // firstOfMonthISO/firstOfYearISO have always used local date components. The range end
+    // came from today(); when that was UTC the two bases disagreed for part of every day,
+    // shifting week and month bucket boundaries.
+    win.document.getElementById('stats-range').value = '12months';
+    atNewYorkEvening(win, () => {
+      const { start, end } = win.getStatsRangeBounds();
+      assert.strictEqual(end, '2026-08-21', 'range end must be the local day');
+      assert.strictEqual(start, '2025-09-01', 'and its start is built from the same basis');
+      assert.strictEqual(win.firstOfYearISO(), '2026-01-01');
+    });
+  });
+});
+
 // ── DEMO DATA GENERATOR ─────────────────────────────────────────────
 
 describe('demo data generator', () => {
   test('never generates a session or purchase dated in the future', async () => {
     const win = await ready(loadApp());
     const demo = win.generateDemoData();
-    const todayStr = new Date().toISOString().slice(0, 10);
+    // Computed here rather than borrowed from the app: this assertion exists to police the
+    // app's idea of "today", so it must not share it. The previous version used
+    // toISOString().slice(0,10) — the same UTC expression today() itself used — which made
+    // the oracle drift with the bug and pass no matter how far the two bases diverged.
+    const todayStr = localToday();
     demo.sessions.forEach(s => assert.ok(s.date <= todayStr, `session dated ${s.date} is in the future`));
     demo.ammo.forEach(a => assert.ok(a.date <= todayStr, `ammo purchase dated ${a.date} is in the future`));
     // Groups and zeros are dated off sessions, so a change there could carry them forward too.
@@ -3297,7 +3401,7 @@ describe('loading demo data from Settings', () => {
     const win = await ready(loadApp());
     win.loadDemoData();
     const stored = JSON.parse(win.localStorage.getItem('rangeLogData'));
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
     stored.sessions.forEach(s =>
       assert.ok(s.date <= today, `session dated in the future: ${s.date}`));
     stored.ammo.forEach(a =>

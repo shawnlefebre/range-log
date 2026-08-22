@@ -689,7 +689,17 @@ async function photoStoreStats() {
 
 // ── UTILS ─────────────────────────────────────────────────────────
 function uid() { return 'id_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
-function today() { return new Date().toISOString().slice(0,10); }
+
+// The app's one definition of a calendar day, and it is always the *local* one.
+// Never toISOString().slice(0,10) here: that is the UTC day, which is already tomorrow
+// for anyone west of Greenwich during their evening — so a range trip logged after dark
+// would prefill with tomorrow's date, and Stats range ends would land a day past the
+// local-basis range starts that firstOfMonthISO/firstOfYearISO produce.
+function localISODate(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function today() { return localISODate(new Date()); }
 
 // Backwards-compatible caliber accessors: prefer calibers[] but fall back to legacy caliber field
 function gunCalibers(gun) {
@@ -3743,8 +3753,7 @@ function trendSpanLabel(ms) {
 function isoDay(ms) {
   const d = new Date(ms);
   if (!isFinite(d.getTime())) return today();
-  const p = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return localISODate(d);
 }
 
 // Prone vs bench is the same chart as Norma vs CCI — one dot per group, a median tick, the
@@ -6145,7 +6154,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.4';
+const APP_VERSION = '7.4.1';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
