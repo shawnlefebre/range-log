@@ -714,16 +714,16 @@ describe('user text is escaped, not parsed as markup', () => {
 
 // ── POINT OF IMPACT: THE MEDIAN MARKER ──────────────────────────────
 // The cross is the answer to "where is this rifle actually hitting". It used to be drawn
-// only when the dots were coloured by bucket, which needs 2–4 buckets — so a rifle shot
+// only when the dots were colored by bucket, which needs 2–4 buckets — so a rifle shot
 // with a single load got no marker at all, while the note underneath still described a
 // median it never plotted. That is the commonest case, not an edge one.
 
-describe('point of impact plots its median however the dots are coloured', () => {
-  // calPts 0.01 apart at 1 inch => 1 normalised unit is 100 inches. poa at centre, so an
+describe('point of impact plots its median however the dots are colored', () => {
+  // calPts 0.01 apart at 1 inch => 1 normalized unit is 100 inches. poa at center, so an
   // impact at x = poa.x + 0.001 sits 0.1 inch right of aim.
   function group(id, date, ammo, offX, offY, distance = 50) {
     const poa = { x: 0.5, y: 0.5 };
-    // Three impacts around a centre displaced by (offX, offY) inches. y is inverted on the
+    // Three impacts around a center displaced by (offX, offY) inches. y is inverted on the
     // way in, so a positive offY here comes back as "high".
     const c = { x: poa.x + offX / 100, y: poa.y - offY / 100 };
     return {
@@ -758,7 +758,7 @@ describe('point of impact plots its median however the dots are coloured', () =>
 
   const poi = win => win.document.getElementById('stats-groups-poi');
 
-  test('one ammo: dots are one colour and still get a median cross', async () => {
+  test('one ammo: dots are one color and still get a median cross', async () => {
     const win = await appWith([
       group('a', '2026-05-01', '77gr TMK', 0.4, 0.6),
       group('b', '2026-05-02', '77gr TMK', 0.5, 0.7),
@@ -791,8 +791,8 @@ describe('point of impact plots its median however the dots are coloured', () =>
     assert.match(flat(el), /the cross its median per row/);
   });
 
-  test('beyond four buckets everything goes one colour — and still gets one cross', async () => {
-    // The palette is validated for four series; past that the code drops to a single colour,
+  test('beyond four buckets everything goes one color — and still gets one cross', async () => {
+    // The palette is validated for four series; past that the code drops to a single color,
     // which is exactly the branch that used to lose the marker.
     const win = await appWith(['A', 'B', 'C', 'D', 'E'].flatMap((a, i) => [
       group(`${a}1`, `2026-05-0${i + 1}`, `Load ${a}`, 0.2 * i, 0.1 * i),
@@ -844,7 +844,7 @@ describe('startup finds stored data it cannot read', () => {
   const CASES = [
     ['truncated JSON, as an interrupted write leaves it', REAL.slice(0, REAL.length - 30)],
     ['valid JSON whose shape the migrations choke on', JSON.stringify({ schemaVersion: 1, sessions: [] })],
-    ['not JSON at all', 'null garbage'],
+    ['not JSON at all', 'null garbage'],
   ];
 
   for (const [label, stored] of CASES) {
@@ -975,7 +975,7 @@ describe('startup finds stored data it cannot read', () => {
 
 // ── VIEW/EDIT MODALS BEHAVE ALIKE ───────────────────────────────────
 // Zero, dope, session and ammo share one implementation of the view/edit modal. These
-// assert the behaviour that shape is supposed to guarantee, so that if the shared helper
+// assert the behavior that shape is supposed to guarantee, so that if the shared helper
 // regresses it fails here rather than in four separate places — or in none of them,
 // because a fifth modal quietly grew its own variant.
 
@@ -1330,7 +1330,7 @@ describe('Details modal never stays open behind Cleaning/Zero modals', () => {
 });
 
 // ── GROUP ANALYSIS ──────────────────────────────────────────────────
-// Points are normalised by image width. Using 0.01 units == 1 inch throughout, so a
+// Points are normalized by image width. Using 0.01 units == 1 inch throughout, so a
 // shot 0.01 from the point of aim is exactly 1 inch out and results are hand-checkable.
 
 describe('group analysis math', () => {
@@ -1731,7 +1731,7 @@ describe('group comparison', () => {
   const medians = win => [...win.document.querySelectorAll('#stats-groups-compare .cmp-med')]
     .map(t => Number(t.textContent));
 
-  test('distances are normalised, so 25 ft and 8.333 yd are one bucket', async () => {
+  test('distances are normalized, so 25 ft and 8.333 yd are one bucket', async () => {
     const win = await ready(loadApp());
     // Pure helpers, tested directly — building two groups at the same distance expressed
     // two ways would take more scaffolding than the thing under test.
@@ -1888,7 +1888,7 @@ describe('point of impact map', () => {
     const dots = [...svg.querySelectorAll('circle')].filter(c => c.getAttribute('r') === '4');
     assert.strictEqual(dots.length, groups.length, 'one dot per group');
 
-    // The viewBox is square and centred on point of aim.
+    // The viewBox is square and centered on point of aim.
     const [, , vw] = svg.getAttribute('viewBox').split(' ').map(Number);
     const C = vw / 2;
     const highest = groups.reduce((a, b) => (a.offYMOA > b.offYMOA ? a : b));
@@ -1898,10 +1898,10 @@ describe('point of impact map', () => {
     const xs = dots.map(d => Number(d.getAttribute('cx')));
     if (highest.offYMOA > 0) {
       assert.ok(Math.min(...ys) < C,
-        'a group above aim must plot above centre — screen y is inverted');
+        'a group above aim must plot above center — screen y is inverted');
     }
     if (rightmost.offXMOA > 0) {
-      assert.ok(Math.max(...xs) > C, 'a group right of aim must plot right of centre');
+      assert.ok(Math.max(...xs) > C, 'a group right of aim must plot right of center');
     }
   });
 
@@ -1931,7 +1931,7 @@ describe('point of impact map', () => {
     assert.strictEqual(poi(win).innerHTML, '');
   });
 
-  test('colour is capped at the four the palette was validated for', async () => {
+  test('color is capped at the four the palette was validated for', async () => {
     const win = await ready(loadApp());
     const gun = gunWithGroups(win);
 
@@ -1952,13 +1952,13 @@ describe('point of impact map', () => {
       (g.tags.length ? g.tags : ['Untagged']).forEach(t => names.add(t)));
     const legend = poi(win).querySelectorAll('.poi-legend span').length;
     if (names.size >= 2 && names.size <= 4) {
-      assert.strictEqual(legend, names.size, 'each bucket is named beside its colour');
+      assert.strictEqual(legend, names.size, 'each bucket is named beside its color');
       assert.strictEqual(poi(win).querySelectorAll('.poi-center').length, names.size);
     } else {
       assert.strictEqual(legend, 0,
         'beyond four buckets the palette cannot separate them, so it stops colouring');
       assert.strictEqual(poi(win).querySelectorAll('.poi-center').length, 1,
-        'dropping the colour must not also drop the median');
+        'dropping the color must not also drop the median');
     }
   });
 
@@ -3147,7 +3147,7 @@ describe('cost per trip list', () => {
     open(win);
     const text = flat(win.document.getElementById('stats-as-trips'));
     assert.doesNotMatch(text, /dearest/i, '"dearest" is not how this is said');
-    assert.doesNotMatch(text, /centre|colour|behaviour/i);
+    assert.doesNotMatch(text, /centre|colour|behaviour/i);   // spelling-allow: this is the check
     assert.match(text, /most expensive/i);
   });
 });
@@ -3580,7 +3580,7 @@ describe('text contrast', () => {
     const at = css.indexOf(`--${name}:`);
     assert.notStrictEqual(at, -1, `--${name} not found`);
     let v = css.slice(at + name.length + 3, css.indexOf(';', at)).trim();
-    assert.match(v, /^#[0-9a-fA-F]{3,6}$/, `--${name} is "${v}", expected a hex colour`);
+    assert.match(v, /^#[0-9a-fA-F]{3,6}$/, `--${name} is "${v}", expected a hex color`);
     if (v.length === 4) v = '#' + [...v.slice(1)].map(c => c + c).join('');
     return v;
   };
@@ -3617,7 +3617,7 @@ describe('text contrast', () => {
 // rendered text rather than relying on noticing them by eye.
 
 describe('spelling', () => {
-  const BRITISH = /\b(centre|centres|centred|centrefire|colour|colours|coloured|colourblind|behaviour|favour|neighbour|normalise[sd]?|organise[sd]?|recognise[sd]?|analyse|analysed|summarise[sd]?|metre|metres|litre|practising)\b/i;
+  const BRITISH = /\b(centre|centres|centred|centrefire|colour|colours|coloured|colourblind|behaviour|favour|neighbour|normalise[sd]?|organise[sd]?|recognise[sd]?|analyse|analysed|summarise[sd]?|metre|metres|litre|practising)\b/i;   // spelling-allow: the detector must contain what it looks for
 
   // The suite splices app.js into a <script> inside the document, so body.textContent would
   // include the entire source — comments and all — and report code as if it were on screen.
@@ -3647,15 +3647,46 @@ describe('spelling', () => {
     assert.deepStrictEqual(seen, [], 'British spellings found in rendered text');
   });
 
-  test('nor into the markup or the source strings', () => {
-    [['index.html', APP_PATH], ['app.js', JS_PATH]].forEach(([label, file]) => {
-      const src = fs.readFileSync(file, 'utf8');
-      const hits = src.split('\n')
-        .map((line, i) => ({ line, n: i + 1 }))
-        .filter(x => BRITISH.test(x.line))
+  // Covers the styles, the suites and the docs as well as the app. Test and CSS comments are
+  // read as often as app source and drifted to British spellings precisely because nothing
+  // was watching them. A line carrying the marker below is exempt — needed for the detector
+  // itself, which has to contain the words it looks for.
+  const SPELL_FILES = [
+    ['index.html', APP_PATH],
+    ['app.js', JS_PATH],
+    ['app.css', CSS_PATH],
+    ['test/app.test.js', path.join(__dirname, 'app.test.js')],
+    ['README.md', path.join(__dirname, '..', 'README.md')],
+    ...fs.readdirSync(path.join(__dirname, 'browser'))
+      .filter(f => f.endsWith('.js'))
+      .map(f => [`test/browser/${f}`, path.join(__dirname, 'browser', f)]),
+  ];
+
+  test('nor into the markup, styles, suites or docs', () => {
+    const problems = [];
+    SPELL_FILES.forEach(([label, file]) => {
+      if (!fs.existsSync(file)) return;
+      fs.readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+        if (line.includes('spelling-allow')) return;
+        if (!BRITISH.test(line)) return;
         // "analyses" as a noun plural is correct in American English too.
-        .filter(x => !/\banalyses\b/.test(x.line) || /\banalyse\b|\banalysed\b/.test(x.line));
-      assert.deepStrictEqual(hits.map(h => `${label}:${h.n} ${h.line.trim().slice(0, 60)}`), []);
+        if (/\banalyses\b/.test(line) && !/\banalyse\b|\banalysed\b/.test(line)) return;
+        problems.push(`${label}:${i + 1} ${line.trim().slice(0, 60)}`);
+      });
+    });
+    assert.deepStrictEqual(problems, []);
+  });
+
+  // The sweep above reads files line by line, so a stray control byte would not stop it —
+  // but it stopped grep dead, which is how a NUL smuggled into a test fixture went unnoticed
+  // and silently excluded the largest file from every command-line search of the repo.
+  test('no source file contains a NUL, which makes tools treat it as binary', () => {
+    SPELL_FILES.forEach(([label, file]) => {
+      if (!fs.existsSync(file)) return;
+      const buf = fs.readFileSync(file);
+      const at = buf.indexOf(0);
+      assert.strictEqual(at, -1,
+        `${label} has a NUL byte at offset ${at} — grep and file(1) will treat it as binary`);
     });
   });
 });
@@ -3823,14 +3854,14 @@ describe('stats sub-tabs', () => {
     assert.ok(widths[0] >= widths[widths.length - 1], 'sorted descending');
   });
 
-  test('Upkeep pairs its status colour with a word, never colour alone', async () => {
+  test('Upkeep pairs its status color with a word, never color alone', async () => {
     const win = await ready(loadApp());
     win.showTab('stats');
     win.showStatsSection('upkeep');
     const el = win.document.getElementById('stats-upkeep-cleaning');
     [...el.querySelectorAll('.breakdown-pct')].forEach(p =>
       assert.match(p.textContent, /ok|due soon|past due/,
-        'a colour-blind reader must still get the state'));
+        'a color-blind reader must still get the state'));
   });
 
   test('every tab renders without throwing, on demo data and on an empty app', async () => {

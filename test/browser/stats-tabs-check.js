@@ -69,7 +69,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   ck('Upkeep lists every firearm', up.n > 0);
   ck('Upkeep is sorted worst-first',
     up.widths.every((w, i) => i === 0 || w <= up.widths[i - 1] + 0.001));
-  ck('Upkeep states the condition in words, not just colour',
+  ck('Upkeep states the condition in words, not just color',
     up.labels.every(l => /ok|due soon|past due/.test(l)));
   await page.locator('#tab-stats').screenshot({ path: path.join(ARTIFACTS,'stats-upkeep.png') });
 
@@ -216,7 +216,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   });
   ck('the point-of-impact map renders', !!poi && poi.dots > 0);
   ck('it is square and a usable size', poi && poi.w > 150 && Math.abs(poi.w - poi.h) < 2);
-  ck('it never leaves colour to carry identity alone',
+  ck('it never leaves color to carry identity alone',
     poi && (poi.legend === 0 || poi.legend >= 2));
   ck('it states where the groups sit relative to aim',
     poi && /(of aim|on aim)/i.test(poi.note));

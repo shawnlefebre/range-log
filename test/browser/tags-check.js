@@ -83,8 +83,8 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
     addGroupTagFromSelect();
   });
   await page.waitForTimeout(200);
-  const normalised = await page.evaluate(() => groupModalTags[groupModalTags.length-1]);
-  ck('a new tag is trimmed and inner whitespace collapsed', normalised === 'windy day');
+  const normalized = await page.evaluate(() => groupModalTags[groupModalTags.length-1]);
+  ck('a new tag is trimmed and inner whitespace collapsed', normalized === 'windy day');
 
   await page.click('#group-save');
   await page.waitForTimeout(700);

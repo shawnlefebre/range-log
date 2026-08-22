@@ -95,7 +95,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
 
   // Zoom tightens the target, which is how two nearly-touching holes get separated.
   await centreOn(1);
-  ck('centred on another impact targets that one',
+  ck('centered on another impact targets that one',
     await page.evaluate(() => gImpactUnderCrosshair()) === 1);
   await page.evaluate(() => { G.view.scale *= 5;
     const cv = document.getElementById('group-canvas');

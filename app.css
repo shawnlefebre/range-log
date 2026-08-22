@@ -19,7 +19,7 @@
     /* Chart structure. Neutral by design — a gridline is scaffolding, not a status. */
     --grid: #3a3a3a;
     /* Group-marking roles. Cool tones read as reference scaffolding, gold as your
-       shots. Deliberately not the status colours — none of these indicate state. */
+       shots. Deliberately not the status colors — none of these indicate state. */
     --mark-cal: #6b7f8c;
     --mark-poa: #5fc9d6;
     --mark-impact: #c8a84b;
@@ -1223,7 +1223,7 @@
     font-size: 0.75rem;
   }
   /* Ways out of a dimension with nothing to compare. Built on .chip so they match the tag
-     chips already in the app; the count is dim rather than a status colour, since how many
+     chips already in the app; the count is dim rather than a status color, since how many
      buckets a dimension has is information, not good or bad news. */
   .cmp-alts {
     display: flex;
@@ -1294,7 +1294,7 @@
   }
   .demo-banner-actions { display: flex; gap: 8px; }
 
-  /* Recovery variant of the banner. Same skeleton, danger accent — unlike most colour
+  /* Recovery variant of the banner. Same skeleton, danger accent — unlike most color
      choices in the app this one genuinely is a status, so --danger is the right well. */
   .demo-banner.recovery {
     background: linear-gradient(135deg, #2a1512, #1a1a1a);
@@ -1694,7 +1694,7 @@
     border-top: 1px solid var(--surface3);
   }
 
-  /* Point-of-impact legend. Identity never rests on colour alone — the row name sits beside
+  /* Point-of-impact legend. Identity never rests on color alone — the row name sits beside
      the swatch, and the same buckets are labelled in the comparison chart above it. */
   .poi-legend {
     display: flex;

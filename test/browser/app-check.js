@@ -61,7 +61,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   await page.fill('#group-distance', '50');
   await page.fill('#group-cal-w', '1');
   await page.evaluate(() => {
-    const n = v => v / G.imgW;          // pixels -> normalised units
+    const n = v => v / G.imgW;          // pixels -> normalized units
     G.calPts = [{ x: n(400), y: n(500) }, { x: n(500), y: n(500) }];
     G.poa = { x: n(500), y: n(500) };
     G.impacts = [

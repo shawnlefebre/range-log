@@ -6338,7 +6338,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.5.1';
+const APP_VERSION = '7.5.2';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
