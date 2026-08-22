@@ -712,6 +712,150 @@ describe('user text is escaped, not parsed as markup', () => {
   });
 });
 
+// ── ONE RANGE DAY ───────────────────────────────────────────────────
+// Tapping a point on the trend used to open the session. It now opens the day, because that
+// is the question being asked — and because a session omits any group marked without one
+// while including every other firearm you shot that day.
+
+describe('the range day view', () => {
+  function grp(id, date, ammo, sessionId, shots = 5, spread = 1) {
+    const poa = { x: 0.5, y: 0.5 };
+    const impacts = [];
+    for (let i = 0; i < shots; i++) {
+      impacts.push({ x: poa.x + (i % 2 ? spread : -spread) * 0.0004, y: poa.y + i * 0.0002 });
+    }
+    return {
+      id, date, ammo, sessionId, tags: ['prone'], distance: 50, distanceUnit: 'yd',
+      calMode: 'linear', calInches: 1,
+      calPts: [{ x: 0.40, y: 0.50 }, { x: 0.41, y: 0.50 }],
+      poa, impacts,
+    };
+  }
+
+  const DAY = '2026-06-13';
+  async function app() {
+    const win = await ready(loadApp());
+    win.eval(`data = {
+      schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      firearms: [{ id: 'g1', name: 'Bolt Gun', type: 'rifle', calibers: ['.223 Rem'],
+        opticUnit: 'moa', cleanThreshold: 500, totalRounds: 60, notes: '',
+        cleanings: [], zeros: [], dope: [], groups: ${JSON.stringify([
+          grp('a', DAY, '77gr TMK', 's1', 5, 1),
+          grp('b', DAY, '77gr TMK', 's1', 5, 2),
+          grp('c', DAY, 'Eley Target', null, 5, 3),   // marked without a session
+          grp('d', '2026-06-20', '77gr TMK', 's2', 5, 1),   // a different day
+        ])} }],
+      locations: [{ id: 'l1', name: 'North Range' }],
+      sellers: [],
+      sessions: [
+        { id: 's1', date: '${DAY}', locationId: 'l1', rounds: { g1: 60 }, totalRounds: 60,
+          notes: 'Cold and still. Settled after the first string.' },
+        { id: 's2', date: '2026-06-20', locationId: 'l1', rounds: { g1: 40 }, totalRounds: 40, notes: '' }
+      ],
+      ammo: [] };`);
+    return win;
+  }
+
+  const rows = win => win.document.querySelectorAll('#day-groups .group-row');
+  const fig = (win, label) => {
+    const f = [...win.document.querySelectorAll('#day-fig, .day-fig')]
+      .find(e => flat(e).toLowerCase().includes(label));
+    return f ? flat(f.querySelector('b')) : null;
+  };
+
+  test('a day lists every group from that date and nothing from another', async () => {
+    const win = await app();
+    win.openGroupDay('g1', DAY);
+    assert.strictEqual(rows(win).length, 3, 'three groups on this day, one on another');
+  });
+
+  test('a group marked without a session still appears, and says so', async () => {
+    const win = await app();
+    win.openGroupDay('g1', DAY);
+    const text = flat(win.document.getElementById('day-groups'));
+    assert.match(text, /no session/,
+      'keying on the date is the whole point; an unlinked group must not vanish');
+  });
+
+  test('the session context is the date, location and note — not a firearm list', async () => {
+    const win = await app();
+    win.openGroupDay('g1', DAY);
+    assert.strictEqual(flat(win.document.getElementById('day-title')), 'Jun 13, 2026');
+    const ctx = flat(win.document.getElementById('day-context'));
+    assert.match(ctx, /North Range/);
+    assert.match(ctx, /Cold and still/);
+    assert.ok(!/totalRounds|Bolt Gun 60/.test(ctx), 'no per-firearm round breakdown here');
+  });
+
+  test('rounds logged comes from the session; shots measured from the groups', async () => {
+    const win = await app();
+    win.openGroupDay('g1', DAY);
+    assert.strictEqual(fig(win, 'rounds logged'), '60', 'what the session recorded');
+    assert.strictEqual(fig(win, 'shots measured'), '15', 'three groups of five');
+  });
+
+  test('the two numbers are explained, since they never match', async () => {
+    const win = await app();
+    win.openGroupDay('g1', DAY);
+    assert.match(flat(win.document.getElementById('day-context')), /rarely match/i,
+      '60 next to 15 reads as an error without a word about it');
+  });
+
+  test('a day with no session says so instead of showing an empty card', async () => {
+    const win = await app();
+    win.eval("data.firearms[0].groups.forEach(g => { g.sessionId = null; });");
+    win.openGroupDay('g1', DAY);
+    const ctx = flat(win.document.getElementById('day-context'));
+    assert.match(ctx, /No session logged for this day/i);
+    assert.match(ctx, /15 shots measured/, 'the figures it can still give, it gives');
+    assert.strictEqual(win.document.querySelectorAll('.day-fig').length, 0);
+  });
+
+  test('rounds logged is omitted when the session records none for this firearm', async () => {
+    const win = await app();
+    win.eval("data.sessions[0].rounds = { other: 20 };");
+    win.openGroupDay('g1', DAY);
+    assert.strictEqual(fig(win, 'rounds logged'), null, 'better absent than shown as zero');
+    assert.strictEqual(fig(win, 'shots measured'), '15');
+  });
+
+  test('groups are ordered best first, and the best one is marked', async () => {
+    const win = await app();
+    win.openGroupDay('g1', DAY);
+    const list = [...rows(win)].map(r => flat(r.querySelector('.group-row-main')));
+    const moa = list.map(t => parseFloat(t));
+    assert.deepStrictEqual(moa, [...moa].sort((a, b) => a - b), 'tightest at the top');
+    assert.match(list[0], /best/, 'and named as such');
+    assert.ok(!list.slice(1).some(t => /best/.test(t)), 'only one of them');
+  });
+
+  test('a group row opens that group, not the session', async () => {
+    const win = await app();
+    win.openGroupDay('g1', DAY);
+    assert.match(rows(win)[0].getAttribute('onclick'), /openViewGroup\('g1','[a-z]'\)/);
+  });
+
+  test('opening the session from the day closes the day rather than stacking', async () => {
+    const win = await app();
+    win.openGroupDay('g1', DAY);
+    assert.ok(win.document.getElementById('modal-day').classList.contains('open'));
+    win.openSessionFromDay('s1');
+    assert.ok(!win.document.getElementById('modal-day').classList.contains('open'),
+      'two modals stacked is the bug Details already had to fix');
+    assert.ok(win.document.getElementById('modal-session').classList.contains('open'));
+    assert.ok(win.document.getElementById('modal-session').classList.contains('viewing'),
+      'and it opens read-only, like every other tap-to-view');
+  });
+
+  test('no session means no way through to one', async () => {
+    const win = await app();
+    win.eval("data.firearms[0].groups.forEach(g => { g.sessionId = null; });");
+    win.openGroupDay('g1', DAY);
+    assert.ok(!win.document.querySelector('#day-buttons .btn-secondary'),
+      'a button that opens nothing is worse than no button');
+  });
+});
+
 // ── GROUPS SCOPE ────────────────────────────────────────────────────
 // Ammo, distance and tag narrow every chart in the pane. The reason they exist is that point
 // of impact is only one measurement within a single distance and load: at another distance

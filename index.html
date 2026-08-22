@@ -15,7 +15,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.5.3</span>
+    <span id="app-version">v7.5.4</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -533,6 +533,19 @@
       <button class="btn btn-secondary" onclick="closeModal('modal-cleaning')">Cancel</button>
       <button class="btn btn-primary" onclick="saveCleaning()">Save</button>
     </div>
+  </div>
+</div>
+
+<!-- One range day for one firearm, opened by tapping a point on the group trend. Keyed on
+     the calendar date rather than a session, so groups marked without one still appear. -->
+<div class="modal-overlay" id="modal-day">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title" id="day-title"></div>
+    <div class="modal-sub" id="day-sub"></div>
+    <div id="day-context"></div>
+    <div class="history-subsection"><span>Groups this day</span></div>
+    <div id="day-groups"></div>
+    <div id="day-buttons" style="margin-top:12px;"></div>
   </div>
 </div>
 

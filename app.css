@@ -1696,6 +1696,66 @@
 
   /* Point-of-impact legend. Identity never rests on color alone — the row name sits beside
      the swatch, and the same buckets are labelled in the comparison chart above it. */
+  /* ── One range day ────────────────────────────────────────────────
+     Session context first, then the groups. Reuses .group-row so a group reads the same here
+     as it does in Details. */
+  .modal-sub {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: -4px 0 14px;
+  }
+  .day-session {
+    background: var(--surface2);
+    border-radius: var(--radius);
+    padding: 11px 12px;
+    margin-bottom: 10px;
+  }
+  .day-loc { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text); }
+  .day-note { font-size: 0.78rem; color: var(--text-muted); line-height: 1.4; margin-top: 7px; }
+  .day-figs {
+    display: flex;
+    gap: 16px;
+    margin-top: 9px;
+    padding-top: 9px;
+    border-top: 1px solid var(--surface3);
+    flex-wrap: wrap;
+  }
+  .day-fig { font-family: var(--font-mono); }
+  .day-fig b {
+    display: block;
+    font-size: 0.92rem;
+    color: var(--accent);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .day-fig span {
+    font-size: 0.56rem;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .day-caveat {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    line-height: 1.4;
+    margin: 0 0 12px;
+    border-left: 2px solid var(--surface3);
+    padding-left: 9px;
+  }
+  .day-nosession {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--text-dim);
+    background: var(--surface2);
+    border-radius: var(--radius);
+    padding: 9px 12px;
+    margin-bottom: 10px;
+  }
+  .dim { color: var(--text-dim); }
+
   /* ── Groups scope chips ───────────────────────────────────────────
      Multi-select, so these are toggles rather than a <select>: on a phone a native
      multi-select is a modal list you cannot see the chart behind. Rows scroll sideways

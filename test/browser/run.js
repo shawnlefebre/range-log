@@ -33,7 +33,7 @@ const SUITES = [
   ['details-cap-check', 'capped Details lists: caps, expansion, scroll panel, reset'],
   ['stats-tabs-check', 'Stats sub-tabs: pane switching, moved charts, Upkeep ranking'],
   ['textsize-check', 'text size: every step scales without clipping or overflow'],
-  ['trend-zoom-check', 'group trend: zoom, drag-to-pan, pinned axis, tap a point for its session'],
+  ['trend-zoom-check', 'group trend: zoom, drag-to-pan, pinned axis, tap a point for its range day'],
 ];
 
 const waitForServer = () => new Promise((resolve, reject) => {

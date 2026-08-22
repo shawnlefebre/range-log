@@ -136,6 +136,17 @@ best-to-worst range, which is the honest width of the estimate: a trend is real 
 medians move further than those bars are tall. Median rather than mean, so one called flyer
 doesn't drag a day's figure.
 
+**Tapping a point opens that range day.** It's keyed on the date rather than the session, so
+a group you marked without linking a session still shows up — that's usually the point of
+asking. You get the location and your session note, the day's groups tightest-first with the
+best one marked, and a way through to the full session if there is one. A group row opens
+that group.
+
+Two figures sit at the top and are worth reading as a pair: **rounds logged** is what you
+recorded for that firearm that day, **shots measured** is what's actually in the groups below.
+They rarely match, because you don't photograph every string — shown together so neither gets
+mistaken for the other.
+
 **Re-zero marks are always drawn**, whatever time range you're on. A re-zero is a hard
 boundary — point of impact before and after it aren't the same measurement — and hiding that
 line unless you happened to filter by it is how you read straight through one. The time range

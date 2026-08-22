@@ -3930,6 +3930,123 @@ function renderGroupTrend(gun, groups) {
 
 // A range day is one trip in practice. Where a day's groups span more than one session, the
 // one carrying most of them wins rather than the chart guessing silently.
+// ── ONE RANGE DAY ─────────────────────────────────────────────────
+// Tapping a point on the trend asks "what did I shoot that day", so this is keyed on the
+// calendar date rather than the session. A group marked without a session still has a date,
+// and dropping it would quietly hide groups from a day that plainly contains them.
+let dayViewGunId = null;
+let dayViewDate = null;
+
+function openGroupDay(gunId, dateISO) {
+  const gun = data.firearms.find(g => g.id === gunId);
+  if (!gun || !dateISO) return;
+  dayViewGunId = gunId;
+  dayViewDate = dateISO;
+  renderGroupDay();
+  openModal('modal-day');
+}
+
+// Every group this firearm shot on the day, whether or not it carries a session.
+function groupsOnDay(gun, dateISO) {
+  return (gun.groups || [])
+    .filter(g => g.date === dateISO)
+    .map(g => {
+      const distIn = groupDistanceInches(g);
+      const m = groupMetrics(groupToInches(g));
+      return {
+        raw: g,
+        moa: m && distIn ? toMOA(m.es, distIn) : null,
+        inches: m ? m.es : null,
+        shots: m ? m.n : 0,
+      };
+    })
+    .sort((a, b) => (a.moa ?? Infinity) - (b.moa ?? Infinity));
+}
+
+function renderGroupDay() {
+  const gun = data.firearms.find(g => g.id === dayViewGunId);
+  if (!gun || !dayViewDate) return;
+  const rows = groupsOnDay(gun, dayViewDate);
+
+  document.getElementById('day-title').textContent = fmtDate(dayViewDate);
+  document.getElementById('day-sub').textContent =
+    `${gun.name} · ${rows.length} group${rows.length === 1 ? '' : 's'}`;
+
+  const sessionId = pickSessionForDay(rows);
+  const session = sessionId ? (data.sessions || []).find(s => s.id === sessionId) : null;
+  const loc = session && session.locationId
+    ? (data.locations || []).find(l => l.id === session.locationId) : null;
+
+  const shots = rows.reduce((n, r) => n + r.shots, 0);
+  const measured = rows.map(r => r.moa).filter(v => v != null);
+  const median = measured.length ? gFmt(statsMedian(measured)) : '—';
+  const roundsLogged = session ? (session.rounds || {})[gun.id] : null;
+
+  // Two figures that never match, shown together on purpose. "Rounds logged" is what was
+  // recorded for this firearm that day; "shots measured" is what is actually in the groups
+  // below. You do not photograph every string, so the first is normally the larger — but
+  // either one alone reads as though it should equal the other.
+  const figures = `
+    <div class="day-figs">
+      ${roundsLogged ? `<div class="day-fig"><b>${roundsLogged}</b><span>rounds logged</span></div>` : ''}
+      <div class="day-fig"><b>${shots}</b><span>shots measured</span></div>
+      <div class="day-fig"><b>${median}</b><span>median MOA</span></div>
+    </div>`;
+
+  document.getElementById('day-context').innerHTML = session
+    ? `<div class="day-session">
+         ${loc ? `<div class="day-loc">${esc(loc.name)}</div>` : ''}
+         ${session.notes ? `<div class="day-note">${esc(session.notes)}</div>` : ''}
+         ${figures}
+       </div>
+       ${roundsLogged ? `<div class="day-caveat"><b>Rounds logged</b> is what you recorded for
+          this firearm that day; <b>shots measured</b> is what is in the groups below. They
+          rarely match — you don't photograph every string.</div>` : ''}`
+    : `<div class="day-nosession">No session logged for this day · ${shots} shot${
+         shots === 1 ? '' : 's'} measured · median ${median} MOA</div>`;
+
+  const best = measured.length ? Math.min(...measured) : null;
+  document.getElementById('day-groups').innerHTML = rows.length
+    ? rows.map(r => {
+        const g = r.raw;
+        const sub = [`${g.distance} ${g.distanceUnit || 'yd'}`, `${r.shots} shots`];
+        if (g.ammo) sub.push(esc(shortLoadName(g.ammo)));
+        if (!g.sessionId) sub.push('<span class="dim">no session</span>');
+        const tags = (g.tags || []).length
+          ? `<div class="group-row-tags">${g.tags.map(t =>
+              `<span class="tag-pill">${esc(t)}</span>`).join('')}</div>`
+          : '';
+        return `
+          <div class="group-row tappable" onclick="openViewGroup('${gun.id}','${g.id}')"
+               role="button" tabindex="0" title="View this group">
+            <div class="group-row-info">
+              <div class="group-row-main">${r.moa != null ? `${gFmt(r.moa)} MOA` : '—'}${
+                r.moa != null && r.moa === best && measured.length > 1
+                  ? ' <span class="dim">· best</span>' : ''}${
+                g.photoId ? ' 📷' : ''}</div>
+              <div class="group-row-sub">${sub.join(' · ')}</div>
+              ${tags}
+            </div>
+            <div class="group-row-figure">
+              <div class="group-row-size">${r.inches != null ? `${gFmt(r.inches)}"` : '—'}</div>
+            </div>
+          </div>`;
+      }).join('')
+    : '<div class="empty-state" style="padding:16px;">No groups on this day.</div>';
+
+  document.getElementById('day-buttons').innerHTML = `
+    ${session ? `<button class="btn btn-secondary" onclick="openSessionFromDay('${session.id}')">
+       Open the full session</button>` : ''}
+    <button class="btn btn-primary" onclick="closeModal('modal-day')">Close</button>`;
+}
+
+// Hands off to the session view, closing this one first so the two are never stacked — the
+// same rule Details follows when it opens Cleaning or Zero.
+function openSessionFromDay(sessionId) {
+  closeModal('modal-day');
+  openViewSession(sessionId);
+}
+
 function pickSessionForDay(groupsOnDay) {
   const tally = {};
   groupsOnDay.forEach(g => { if (g.raw && g.raw.sessionId) tally[g.raw.sessionId] = (tally[g.raw.sessionId] || 0) + 1; });
@@ -4015,8 +4132,12 @@ function trendTapAt(sc, clientX, clientY) {
     const d = Math.hypot(Number(c.getAttribute('cx')) - px, Number(c.getAttribute('cy')) - py);
     if (d < bestD) { bestD = d; best = c; }
   });
-  const id = best && best.dataset.session;
-  if (id && (data.sessions || []).some(s => s.id === id)) openViewSession(id);
+  // Opens the day, not the session. Tapping a point asks "what did I shoot that day", and a
+  // session answers a wider question — every firearm, every round — while omitting any group
+  // marked without one. The day view can still hand off to the session.
+  const date = best && best.dataset.date;
+  const gunId = document.getElementById('stats-firearm').value;
+  if (date && gunId) openGroupDay(gunId, date);
 }
 
 function updateTrendReadout(sc) {
@@ -6504,7 +6625,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.5.3';
+const APP_VERSION = '7.5.4';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

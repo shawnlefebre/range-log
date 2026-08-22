@@ -112,9 +112,10 @@ const SCROLLER = '#stats-groups-trend .trend-scroll';
   ck('panning does not drag the y-axis along with it',
     Math.abs(axisAfter.axisLeft - zoomed.axisLeft) <= 1);
 
-  // ── tapping a point opens that session, read-only, and comes back ────────
+  // ── tapping a point opens that range day, and hands off to the session ───
   // Zoomed in and panned, most points are off-screen — pick one actually under the window,
-  // or the click lands on nothing.
+  // or the click lands on nothing. Still requires a session on the point: the day view no
+  // longer needs one, but the handoff to the session view is what this then exercises.
   const target = await page.evaluate(([p, s]) => {
     const view = document.querySelector(s).getBoundingClientRect();
     for (const c of document.querySelectorAll(p + ' .trend-point')) {
@@ -130,16 +131,36 @@ const SCROLLER = '#stats-groups-trend .trend-scroll';
     }
     return null;
   }, [PLOT, SCROLLER]);
-  ck('points carry the session they belong to', !!target);
+  ck('points carry the day they belong to', !!target);
 
   if (target) {
     const wasLeft = (await geom()).left;
     await page.mouse.click(target.x, target.y);
     await page.waitForTimeout(400);
-    ck('tapping a point opens a session', await page.isVisible('#modal-session'));
-    ck('it opens that point\'s session',
-      await page.evaluate(() => document.getElementById('session-edit-id').value) === target.session);
-    ck('it opens read-only rather than straight into an edit',
+    ck('tapping a point opens that range day', await page.isVisible('#modal-day'));
+    ck('it opens the day the point sits on',
+      await page.evaluate(() => dayViewDate) === target.date);
+
+    // Every group that firearm shot that day, including any marked without a session —
+    // the reason this is keyed on the date rather than on session id.
+    const shown = await page.evaluate(() => ({
+      rows: document.querySelectorAll('#day-groups .group-row').length,
+      expected: (data.firearms.find(g => g.id === document.getElementById('stats-firearm').value)
+        .groups || []).filter(g => g.date === dayViewDate).length,
+    }));
+    ck('it lists every group from that day', shown.rows === shown.expected && shown.rows > 0);
+
+    ck('the day names the firearm and the group count',
+      /\d+ group/.test(await page.textContent('#day-sub')));
+    ck('and offers a way through to the full session',
+      await page.isVisible('#day-buttons .btn-secondary'));
+
+    // Handing off must not leave the two stacked.
+    await page.click('#day-buttons .btn-secondary');
+    await page.waitForTimeout(400);
+    ck('opening the session from there closes the day view',
+      await page.isVisible('#modal-session') && !(await page.isVisible('#modal-day')));
+    ck('the session opens read-only rather than straight into an edit',
       await page.evaluate(() => document.getElementById('modal-session').classList.contains('viewing')));
 
     await page.click('#session-buttons .btn-secondary');
@@ -150,8 +171,10 @@ const SCROLLER = '#stats-groups-trend .trend-scroll';
       !!back && Math.abs(back.left - wasLeft) <= 2 && back.scrollW > back.viewW + 20);
   }
 
-  // A drag must not be read as a tap — otherwise panning keeps opening sessions.
-  await page.evaluate(() => { if (typeof closeModal === 'function') closeModal('modal-session'); });
+  // A drag must not be read as a tap — otherwise panning keeps opening the day view.
+  await page.evaluate(() => {
+    if (typeof closeModal === 'function') { closeModal('modal-session'); closeModal('modal-day'); }
+  });
   await page.waitForTimeout(200);
   const box2 = await page.locator(SCROLLER).boundingBox();
   const startY = target ? target.y : box2.y + box2.height / 2;
@@ -160,8 +183,8 @@ const SCROLLER = '#stats-groups-trend .trend-scroll';
   await page.mouse.move(box2.x + box2.width * 0.25, startY, { steps: 10 });
   await page.mouse.up();
   await page.waitForTimeout(350);
-  ck('panning across a point does not open its session',
-    !(await page.isVisible('#modal-session')));
+  ck('panning across a point does not open its day',
+    !(await page.isVisible('#modal-day')) && !(await page.isVisible('#modal-session')));
 
   await page.locator('#stats-groups-trend').screenshot(
     { path: path.join(ARTIFACTS, 'trend-zoomed.png') });
