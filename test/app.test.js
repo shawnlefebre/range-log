@@ -712,6 +712,73 @@ describe('user text is escaped, not parsed as markup', () => {
   });
 });
 
+// ── VIEW/EDIT MODALS BEHAVE ALIKE ───────────────────────────────────
+// Zero, dope, session and ammo share one implementation of the view/edit modal. These
+// assert the behaviour that shape is supposed to guarantee, so that if the shared helper
+// regresses it fails here rather than in four separate places — or in none of them,
+// because a fifth modal quietly grew its own variant.
+
+describe('every view/edit modal opens inert and switches to edit the same way', () => {
+  const MODALS = [
+    { name: 'zero',    modal: 'modal-zero',    buttons: 'zero-buttons',    field: 'zero-date',
+      open: w => w.openViewZero(w.data0.gun.id, w.data0.zero.id), edit: w => w.zeroEnterEdit() },
+    { name: 'dope',    modal: 'modal-dope',    buttons: 'dope-buttons',    field: 'dope-conditions',
+      open: w => w.openViewDope(w.data0.gun.id, w.data0.dope.id), edit: w => w.dopeEnterEdit() },
+    { name: 'session', modal: 'modal-session', buttons: 'session-buttons', field: 'session-edit-date',
+      open: w => w.openViewSession(w.data0.session.id), edit: w => w.sessionEnterEdit() },
+    { name: 'ammo',    modal: 'modal-ammo',    buttons: 'ammo-buttons',    field: 'ammo-date',
+      open: w => w.openViewAmmo(w.data0.ammo.id), edit: w => w.ammoEnterEdit() },
+  ];
+
+  // Demo data carries a zero, a dope table, sessions and purchases already.
+  async function appWithData() {
+    const win = await ready(loadApp());
+    const d = win.buildDefaultData();
+    const gun = d.firearms.find(g => (g.zeros || []).length && (g.dope || []).length);
+    assert.ok(gun, 'demo data should include a firearm with both a zero and a dope table');
+    win.data0 = { gun, zero: gun.zeros[0], dope: gun.dope[0], session: d.sessions[0], ammo: d.ammo[0] };
+    return win;
+  }
+
+  for (const m of MODALS) {
+    test(`${m.name}: opens read-only with fields disabled, then Edit enables them`, async () => {
+      const win = await appWithData();
+      m.open(win);
+
+      const modalEl = win.document.getElementById(m.modal);
+      const field = win.document.getElementById(m.field);
+      assert.ok(modalEl.classList.contains('viewing'), 'should open in viewing mode');
+      assert.strictEqual(field.disabled, true, 'fields must be genuinely disabled, not just styled');
+
+      const viewButtons = flat(win.document.getElementById(m.buttons));
+      assert.ok(viewButtons.includes('Close'), `expected a Close button, got: ${viewButtons}`);
+      assert.ok(viewButtons.includes('Edit'), `expected an Edit button, got: ${viewButtons}`);
+      assert.ok(!viewButtons.includes('Save'), 'a read-only view must not offer Save');
+
+      m.edit(win);
+      assert.strictEqual(modalEl.classList.contains('viewing'), false);
+      assert.strictEqual(field.disabled, false, 'Edit must re-enable the fields');
+
+      const editButtons = flat(win.document.getElementById(m.buttons));
+      assert.ok(editButtons.includes('Cancel'), `expected Cancel, got: ${editButtons}`);
+      assert.ok(editButtons.includes('Save'), `expected Save, got: ${editButtons}`);
+      assert.ok(!editButtons.includes('Edit'), 'editing must not still offer Edit');
+    });
+  }
+
+  test('session round inputs are disabled too, though they have no fixed ids', async () => {
+    const win = await appWithData();
+    win.openViewSession(win.data0.session.id);
+    const inputs = [...win.document.querySelectorAll('#session-edit-gun-inputs input')];
+    assert.ok(inputs.length, 'the session being viewed should have round inputs');
+    assert.ok(inputs.every(i => i.disabled),
+      'rebuilt inputs are the ones most easily missed when the mode is applied');
+    win.sessionEnterEdit();
+    assert.ok([...win.document.querySelectorAll('#session-edit-gun-inputs input')]
+      .every(i => !i.disabled), 'and they must come back on edit');
+  });
+});
+
 // ── EXPORT / IMPORT / SAVE ──────────────────────────────────────────
 
 describe('CSV export quotes fields instead of mangling them', () => {

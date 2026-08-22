@@ -1729,18 +1729,37 @@ function getSelectedZeroOptic() {
 // can't quietly alter what the rifle is actually zeroed at.
 let zeroReadOnly = false;
 
-function zeroApplyMode() {
-  document.getElementById('modal-zero').classList.toggle('viewing', zeroReadOnly);
-  ['zero-date', 'zero-distance', 'zero-distance-unit', 'zero-ammo-select', 'zero-ammo-custom',
-   'zero-optic-select', 'zero-optic-custom', 'zero-notes'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = zeroReadOnly;
+// Zero, dope, session and ammo all present the same view/edit modal: mark the modal
+// `viewing`, disable its fields, and swap the button row between Close/Edit and
+// Cancel/Save. Only the ids and the save handler differ, so the shape lives here once.
+//
+// `enterEdit` and `save` are function *names* rather than functions because these buttons
+// are built as markup with inline onclick, like the rest of the app — which is also why a
+// typo here is a dead button rather than an error, and why the handler-resolution test
+// exists. The group modal deliberately does not route through this: its buttons are
+// persistent elements toggled by visibility, not a container rebuilt from markup.
+function applyModalMode({ modal, fields, buttons, readOnly, enterEdit, save, alsoDisable }) {
+  const el = document.getElementById(modal);
+  el.classList.toggle('viewing', readOnly);
+  fields.forEach(id => {
+    const f = document.getElementById(id);
+    if (f) f.disabled = readOnly;
   });
-  document.getElementById('zero-buttons').innerHTML = zeroReadOnly
-    ? `<button class="btn btn-secondary" onclick="closeModal('modal-zero')">Close</button>
-       <button class="btn btn-primary" onclick="zeroEnterEdit()">Edit</button>`
-    : `<button class="btn btn-secondary" onclick="closeModal('modal-zero')">Cancel</button>
-       <button class="btn btn-primary" onclick="saveZero()">Save</button>`;
+  if (alsoDisable) el.querySelectorAll(alsoDisable).forEach(f => { f.disabled = readOnly; });
+  document.getElementById(buttons).innerHTML = readOnly
+    ? `<button class="btn btn-secondary" onclick="closeModal('${modal}')">Close</button>
+       <button class="btn btn-primary" onclick="${enterEdit}()">Edit</button>`
+    : `<button class="btn btn-secondary" onclick="closeModal('${modal}')">Cancel</button>
+       <button class="btn btn-primary" onclick="${save}()">Save</button>`;
+}
+
+function zeroApplyMode() {
+  applyModalMode({
+    modal: 'modal-zero', buttons: 'zero-buttons', readOnly: zeroReadOnly,
+    enterEdit: 'zeroEnterEdit', save: 'saveZero',
+    fields: ['zero-date', 'zero-distance', 'zero-distance-unit', 'zero-ammo-select',
+             'zero-ammo-custom', 'zero-optic-select', 'zero-optic-custom', 'zero-notes'],
+  });
 }
 
 function openViewZero(gunId, zeroId) {
@@ -1958,18 +1977,12 @@ function handleDopeUnitChange() {
 }
 
 function dopeApplyMode() {
-  const modal = document.getElementById('modal-dope');
-  modal.classList.toggle('viewing', dopeReadOnly);
-  ['dope-ammo-select', 'dope-ammo-custom', 'dope-unit', 'dope-zero-distance',
-   'dope-distance-unit', 'dope-conditions'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = dopeReadOnly;
+  applyModalMode({
+    modal: 'modal-dope', buttons: 'dope-buttons', readOnly: dopeReadOnly,
+    enterEdit: 'dopeEnterEdit', save: 'saveDope',
+    fields: ['dope-ammo-select', 'dope-ammo-custom', 'dope-unit', 'dope-zero-distance',
+             'dope-distance-unit', 'dope-conditions'],
   });
-  document.getElementById('dope-buttons').innerHTML = dopeReadOnly
-    ? `<button class="btn btn-secondary" onclick="closeModal('modal-dope')">Close</button>
-       <button class="btn btn-primary" onclick="dopeEnterEdit()">Edit</button>`
-    : `<button class="btn btn-secondary" onclick="closeModal('modal-dope')">Cancel</button>
-       <button class="btn btn-primary" onclick="saveDope()">Save</button>`;
 }
 
 function openDope(gunId, dopeId, readOnly) {
@@ -2080,21 +2093,13 @@ function deleteDope(gunId, dopeId) {
 let sessionReadOnly = false;
 
 function sessionApplyMode() {
-  const modal = document.getElementById('modal-session');
-  modal.classList.toggle('viewing', sessionReadOnly);
-  ['session-edit-date', 'session-edit-location', 'session-edit-notes'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = sessionReadOnly;
+  applyModalMode({
+    modal: 'modal-session', buttons: 'session-buttons', readOnly: sessionReadOnly,
+    enterEdit: 'sessionEnterEdit', save: 'saveEditSession',
+    fields: ['session-edit-date', 'session-edit-location', 'session-edit-notes'],
+    // The per-firearm round inputs are rebuilt on every open, so they have no fixed ids.
+    alsoDisable: '#session-edit-gun-inputs input',
   });
-  // The per-firearm round inputs are rebuilt on every open, so they are disabled here.
-  modal.querySelectorAll('#session-edit-gun-inputs input').forEach(el => {
-    el.disabled = sessionReadOnly;
-  });
-  document.getElementById('session-buttons').innerHTML = sessionReadOnly
-    ? `<button class="btn btn-secondary" onclick="closeModal('modal-session')">Close</button>
-       <button class="btn btn-primary" onclick="sessionEnterEdit()">Edit</button>`
-    : `<button class="btn btn-secondary" onclick="closeModal('modal-session')">Cancel</button>
-       <button class="btn btn-primary" onclick="saveEditSession()">Save</button>`;
 }
 
 function openViewSession(id) {
@@ -2348,19 +2353,13 @@ function getSelectedCaliber() {
 let ammoReadOnly = false;
 
 function ammoApplyMode() {
-  document.getElementById('modal-ammo').classList.toggle('viewing', ammoReadOnly);
-  ['ammo-date', 'ammo-caliber-select', 'ammo-caliber-custom', 'ammo-manufacturer', 'ammo-model',
-   'ammo-quantity', 'ammo-price', 'ammo-seller', 'ammo-status', 'ammo-not-range',
-   'ammo-usedup-date', 'ammo-notes']
-    .forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.disabled = ammoReadOnly;
-    });
-  document.getElementById('ammo-buttons').innerHTML = ammoReadOnly
-    ? `<button class="btn btn-secondary" onclick="closeModal('modal-ammo')">Close</button>
-       <button class="btn btn-primary" onclick="ammoEnterEdit()">Edit</button>`
-    : `<button class="btn btn-secondary" onclick="closeModal('modal-ammo')">Cancel</button>
-       <button class="btn btn-primary" onclick="saveAmmo()">Save</button>`;
+  applyModalMode({
+    modal: 'modal-ammo', buttons: 'ammo-buttons', readOnly: ammoReadOnly,
+    enterEdit: 'ammoEnterEdit', save: 'saveAmmo',
+    fields: ['ammo-date', 'ammo-caliber-select', 'ammo-caliber-custom', 'ammo-manufacturer',
+             'ammo-model', 'ammo-quantity', 'ammo-price', 'ammo-seller', 'ammo-status',
+             'ammo-not-range', 'ammo-usedup-date', 'ammo-notes'],
+  });
 }
 
 function openViewAmmo(id) {
@@ -6207,7 +6206,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.4.3';
+const APP_VERSION = '7.4.4';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
