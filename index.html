@@ -15,7 +15,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.5.4</span>
+    <span id="app-version">v7.5.5</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -696,6 +696,14 @@
       <div class="group-hint">Marked points are always saved. The photo is optional and
         stays on this device &mdash; it is never included in a JSON backup.</div>
     </div>
+
+    <!-- Shown only when the group points at a photo the store no longer has: a backup
+         restored without its photo bundle, or a shared photo dropped by another group.
+         Restoring writes back under the same photoId, so every group on that target is
+         repaired at once. -->
+    <div id="group-photo-missing" style="display:none;"></div>
+    <input type="file" id="group-restore-file" accept="image/*" style="display:none;"
+           onchange="handleGroupRestoreFile(this)">
 
     <div class="form-group">
       <label>Date shot</label>

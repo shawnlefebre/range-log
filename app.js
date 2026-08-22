@@ -722,7 +722,11 @@ function getPhoto(id) { return photoTx('readonly', s => s.get(id)).catch(() => n
 function deletePhoto(id) { return photoTx('readwrite', s => s.delete(id)).catch(() => null); }
 
 function allPhotoKeys() { return photoTx('readonly', s => s.getAllKeys()).then(k => k || []).catch(() => []); }
-function clearAllPhotos() { return photoTx('readwrite', s => s.clear()).catch(() => null); }
+function clearAllPhotos() {
+  return photoTx('readwrite', s => s.clear())
+    .then(r => { availablePhotoIds = new Set(); return r; })
+    .catch(() => null);
+}
 
 // Every photoId currently referenced by a group. Anything in the store outside this set
 // is unreachable — no screen can show it and nothing will ever delete it.
@@ -734,6 +738,25 @@ function referencedPhotoIds(d = data) {
   return ids;
 }
 
+// Which photos are actually in the store. A group's photoId stays a perfectly good string
+// after its blob is gone — a backup restored without its photo bundle, or the shared-photo
+// bug this cache was added alongside — so `g.photoId` answers "did this group ever have a
+// photo", not "can it be shown". The lists render synchronously and IndexedDB is async, so
+// the answer is cached here rather than awaited per row.
+//
+// Derived, never persisted: refreshed from the store itself at startup and after every
+// write or delete, so it cannot drift into disagreeing with what is really there.
+let availablePhotoIds = new Set();
+
+async function refreshAvailablePhotoIds() {
+  availablePhotoIds = new Set(await allPhotoKeys());
+  return availablePhotoIds;
+}
+
+function hasPhoto(group) {
+  return !!(group && group.photoId && availablePhotoIds.has(group.photoId));
+}
+
 // Orphans accumulate whenever the dataset is replaced wholesale — importing a backup, or
 // any path that drops groups without going through deleteGroup. Sweeping is precise: it
 // removes only what nothing references, so re-importing your own backup on the same
@@ -743,6 +766,7 @@ async function sweepOrphanedPhotos() {
   const keep = referencedPhotoIds();
   const orphans = keys.filter(k => !keep.has(k));
   for (const id of orphans) await deletePhoto(id);
+  await refreshAvailablePhotoIds();
   return orphans.length;
 }
 
@@ -1687,7 +1711,7 @@ function renderGunHistory(gunId) {
              role="button" tabindex="0" title="View this group">
           <div class="group-row-info">
             <div class="group-row-main">${fmtDate(g.date)}</div>
-            <div class="group-row-sub">${sub.join(' · ')}${g.photoId ? ' · 📷' : ''}</div>
+            <div class="group-row-sub">${sub.join(' · ')}${hasPhoto(g) ? ' · 📷' : ''}</div>
             ${tagLine}
           </div>
           <div class="group-row-figure">
@@ -4023,7 +4047,7 @@ function renderGroupDay() {
               <div class="group-row-main">${r.moa != null ? `${gFmt(r.moa)} MOA` : '—'}${
                 r.moa != null && r.moa === best && measured.length > 1
                   ? ' <span class="dim">· best</span>' : ''}${
-                g.photoId ? ' 📷' : ''}</div>
+                hasPhoto(g) ? ' 📷' : ''}</div>
               <div class="group-row-sub">${sub.join(' · ')}</div>
               ${tags}
             </div>
@@ -6059,6 +6083,7 @@ async function openLogGroup(gunId, groupId, readOnly) {
   document.getElementById('group-modal-title').textContent =
     (G.readOnly ? 'Group · ' : groupId ? 'Edit Group · ' : 'Add Group · ') + gun.name;
   document.getElementById('group-date-note').textContent = '';
+  hidePhotoMissing();
   document.getElementById('group-file').value = '';
 
   const existing = groupId && (gun.groups || []).find(x => x.id === groupId);
@@ -6112,9 +6137,49 @@ async function openLogGroup(gunId, groupId, readOnly) {
   if (existing && existing.photoId) {
     const blob = await getPhoto(existing.photoId);
     if (blob) await gLoadImage(blob, false);
-    else document.getElementById('group-date-note').textContent =
-      'Saved photo is no longer available, so impacts can’t be re-marked. Everything else is still editable.';
+    else showPhotoMissing(existing.photoId);
   }
+}
+
+// The marks are stored normalized against the image, so putting the same target photo back
+// lines them up again exactly. That is the whole reason this is offered rather than just
+// reported: the measurements were never lost, only the ability to see them on the target.
+function showPhotoMissing(photoId) {
+  const el = document.getElementById('group-photo-missing');
+  if (!el) return;
+  const sharing = (data.firearms || []).reduce((n, gun) =>
+    n + (gun.groups || []).filter(g => g.photoId === photoId).length, 0);
+  el.style.display = '';
+  el.innerHTML = `
+    <div class="photo-missing">
+      <div class="photo-missing-head">⚠ Saved photo is no longer available</div>
+      <div class="photo-missing-text">Every measurement still stands — only re-marking needs
+        the image. ${sharing > 1
+          ? `<b>${sharing} groups on this target share it</b>, so restoring it repairs them all.`
+          : 'Restore it and the marks line back up, as long as it is the same photo.'}</div>
+      <label for="group-restore-file" class="btn-photo">Restore photo${
+        sharing > 1 ? ` for all ${sharing}` : ''}</label>
+    </div>`;
+}
+
+function hidePhotoMissing() {
+  const el = document.getElementById('group-photo-missing');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+}
+
+// Deliberately not handleGroupFile: that one reads EXIF and rewrites the date, which would
+// overwrite the date of a group that was logged correctly. A restore replaces the pixels and
+// nothing else, and must not reset the marks it exists to make visible again.
+async function handleGroupRestoreFile(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file || !G) return;
+  const keep = document.getElementById('group-keep-photo');
+  if (keep) keep.checked = true;   // or the save path would drop it straight back out
+  await gLoadImage(file, false);
+  hidePhotoMissing();
+  document.getElementById('group-date-note').textContent =
+    'Photo restored. Check the marks still sit where they should before saving.';
 }
 
 async function gLoadImage(fileOrBlob, resetMarks) {
@@ -6214,6 +6279,7 @@ async function groupPersist() {
   // G.photoId carries it across. Without this each group would store its own copy of the
   // same image, so a four-group target would hold four identical blobs.
   let photoId = existing ? (existing.photoId || null) : (G.photoId || null);
+  let droppedPhotoId = null;
   if (keepPhoto && G.photoBlob && G.img) {
     photoId = photoId || uid();
     // Write once per loaded image; gLoadImage clears this when a new photo is chosen,
@@ -6223,7 +6289,13 @@ async function groupPersist() {
       G.photoWritten = true;
     }
   } else if (!keepPhoto && photoId) {
-    await deletePhoto(photoId);
+    // Drop this group's claim on the blob, but only delete the blob itself once nothing
+    // else points at it. Several groups marked on one target share a single photoId, so
+    // deleting outright blinded every sibling — they kept their measurements but lost the
+    // ability to re-mark, and still showed a camera icon for a photo that was gone. The
+    // reference count has to be taken *after* this group lets go, which is why the record
+    // is written below before the sweep rather than after.
+    droppedPhotoId = photoId;
     photoId = null;
   }
 
@@ -6249,6 +6321,11 @@ async function groupPersist() {
   else gun.groups.push(record);
 
   save(data);
+
+  // Now that the record no longer claims it, the count is honest: delete the blob only if
+  // no other group on any firearm still points at it.
+  if (droppedPhotoId && !referencedPhotoIds().has(droppedPhotoId)) await deletePhoto(droppedPhotoId);
+  await refreshAvailablePhotoIds();
   return record;
 }
 
@@ -6287,6 +6364,7 @@ async function deleteGroup(gunId, groupId) {
   // still pointing at it — they'd keep their measurements but lose the ability to
   // re-mark. Checking after the removal is what makes the count correct.
   if (photoId && !referencedPhotoIds().has(photoId)) await deletePhoto(photoId);
+  await refreshAvailablePhotoIds();
   if (currentHistoryGunId === gunId) renderGunHistory(gunId);
 }
 
@@ -6600,6 +6678,7 @@ function importPhotos(input) {
         await putPhoto(id, await res.blob());
         restored++;
       }
+      await refreshAvailablePhotoIds();
       renderAll();
       alert(`${restored} photo${restored === 1 ? '' : 's'} restored.` +
         (skipped ? `\n\n${skipped} skipped — no group in this data refers to them.` : ''));
@@ -6624,8 +6703,16 @@ function renderAll() {
 renderDashboard();
 renderLogForm();
 
+// Reading the photo store is async, so the first paint cannot know which photos exist. Any
+// list already on screen is repainted once it does — a camera icon appearing a moment late
+// is better than one that is wrong.
+refreshAvailablePhotoIds().then(() => {
+  if (currentHistoryGunId) renderGunHistory(currentHistoryGunId);
+  renderStats();
+});
+
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.5.4';
+const APP_VERSION = '7.5.5';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

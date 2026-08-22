@@ -1696,6 +1696,30 @@
 
   /* Point-of-impact legend. Identity never rests on color alone — the row name sits beside
      the swatch, and the same buckets are labelled in the comparison chart above it. */
+  /* Missing photo, with a way to put it back. Accent rather than --danger: nothing is
+     broken, the measurements are intact and only re-marking is unavailable. */
+  .photo-missing {
+    background: #2a2210;
+    border: 1px solid var(--accent-dim);
+    border-radius: var(--radius);
+    padding: 11px 12px;
+    margin-bottom: 12px;
+  }
+  .photo-missing-head {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .photo-missing-text {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin-bottom: 10px;
+  }
+
   /* ── One range day ────────────────────────────────────────────────
      Session context first, then the groups. Reuses .group-row so a group reads the same here
      as it does in Details. */

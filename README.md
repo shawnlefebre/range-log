@@ -102,6 +102,8 @@ For what those numbers mean and which to trust, see [Reading the numbers](#readi
 - **Groups link to a range session**, so each session shows a scorecard of what you shot
 - **Tags** let you label a group however you like — prone, bench, bipod, windy — picking from tags you've used before or typing a new one. Matching ignores case, so *Prone* reuses *prone* rather than creating a second tag that would split your comparisons later
 - **Keeping the photo is optional.** Marked points are always saved, so every measurement still recomputes without it — you just can't re-mark impacts. Photos are stored on the device only and are never included in a JSON export, which keeps backups small
+- **A target photographed once is stored once**, however many groups you mark on it. The image is only deleted when the last group referencing it lets go — dropping the photo from one group, or deleting that group, leaves the others able to re-mark
+- **If a photo does go missing** — a backup restored without its photo bundle, say — the group says so and offers to restore it. Impacts are stored relative to the image, so putting the same photo back lines the marks up again exactly. Restoring repairs every group that shared that target at once, and the camera icon in a group list means the image is genuinely there, not merely that one was attached at some point
 
 ## Stats
 
