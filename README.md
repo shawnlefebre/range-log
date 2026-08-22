@@ -340,6 +340,12 @@ Photos are downscaled before storing, so each one lands around 30–100 KB — a
 
 Because photos are left out of the JSON backup, moving them to another device is a separate step: **Export photos** writes a bundle you import on the new device *after* restoring the JSON backup. Importing a bundle only restores images that some group actually refers to.
 
+### If your saved data can't be read
+
+If Range Log ever finds saved data on startup that it can't open — a write interrupted partway through, say — it will **not** overwrite it. It sets a copy aside, starts you with an empty app rather than sample data, and shows a banner offering the copy as a download. Take the download: it's the raw text exactly as it was found, which is what any repair would start from.
+
+Nothing else clears that copy, so it survives normal use. **Settings → Delete All Data** does remove it, along with everything else.
+
 ---
 
 ## Hosting Your Own Copy (GitHub Pages)

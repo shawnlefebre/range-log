@@ -447,13 +447,70 @@ function renderTextSizePicker() {
 }
 
 // ── STORAGE ──────────────────────────────────────────────────────
+// Set at startup when stored data was found but could not be read. The raw text is held in
+// memory as well as copied aside, so the download works even on a device too full to accept
+// the copy — which is exactly the situation where a truncated write happened in the first place.
+let recoveryState = null;
+
+const UNREADABLE_PREFIX = 'rangeLogData-unreadable-';
+
+// Puts the unreadable text somewhere it will survive the next save, without touching the
+// original key.
+//
+// Idempotent by content: startup runs more than once against the same unreadable value —
+// the service worker reloads the page after it installs an update, and the user can refresh
+// as often as they like while the banner is up. Copying again each time would multiply a
+// full copy of the record at precisely the moment the device may be short of room. A
+// genuinely different unreadable value still gets its own key rather than overwriting the
+// earlier copy, which by then is the more valuable of the two.
+function quarantineUnreadable(raw, err) {
+  let key = Object.keys(localStorage).find(
+    k => k.startsWith(UNREADABLE_PREFIX) && localStorage.getItem(k) === raw) || null;
+  let stored = !!key;
+
+  if (!stored) {
+    key = UNREADABLE_PREFIX + today();
+    for (let n = 2; localStorage.getItem(key) !== null; n++) key = `${UNREADABLE_PREFIX}${today()}-${n}`;
+    try { localStorage.setItem(key, raw); stored = true; } catch (e) { key = null; }
+  }
+
+  recoveryState = {
+    raw, stored, key,
+    bytes: raw.length,
+    reason: (err && err.message) || String(err),
+    dismissed: false,
+  };
+}
+
 function load() {
   const raw = localStorage.getItem('rangeLogData');
-  if (!raw) return buildDefaultData();
+  // Nothing stored, or stored empty: a genuine first run, and there is nothing to recover.
+  if (raw === null || !raw.trim()) return buildDefaultData();
   try {
     const d = JSON.parse(raw);
     return migrateData(d);
-  } catch { return buildDefaultData(); }
+  } catch (e) {
+    // Stored data exists and could not be read. Handing back demo data here — which is what
+    // buildDefaultData does — would both disguise the failure as a fresh install and, on the
+    // very next save, overwrite the only copy of the real thing. Set it aside and start
+    // empty instead, so the app is honest about the state and nothing is lost silently.
+    quarantineUnreadable(raw, e);
+    return buildEmptyData();
+  }
+}
+
+// A blank slate that is explicitly not demo data. Shared by the wipe and by recovery, so
+// "empty" means one thing.
+function buildEmptyData() {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    isDemo: false,
+    firearms: [],
+    locations: [],
+    sellers: [],
+    sessions: [],
+    ammo: [],
+  };
 }
 
 function migrateData(d) {
@@ -825,6 +882,12 @@ function cleanStatus(gun) {
 function renderDemoBanner() {
   const container = document.getElementById('demo-banner-container');
   if (!container) return;
+  // Takes precedence: if startup could not read the stored data, that is the only thing
+  // worth saying on this screen.
+  if (recoveryState && !recoveryState.dismissed) {
+    container.innerHTML = recoveryBannerHTML();
+    return;
+  }
   if (!data.isDemo) { container.innerHTML = ''; return; }
   container.innerHTML = `
     <div class="demo-banner">
@@ -846,21 +909,78 @@ function keepDemoData() {
   renderDemoBanner();
 }
 
+// ── UNREADABLE-DATA RECOVERY ──────────────────────────────────────
+// Shown when startup found stored data it could not parse. The point of the wording is that
+// nothing has been thrown away yet and the user still has to act: a copy set aside in
+// localStorage survives the next save, but if the device had no room for one it exists only
+// until this tab closes.
+function recoveryBannerHTML() {
+  const r = recoveryState;
+  const where = r.stored
+    ? `A copy is set aside on this device and the app has started empty.
+       Download it before entering anything new.`
+    : `<span class="recovery-warn">This device had no room to set a copy aside, so it only
+       exists until you close this tab</span> — download it now.`;
+  const detail = [r.stored ? r.key : null, fmtBytes(r.bytes), r.reason]
+    .filter(Boolean).map(esc).join(' · ');
+  return `
+    <div class="demo-banner recovery">
+      <div class="demo-banner-title">⚠ Saved data could not be read</div>
+      <div class="demo-banner-text">
+        Range Log found saved data on this device but could not open it, so it has
+        <b>not</b> been overwritten. ${where}
+      </div>
+      <div class="recovery-detail">${detail}</div>
+      <div class="demo-banner-actions">
+        <button class="btn-demo btn-demo-keep" onclick="downloadUnreadableData()">Download Copy</button>
+        <button class="btn-demo" onclick="dismissRecoveryNotice()">Dismiss</button>
+      </div>
+    </div>`;
+}
+
+// Served from the in-memory copy, so this works whether or not the set-aside write landed.
+function downloadUnreadableData() {
+  if (!recoveryState) return;
+  const blob = new Blob([recoveryState.raw], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `range-log-unreadable-${today()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Hides the notice only. The copy stays where it is — dismissing a warning is not the same
+// as agreeing to throw the data away, and Delete All Data is where that decision lives.
+function dismissRecoveryNotice() {
+  if (!recoveryState) return;
+  if (!recoveryState.stored &&
+      !confirm('The only copy of that data is in this tab. If you dismiss without ' +
+               'downloading it, closing the tab loses it for good.\n\nDismiss anyway?')) return;
+  recoveryState.dismissed = true;
+  renderDemoBanner();
+}
+
 function wipeAllData() {
-  data = {
-    schemaVersion: SCHEMA_VERSION,
-    isDemo: false,
-    firearms: [],
-    locations: [],
-    sellers: [],
-    sessions: [],
-    ammo: [],
-  };
+  data = buildEmptyData();
   save(data);
   // Without this every photo blob survives the wipe, unreachable and invisible — the app
   // looks empty while still holding every image it ever stored.
   clearAllPhotos();
+  // Same reasoning for a set-aside copy of unreadable data: it is a full copy of the
+  // record, so "delete everything" has to mean it too, or the app reports itself empty
+  // while still holding the lot.
+  discardRecoveryCopies();
   renderAll();
+}
+
+// Removes every set-aside copy and the in-memory one. Separate from the banner's Dismiss,
+// which only stops showing the notice.
+function discardRecoveryCopies() {
+  Object.keys(localStorage)
+    .filter(k => k.startsWith(UNREADABLE_PREFIX))
+    .forEach(k => localStorage.removeItem(k));
+  recoveryState = null;
 }
 
 function clearDemoData() {
@@ -6206,7 +6326,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.4.4';
+const APP_VERSION = '7.4.5';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

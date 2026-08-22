@@ -712,6 +712,160 @@ describe('user text is escaped, not parsed as markup', () => {
   });
 });
 
+// ── UNREADABLE DATA IS PRESERVED, NOT REPLACED ──────────────────────
+// load() used to hand back demo data whenever the stored JSON would not parse. That
+// disguised a read failure as a fresh install, and the next save — any save — wrote demo
+// data over the only copy of the real record. These drive the actual startup path, with the
+// bad value already in localStorage before app.js runs, because that is the only way the
+// failure happens for real.
+
+describe('startup finds stored data it cannot read', () => {
+  const REAL = JSON.stringify({
+    schemaVersion: 15, isDemo: false,
+    firearms: [{ id: 'g1', name: 'Real Rifle', type: 'rifle', calibers: ['9mm'],
+                 cleanThreshold: 500, totalRounds: 900, notes: '',
+                 cleanings: [], zeros: [], dope: [], groups: [] }],
+    locations: [], sellers: [], sessions: [], ammo: [],
+  });
+
+  // Seeds localStorage from a script spliced in ahead of app.js.
+  function loadWithStored(stored) {
+    return loadApp(js =>
+      `localStorage.setItem('rangeLogData', ${JSON.stringify(stored)});\n${js}`);
+  }
+
+  const CASES = [
+    ['truncated JSON, as an interrupted write leaves it', REAL.slice(0, REAL.length - 30)],
+    ['valid JSON whose shape the migrations choke on', JSON.stringify({ schemaVersion: 1, sessions: [] })],
+    ['not JSON at all', 'null garbage'],
+  ];
+
+  for (const [label, stored] of CASES) {
+    test(`${label}: starts empty, not with demo data`, async () => {
+      const win = await ready(loadWithStored(stored));
+      assert.strictEqual(win.eval('data.isDemo'), false,
+        'a read failure must never present itself as a fresh install');
+      assert.strictEqual(win.eval('data.firearms.length'), 0,
+        'demo firearms sitting where the real ones were is what made this confusing');
+      assert.ok(win.eval('recoveryState'), 'the failure should be recorded, not swallowed');
+    });
+
+    test(`${label}: the unreadable text survives the next save`, async () => {
+      const win = await ready(loadWithStored(stored));
+      const key = win.eval('recoveryState.key');
+      assert.ok(key, 'a copy should have been set aside');
+      win.eval('save(data)');   // the save that used to destroy it
+      assert.strictEqual(win.localStorage.getItem(key), stored,
+        'the set-aside copy must be byte-identical to what was found');
+    });
+  }
+
+  test('reloading with the same unreadable value does not stack up copies', async () => {
+    // The service worker reloads the page once it installs an update, and nothing stops the
+    // user refreshing while the banner is up — so startup runs repeatedly against the same
+    // bad value. This was found in a browser, not here: jsdom never reloads.
+    const stored = REAL.slice(0, 40);
+    const win = await ready(loadWithStored(stored));
+    const firstKey = win.eval('recoveryState.key');
+
+    // Re-run startup against the state the previous load left behind.
+    for (let i = 0; i < 3; i++) win.eval('data = load();');
+
+    const keys = Object.keys(win.localStorage).filter(k => k.startsWith('rangeLogData-unreadable-'));
+    assert.strictEqual(keys.length, 1,
+      `one unreadable value should mean one copy, got ${keys.length}: ${keys.join(', ')}`);
+    assert.strictEqual(win.eval('recoveryState.key'), firstKey, 'and it should still point at it');
+    assert.strictEqual(win.localStorage.getItem(firstKey), stored);
+  });
+
+  test('a different unreadable value gets its own copy, not an overwrite', async () => {
+    const win = await ready(loadWithStored(REAL.slice(0, 40)));
+    const firstKey = win.eval('recoveryState.key');
+    win.localStorage.setItem('rangeLogData', REAL.slice(0, 25));   // a different bad value
+    win.eval('data = load();');
+
+    assert.notStrictEqual(win.eval('recoveryState.key'), firstKey);
+    assert.strictEqual(win.localStorage.getItem(firstKey), REAL.slice(0, 40),
+      'the earlier copy is the more valuable one and must survive');
+    assert.strictEqual(win.localStorage.getItem(win.eval('recoveryState.key')), REAL.slice(0, 25));
+  });
+
+  test('an empty app with no stored data is still a first run, with demo data', async () => {
+    const win = await ready(loadApp());
+    assert.strictEqual(win.eval('data.isDemo'), true);
+    assert.strictEqual(win.eval('recoveryState'), null, 'nothing failed, so nothing to recover');
+  });
+
+  test('readable data is untouched — no false positives', async () => {
+    const win = await ready(loadWithStored(REAL));
+    assert.strictEqual(win.eval('recoveryState'), null);
+    assert.strictEqual(win.eval('data.firearms[0].name'), 'Real Rifle');
+    assert.strictEqual(win.eval('data.isDemo'), false);
+  });
+
+  test('the banner says what happened and offers the copy', async () => {
+    const win = await ready(loadWithStored(REAL.slice(0, 40)));
+    win.renderDemoBanner();
+    const banner = win.document.getElementById('demo-banner-container');
+    assert.ok(banner.querySelector('.demo-banner.recovery'), 'the recovery banner should show');
+    const text = flat(banner);
+    assert.match(text, /could not be read/i);
+    assert.match(text, /not been overwritten/i, 'the user needs to know nothing is lost yet');
+    assert.ok(banner.innerHTML.includes('downloadUnreadableData()'), 'and a way to get it back');
+  });
+
+  test('the recovery banner displaces the demo banner rather than stacking with it', async () => {
+    const win = await ready(loadWithStored(REAL.slice(0, 40)));
+    win.eval('data.isDemo = true;');   // belt and braces: they must never both show
+    win.renderDemoBanner();
+    const banner = win.document.getElementById('demo-banner-container');
+    assert.strictEqual(banner.querySelectorAll('.demo-banner').length, 1);
+    assert.ok(banner.querySelector('.recovery'));
+  });
+
+  test('Dismiss hides the notice but keeps the copy', async () => {
+    const win = await ready(loadWithStored(REAL.slice(0, 40)));
+    const key = win.eval('recoveryState.key');
+    win.dismissRecoveryNotice();
+    assert.strictEqual(flat(win.document.getElementById('demo-banner-container')), '');
+    assert.strictEqual(win.localStorage.getItem(key), REAL.slice(0, 40),
+      'dismissing a warning is not agreeing to throw the data away');
+  });
+
+  test('Delete All Data does clear the set-aside copy', async () => {
+    const win = await ready(loadWithStored(REAL.slice(0, 40)));
+    const key = win.eval('recoveryState.key');
+    win.wipeAllData();
+    assert.strictEqual(win.localStorage.getItem(key), null,
+      'a full copy of the record surviving a wipe is the photos bug all over again');
+    assert.strictEqual(win.eval('recoveryState'), null);
+  });
+
+  test('a device with no room for the copy still offers the download', async () => {
+    // Patched inside the page, ahead of app.js: jsdom runs inline scripts while the document
+    // is being constructed, so load() has already been and gone by the time onload fires —
+    // patching from out here would be too late to affect it. Only the set-aside write is
+    // made to fail, so this isolates a full device from a broken localStorage.
+    const win = await ready(loadApp(js => `
+      localStorage.setItem('rangeLogData', ${JSON.stringify(REAL.slice(0, 40))});
+      (function () {
+        const real = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (k, v) {
+          if (String(k).startsWith('rangeLogData-unreadable-')) throw new Error('quota');
+          return real.call(this, k, v);
+        };
+      })();
+      ${js}`));
+
+    assert.strictEqual(win.eval('recoveryState.stored'), false);
+    assert.strictEqual(win.eval('recoveryState.raw'), REAL.slice(0, 40),
+      'the in-memory copy is the whole point of holding it as well as storing it');
+    win.renderDemoBanner();
+    const text = flat(win.document.getElementById('demo-banner-container'));
+    assert.match(text, /no room|until you close/i, `should say the copy is not durable: ${text}`);
+  });
+});
+
 // ── VIEW/EDIT MODALS BEHAVE ALIKE ───────────────────────────────────
 // Zero, dope, session and ammo share one implementation of the view/edit modal. These
 // assert the behaviour that shape is supposed to guarantee, so that if the shared helper

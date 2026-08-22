@@ -1293,6 +1293,27 @@
     margin-bottom: 12px;
   }
   .demo-banner-actions { display: flex; gap: 8px; }
+
+  /* Recovery variant of the banner. Same skeleton, danger accent — unlike most colour
+     choices in the app this one genuinely is a status, so --danger is the right well. */
+  .demo-banner.recovery {
+    background: linear-gradient(135deg, #2a1512, #1a1a1a);
+    border-color: var(--danger);
+  }
+  .demo-banner.recovery .demo-banner-title { color: var(--danger); }
+  .demo-banner.recovery .btn-demo-keep { border-color: var(--danger); color: #e8776a; }
+  .recovery-detail {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-dim);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 10px;
+    margin-bottom: 12px;
+    word-break: break-all;
+  }
+  .recovery-warn { color: var(--warn); }
   .btn-demo {
     flex: 1;
     padding: 9px 10px;
