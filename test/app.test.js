@@ -712,6 +712,113 @@ describe('user text is escaped, not parsed as markup', () => {
   });
 });
 
+// ── POINT OF IMPACT: THE MEDIAN MARKER ──────────────────────────────
+// The cross is the answer to "where is this rifle actually hitting". It used to be drawn
+// only when the dots were coloured by bucket, which needs 2–4 buckets — so a rifle shot
+// with a single load got no marker at all, while the note underneath still described a
+// median it never plotted. That is the commonest case, not an edge one.
+
+describe('point of impact plots its median however the dots are coloured', () => {
+  // calPts 0.01 apart at 1 inch => 1 normalised unit is 100 inches. poa at centre, so an
+  // impact at x = poa.x + 0.001 sits 0.1 inch right of aim.
+  function group(id, date, ammo, offX, offY, distance = 50) {
+    const poa = { x: 0.5, y: 0.5 };
+    // Three impacts around a centre displaced by (offX, offY) inches. y is inverted on the
+    // way in, so a positive offY here comes back as "high".
+    const c = { x: poa.x + offX / 100, y: poa.y - offY / 100 };
+    return {
+      id, date, ammo, tags: [], distance, distanceUnit: 'yd',
+      calMode: 'linear', calInches: 1,
+      calPts: [{ x: 0.40, y: 0.50 }, { x: 0.41, y: 0.50 }],
+      poa,
+      impacts: [
+        { x: c.x + 0.0005, y: c.y },
+        { x: c.x - 0.0005, y: c.y + 0.0005 },
+        { x: c.x, y: c.y - 0.0005 },
+      ],
+    };
+  }
+
+  function appWith(groups) {
+    return ready(loadApp()).then(win => {
+      win.eval(`data = {
+        schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+        firearms: [{ id: 'g1', name: 'Test Rifle', type: 'rifle', calibers: ['.223 Rem'],
+          opticUnit: 'moa', cleanThreshold: 500, totalRounds: 0, notes: '',
+          cleanings: [], zeros: [], dope: [], groups: ${JSON.stringify(groups)} }],
+        locations: [], sellers: [], sessions: [], ammo: [] };`);
+      win.showTab('stats');
+      win.showStatsSection('groups');
+      win.document.getElementById('stats-range').value = 'all';
+      win.document.getElementById('stats-firearm').value = 'g1';
+      win.renderStats();
+      return win;
+    });
+  }
+
+  const poi = win => win.document.getElementById('stats-groups-poi');
+
+  test('one ammo: dots are one colour and still get a median cross', async () => {
+    const win = await appWith([
+      group('a', '2026-05-01', '77gr TMK', 0.4, 0.6),
+      group('b', '2026-05-02', '77gr TMK', 0.5, 0.7),
+      group('c', '2026-05-03', '77gr TMK', 0.6, 0.5),
+    ]);
+    const el = poi(win);
+    assert.strictEqual(el.querySelectorAll('circle[r="4"]').length, 3, 'three groups, three dots');
+    assert.strictEqual(el.querySelectorAll('.poi-center').length, 1,
+      'a single-load rifle must still show where it is hitting');
+  });
+
+  test('and the note describes the cross it actually drew', async () => {
+    const win = await appWith([
+      group('a', '2026-05-01', '77gr TMK', 0.4, 0.6),
+      group('b', '2026-05-02', '77gr TMK', 0.5, 0.7),
+    ]);
+    assert.match(flat(poi(win)), /the cross their median/,
+      'the wording must not promise a per-row cross when there is one for the lot');
+  });
+
+  test('two to four ammo: a cross per bucket, not one overall', async () => {
+    const win = await appWith([
+      group('a', '2026-05-01', '77gr TMK', 0.4, 0.6),
+      group('b', '2026-05-02', '77gr TMK', 0.5, 0.7),
+      group('c', '2026-05-03', '55gr FMJ', -0.8, -0.3),
+      group('d', '2026-05-04', '55gr FMJ', -0.7, -0.4),
+    ]);
+    const el = poi(win);
+    assert.strictEqual(el.querySelectorAll('.poi-center').length, 2, 'one per load');
+    assert.match(flat(el), /the cross its median per row/);
+  });
+
+  test('beyond four buckets everything goes one colour — and still gets one cross', async () => {
+    // The palette is validated for four series; past that the code drops to a single colour,
+    // which is exactly the branch that used to lose the marker.
+    const win = await appWith(['A', 'B', 'C', 'D', 'E'].flatMap((a, i) => [
+      group(`${a}1`, `2026-05-0${i + 1}`, `Load ${a}`, 0.2 * i, 0.1 * i),
+    ]));
+    const el = poi(win);
+    assert.strictEqual(el.querySelectorAll('circle[r="4"]').length, 5);
+    assert.strictEqual(el.querySelectorAll('.poi-center').length, 1);
+  });
+
+  test('the cross sits at the median, not the mean, so one flyer cannot drag it', async () => {
+    const win = await appWith([
+      group('a', '2026-05-01', '77gr TMK', 0.5, 0.5),
+      group('b', '2026-05-02', '77gr TMK', 0.5, 0.5),
+      group('c', '2026-05-03', '77gr TMK', 8.0, 8.0),   // one wild group
+    ]);
+    const el = poi(win);
+    const cross = el.querySelector('.poi-center');
+    const dots = [...el.querySelectorAll('circle[r="4"]')];
+    // The two clustered groups plot on top of each other; the cross must be with them.
+    const [cx] = cross.getAttribute('d').match(/-?[\d.]+/g).map(Number);
+    const clustered = Number(dots[0].getAttribute('cx'));
+    assert.ok(Math.abs((cx + 7) - clustered) < 6,
+      'a mean would sit a third of the way out toward the flyer');
+  });
+});
+
 // ── UNREADABLE DATA IS PRESERVED, NOT REPLACED ──────────────────────
 // load() used to hand back demo data whenever the stored JSON would not parse. That
 // disguised a read failure as a fresh install, and the next save — any save — wrote demo
@@ -1834,8 +1941,10 @@ describe('point of impact map', () => {
     open(win, gun.id, 'ammo');
     const oneBucket = poi(win).querySelectorAll('.poi-legend span').length;
     assert.strictEqual(oneBucket, 0, 'one bucket needs no legend');
-    assert.strictEqual(poi(win).querySelectorAll('.poi-center').length, 0,
-      'and no per-row median cross');
+    // Not zero: uncoloured means no cross *per row*, but the plot still has to say where the
+    // rifle is hitting overall. Drawing nothing here was the v7.5.1 bug.
+    assert.strictEqual(poi(win).querySelectorAll('.poi-center').length, 1,
+      'one bucket gets one median cross for the lot, not none');
 
     open(win, gun.id, 'tag');    // demo groups carry several tags
     const names = new Set();
@@ -1848,6 +1957,8 @@ describe('point of impact map', () => {
     } else {
       assert.strictEqual(legend, 0,
         'beyond four buckets the palette cannot separate them, so it stops colouring');
+      assert.strictEqual(poi(win).querySelectorAll('.poi-center').length, 1,
+        'dropping the colour must not also drop the median');
     }
   });
 

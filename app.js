@@ -4076,6 +4076,18 @@ function renderGroupPOI(gun, groups) {
     }
   });
 
+  // Where the rifle is actually hitting is the whole question this plot answers, so the
+  // median has to be drawn whichever way the dots are colored. Per-bucket crosses only
+  // exist in the 2–4 bucket case; every other case gets one cross for the lot. Without this
+  // a rifle shot with a single load — the plainest reading of a zero there is — drew no
+  // marker at all, while the note underneath still described a median it never showed.
+  if (!colored) {
+    const ox = statsMedian(usable.map(g => g.offXMOA));
+    const oy = statsMedian(usable.map(g => g.offYMOA));
+    svg += `<path class="poi-center" d="M${px(ox) - 7} ${py(oy)}h14M${px(ox)} ${py(oy) - 7}v14"
+                  stroke="${ACCENT}" stroke-width="2.5" fill="none"/>`;
+  }
+
   const legend = colored
     ? `<div class="poi-legend">${names.map((n, i) =>
         `<span><i style="background:${SERIES[i % SERIES.length]}"></i>${
@@ -4109,7 +4121,7 @@ function renderGroupPOI(gun, groups) {
            aria-label="Group centers relative to point of aim">${svg}</svg>
       ${legend}
       <div class="stats-note">Each dot is one group's <b>center</b> against your aim${
-        colored ? ', the cross its median per row' : ''}. ${
+        colored ? ', the cross its median per row' : ', the cross their median'}. ${
         centered
           ? `Typical center sits on aim.`
           : `Typical center is ${[dirY, dirX].filter(Boolean).join(' and ')} of aim across
@@ -6326,7 +6338,7 @@ renderDashboard();
 renderLogForm();
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.5';
+const APP_VERSION = '7.5.1';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
