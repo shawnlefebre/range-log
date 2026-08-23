@@ -553,6 +553,11 @@
     margin-bottom: 6px;
   }
   .group-row-main { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text); }
+  /* Names the measure without competing with the figure. Every list leads with extreme
+     spread and every Stats chart plots mean radius, so an unlabelled "MOA" in either place
+     is the one thing that cannot be allowed. */
+  .group-row-main .unit,
+  .group-row-size .unit { font-size: 0.68em; color: var(--text-dim); font-weight: 400; }
   .group-row-sub { font-family: var(--font-mono); font-size: 0.62rem; color: var(--text-muted); margin-top: 3px; }
   .group-row-size {
     font-family: var(--font-mono);
@@ -1106,6 +1111,15 @@
     font-size: 1.5rem;
     color: var(--accent);
     line-height: 1;
+  }
+  /* Unit rides with the figure so the label underneath is free to name the measure. Both
+     are needed: "0.83" alone does not say MOA, and "MOA" alone does not say which of the two
+     group sizes this app reports it is. */
+  .stats-stat-num .unit {
+    font-family: var(--font-mono);
+    font-size: 0.42em;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
   }
   .stats-stat-label {
     font-family: var(--font-mono);

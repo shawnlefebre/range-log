@@ -1068,6 +1068,130 @@ describe('point of impact warns when distances are mixed', () => {
   });
 });
 
+// ── WHICH GROUP SIZE IS BEING SHOWN ─────────────────────────────────
+// Lists lead with extreme spread, because that is the figure quoted for a single group.
+// Stats charts use mean radius, because extreme spread grows with shot count and would rank
+// a 3-shot group above a 5-shot one from the same rifle. Both are right for their job — but
+// on real groups they differ by two to three and a half times with no fixed ratio, so an
+// unlabelled "MOA" in one place and an unlabelled "MOA" in the other cannot be reconciled.
+
+describe('every group figure says which measure it is', () => {
+  function grp(id, date, ammo, spread, shots = 5) {
+    const poa = { x: 0.5, y: 0.5 };
+    const impacts = [];
+    for (let i = 0; i < shots; i++) {
+      const a = (i / shots) * Math.PI * 2;
+      impacts.push({ x: poa.x + Math.cos(a) * spread * 0.0004,
+                     y: poa.y + Math.sin(a) * spread * 0.0004 });
+    }
+    return {
+      id, date, ammo, tags: [], distance: 50, distanceUnit: 'yd', sessionId: 's1',
+      calMode: 'linear', calInches: 1,
+      calPts: [{ x: 0.40, y: 0.50 }, { x: 0.41, y: 0.50 }],
+      poa, impacts,
+    };
+  }
+  const GROUPS = [
+    grp('a', '2026-06-13', '77gr TMK', 1),
+    grp('b', '2026-06-13', '77gr TMK', 3),
+    grp('c', '2026-06-13', '55gr FMJ', 5),
+  ];
+
+  async function app() {
+    const win = await ready(loadApp());
+    win.eval(`data = {
+      schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      firearms: [{ id: 'g1', name: 'Bolt Gun', type: 'rifle', calibers: ['.223 Rem'],
+        opticUnit: 'moa', cleanThreshold: 500, totalRounds: 60, notes: '',
+        cleanings: [], zeros: [], dope: [], groups: ${JSON.stringify(GROUPS)} }],
+      locations: [{ id: 'l1', name: 'North Range' }], sellers: [],
+      sessions: [{ id: 's1', date: '2026-06-13', locationId: 'l1', rounds: { g1: 60 },
+                   totalRounds: 60, notes: '' }],
+      ammo: [] };`);
+    return win;
+  }
+
+  test('extreme spread and mean radius really are different numbers here', async () => {
+    // If they were close this whole problem would be cosmetic. They are not.
+    const win = await app();
+    const ratios = win.eval(`data.firearms[0].groups.map(g => {
+      const dIn = groupDistanceInches(g), m = groupMetrics(groupToInches(g));
+      return toMOA(m.es, dIn) / toMOA(m.meanRadius, dIn); })`);
+    ratios.forEach(r => assert.ok(r > 1.5,
+      `extreme spread should be well above mean radius, got ${r}x`));
+  });
+
+  test('the Stats tiles name mean radius and carry a unit', async () => {
+    const win = await app();
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-range').value = 'all';
+    win.document.getElementById('stats-firearm').value = 'g1';
+    win.renderStats();
+    const text = flat(win.document.getElementById('stats-groups-stats'));
+    assert.match(text, /median mean radius/i);
+    assert.match(text, /best mean radius/i);
+    assert.match(text, /MOA/, 'the figure needs its unit as well as its name');
+  });
+
+  test('the trend chart says which size it plots', async () => {
+    const win = await app();
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-range').value = 'all';
+    win.document.getElementById('stats-firearm').value = 'g1';
+    win.renderStats();
+    assert.match(flat(win.document.getElementById('stats-groups-trend')), /mean radius/i,
+      'a chart titled only "group size" does not say which of the two it means');
+  });
+
+  test('a Details row labels its spread figure and carries mean radius too', async () => {
+    const win = await app();
+    win.openGunHistory('g1');
+    const row = flat(win.document.querySelector('#history-groups-list .group-row'));
+    assert.match(row, /MOA spread/, 'the headline figure is extreme spread and must say so');
+    assert.match(row, /MOA mean radius/,
+      'and must carry the number the Stats charts plot, or the row cannot be found on them');
+  });
+
+  test('a range day row does the same', async () => {
+    const win = await app();
+    win.openGroupDay('g1', '2026-06-13');
+    const row = flat(win.document.querySelector('#day-groups .group-row'));
+    assert.match(row, /MOA spread/);
+    assert.match(row, /MOA mean radius/);
+  });
+
+  test('the mean radius on a row is the number the charts plot for that group', async () => {
+    // The whole point. If these ever diverge, the label is worse than useless.
+    const win = await app();
+    win.openGunHistory('g1');
+    const shown = [...win.document.querySelectorAll('#history-groups-list .group-row')]
+      .map(r => flat(r).match(/([\d.]+) MOA mean radius/))
+      .filter(Boolean).map(m => m[1]);
+    const charted = win.eval(`groupsInScope, (function(){
+      const gun = data.firearms[0];
+      return [...gun.groups]
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .map(g => gFmt(groupMeanRadiusMOA(g)));
+    })()`);
+    assert.strictEqual(shown.length, 3);
+    // Spread into this realm first: an array returned from win.eval carries jsdom's
+    // Array.prototype, and deepStrictEqual compares prototypes, so identical values fail.
+    assert.deepStrictEqual(shown, [...charted],
+      'the row and the chart must be quoting the same measurement of the same group');
+  });
+
+  test('the session scorecard names its measure', async () => {
+    const win = await app();
+    win.showTab('sessions');
+    win.renderSessions();
+    const card = flat(win.document.getElementById('sessions-list'));
+    assert.match(card, /MOA spread/,
+      'the scorecard ranks by extreme spread, so it must not print a bare MOA either');
+  });
+});
+
 // ── ONE COLOR PER LOAD, ACROSS BOTH CHARTS ──────────────────────────
 // Compare and Point of Impact are grouped by the same dimension so they can be read
 // together. They each used to choose colors independently — Compare by index after sorting

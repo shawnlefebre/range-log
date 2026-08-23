@@ -1315,7 +1315,7 @@ function sessionScorecard(sessionId) {
           <div class="scorecard-gun">${esc(r.gun.name)}</div>
           <div class="scorecard-sub">${sub}</div>
         </div>
-        <div class="scorecard-moa ${r.moa === best ? 'best' : ''}">${gFmt(r.moa)}<span> MOA</span></div>
+        <div class="scorecard-moa ${r.moa === best ? 'best' : ''}">${gFmt(r.moa)}<span> MOA spread</span></div>
       </div>`;
   }).join('') : `
     <div class="scorecard-more">${rows.length} groups &mdash; open a firearm's Details to see each one.</div>`;
@@ -1324,7 +1324,7 @@ function sessionScorecard(sessionId) {
     <div class="scorecard">
       <div class="scorecard-head">
         <span>Groups this session</span>
-        <span class="scorecard-figs">best ${gFmt(best)} &middot; avg ${gFmt(avg)} MOA</span>
+        <span class="scorecard-figs">best ${gFmt(best)} &middot; avg ${gFmt(avg)} MOA spread</span>
       </div>
       ${detail}
     </div>`;
@@ -1719,9 +1719,19 @@ function renderGunHistory(gunId) {
       // MOA leads here: these rows sit side by side across different distances, and
       // inches aren't comparable between them. Inches drops to the secondary line —
       // unless the distance is missing, in which case it's all we can honestly show.
-      const primary = moa != null ? `${gFmt(moa)} MOA`
-        : size != null ? `${gFmt(size)}"` : '—';
-      const secondary = (moa != null && size != null) ? `${gFmt(size)}"` : '';
+      //
+      // Named rather than left as a bare "MOA". This figure is extreme spread; every chart
+      // in Stats plots mean radius, and on real groups the two differ by two to three and a
+      // half times with no fixed ratio between them — so an unlabelled number here and an
+      // unlabelled number there cannot be reconciled by eye.
+      const mr = groupMeanRadiusMOA(g);
+      const primary = moa != null ? `${gFmt(moa)}<span class="unit"> MOA spread</span>`
+        : size != null ? `${gFmt(size)}<span class="unit">"</span>` : '—';
+      const secondary = [
+        moa != null && size != null ? `${gFmt(size)}"` : '',
+        // The number Stats charts this group by, so a row can be found on them.
+        mr != null ? `${gFmt(mr)} MOA mean radius` : '',
+      ].filter(Boolean).join(' · ');
       const sub = [`${g.distance} ${g.distanceUnit || 'yd'}`, `${(g.impacts || []).length} shots`];
       // Shortened here as everywhere else: the full load name runs to three lines on a phone
       // and pushes every other group off the panel. Tapping the row shows it in full.
@@ -3742,11 +3752,11 @@ function renderGroupsStats() {
   document.getElementById('stats-groups-stats').innerHTML = `
     <div class="stats-stat-grid">
       <div class="stats-stat-box">
-        <div class="stats-stat-num">${gFmt(statsMedian(sizes))}</div>
-        <div class="stats-stat-label">Median MOA</div></div>
+        <div class="stats-stat-num">${gFmt(statsMedian(sizes))}<span class="unit"> MOA</span></div>
+        <div class="stats-stat-label">Median mean radius</div></div>
       <div class="stats-stat-box">
-        <div class="stats-stat-num">${gFmt(Math.min(...sizes))}</div>
-        <div class="stats-stat-label">Best Group</div></div>
+        <div class="stats-stat-num">${gFmt(Math.min(...sizes))}<span class="unit"> MOA</span></div>
+        <div class="stats-stat-label">Best mean radius</div></div>
       <div class="stats-stat-box">
         <div class="stats-stat-num">${groups.length}</div>
         <div class="stats-stat-label">Groups · ${days.length} day${days.length === 1 ? '' : 's'}</div></div>
@@ -3952,7 +3962,7 @@ function renderGroupTrend(gun, groups) {
   const tappable = days.some(d => d.sessionId);
   el.innerHTML = `
     <div class="stats-chart-card">
-      <div class="stats-chart-title">Group Size Over Time</div>
+      <div class="stats-chart-title">Mean radius over time</div>
       <div class="trend-chart">
         <svg class="trend-axis" viewBox="0 0 ${AXIS_W} ${H}" width="${AXIS_W}" height="${H}"
              aria-hidden="true">${axisSvg}</svg>
@@ -4003,6 +4013,7 @@ function groupsOnDay(gun, dateISO) {
       return {
         raw: g,
         moa: m && distIn ? toMOA(m.es, distIn) : null,
+        mr: m && distIn ? toMOA(m.meanRadius, distIn) : null,
         inches: m ? m.es : null,
         shots: m ? m.n : 0,
       };
@@ -4037,7 +4048,7 @@ function renderGroupDay() {
     <div class="day-figs">
       ${roundsLogged ? `<div class="day-fig"><b>${roundsLogged}</b><span>rounds logged</span></div>` : ''}
       <div class="day-fig"><b>${shots}</b><span>shots measured</span></div>
-      <div class="day-fig"><b>${median}</b><span>median MOA</span></div>
+      <div class="day-fig"><b>${median}</b><span>median MOA spread</span></div>
     </div>`;
 
   document.getElementById('day-context').innerHTML = session
@@ -4050,7 +4061,7 @@ function renderGroupDay() {
           this firearm that day; <b>shots measured</b> is what is in the groups below. They
           rarely match — you don't photograph every string.</div>` : ''}`
     : `<div class="day-nosession">No session logged for this day · ${shots} shot${
-         shots === 1 ? '' : 's'} measured · median ${median} MOA</div>`;
+         shots === 1 ? '' : 's'} measured · median ${median} MOA spread</div>`;
 
   const best = measured.length ? Math.min(...measured) : null;
   document.getElementById('day-groups').innerHTML = rows.length
@@ -4067,7 +4078,8 @@ function renderGroupDay() {
           <div class="group-row tappable" onclick="openViewGroup('${gun.id}','${g.id}')"
                role="button" tabindex="0" title="View this group">
             <div class="group-row-info">
-              <div class="group-row-main">${r.moa != null ? `${gFmt(r.moa)} MOA` : '—'}${
+              <div class="group-row-main">${r.moa != null
+                  ? `${gFmt(r.moa)}<span class="unit"> MOA spread</span>` : '—'}${
                 r.moa != null && r.moa === best && measured.length > 1
                   ? ' <span class="dim">· best</span>' : ''}${
                 hasPhoto(g) ? ' 📷' : ''}</div>
@@ -4076,6 +4088,8 @@ function renderGroupDay() {
             </div>
             <div class="group-row-figure">
               <div class="group-row-size">${r.inches != null ? `${gFmt(r.inches)}"` : '—'}</div>
+              <div class="group-row-sub">${r.mr != null
+                ? `${gFmt(r.mr)} MOA mean radius` : ''}</div>
             </div>
           </div>`;
       }).join('')
@@ -5118,6 +5132,17 @@ function groupMetrics(pts) {
 function groupSizeInches(g) {
   const m = groupMetrics(groupToInches(g));
   return m ? m.es : null;
+}
+
+// The same group as Stats charts it. Every list leads with extreme spread, because that is
+// the figure people quote for a single group; every Stats chart uses mean radius, because
+// extreme spread grows with shot count and would rank a 3-shot group above a 5-shot one from
+// the same rifle. Both are right for their job, which is why this exists rather than one of
+// them being changed — a row can carry the number you would look for it under.
+function groupMeanRadiusMOA(g) {
+  const dIn = groupDistanceInches(g);
+  const m = groupMetrics(groupToInches(g));
+  return m && dIn ? toMOA(m.meanRadius, dIn) : null;
 }
 
 function gFmt(v, d = 2) { return v == null || !isFinite(v) ? '—' : v.toFixed(d); }
@@ -6792,7 +6817,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.6.1';
+const APP_VERSION = '7.6.2';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

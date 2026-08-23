@@ -323,6 +323,15 @@ shots.
 every shot and doesn't drift with sample size, which makes it the fair way to compare
 groups — and the number to trust when your shot counts aren't consistent.
 
+**Which one you're looking at is always named.** The app uses both, deliberately: a group
+listed on its own leads with **extreme spread**, because that's the figure people quote for
+a single group, while every chart under Stats → Groups plots **mean radius**, because
+ranking loads by extreme spread would quietly favor whichever you happened to shoot in
+3-round strings. On real groups the two differ by roughly two to three and a half times,
+and the ratio isn't fixed — so no figure is left as a bare "MOA". A list row reads *2.45 MOA
+spread* and carries *0.70 MOA mean radius* beneath it, which is the number that group sits at
+on the trend and comparison charts.
+
 **Why MOA rather than inches.** A 1″ group at 50 yards and a 1″ group at 100 yards are not
 the same performance; the second is twice as good. MOA is angular, so it stays comparable
 across distances. One MOA subtends about 1.047″ at 100 yards. Inches are still shown, but

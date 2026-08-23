@@ -32,9 +32,12 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   // Stored count, not rendered rows: the list caps at 5, so rows measure the cap.
   const demoGroups = await page.evaluate(() =>
     data.firearms.find(g => (g.groups || []).length).groups.length);
-  // MOA leads in this list, since groups shot at different distances sit side by side.
+  // MOA leads in this list, since groups shot at different distances sit side by side, and
+  // it names the measure: the figure is extreme spread while every Stats chart plots mean
+  // radius, and the two differ by two to three times on real groups.
   const demoSize = await page.locator('#history-groups-list .group-row-size').first().textContent();
-  check('demo group leads with a computed MOA figure', /^\d+\.\d+ MOA$/.test(demoSize.trim()));
+  check('demo group leads with a computed MOA figure, named as spread',
+    /^\d+\.\d+ MOA spread$/.test(demoSize.trim()));
 
   // Opening the group modal must close Details, never stack over it (the iOS repaint bug).
   await page.click('button.btn-mini:has-text("+ Add Group")');
@@ -130,7 +133,12 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
       inches: r.querySelectorAll('.group-row-sub')[1].textContent.trim(),
     })));
   check('saved group survives reload with computed MOA and inches',
-    rows.length === demoGroups + 1 && rows.some(r => r.primary === '3.82 MOA' && r.inches === '2.00"'));
+    rows.length === demoGroups + 1 &&
+    rows.some(r => r.primary === '3.82 MOA spread' && r.inches.startsWith('2.00"')));
+  // The row also carries the mean radius, which is what the Stats charts plot it at — without
+  // it there is no way to find this group on them.
+  check('and carries the mean radius the charts use',
+    rows.some(r => /\d+\.\d+ MOA mean radius/.test(r.inches)));
 
   // Delete must take the photo with it, or blobs orphan in IndexedDB. Target the row we
   // saved specifically — the demo groups carry no photo, so deleting one proves nothing.
