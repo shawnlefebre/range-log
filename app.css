@@ -1696,6 +1696,49 @@
 
   /* Point-of-impact legend. Identity never rests on color alone — the row name sits beside
      the swatch, and the same buckets are labelled in the comparison chart above it. */
+  /* Settings readout for the inverse of an orphan: groups pointing at photos that are gone.
+     Accent, not --danger — nothing is damaged, and each row is a repair you can make. */
+  .photo-lost {
+    background: #2a2210;
+    border: 1px solid var(--accent-dim);
+    border-radius: var(--radius);
+    padding: 11px 12px;
+    margin-top: 10px;
+  }
+  .photo-lost-head {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .photo-lost-text {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin-bottom: 10px;
+  }
+  .photo-lost-row {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 9px 11px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text);
+  }
+  .photo-lost-row:hover { background: var(--surface3); }
+  .photo-lost-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .photo-lost-n { flex: 0 0 auto; color: var(--text-dim); font-size: 0.62rem; }
+
   /* Missing photo, with a way to put it back. Accent rather than --danger: nothing is
      broken, the measurements are intact and only re-marking is unavailable. */
   .photo-missing {

@@ -157,6 +157,51 @@ const seed = photoId => `
   });
   ck('and the camera icon returns for both', back === 2);
 
+  // ── Settings reports the targets whose photos are gone ───────────────────
+  await reset();
+  const report = await page.evaluate(async () => {
+    await deletePhoto('ph_shared');
+    await refreshAvailablePhotoIds();
+    showTab('settings');
+    await renderPhotoStorage();
+    const targets = missingPhotoTargets();
+    return {
+      rows: document.querySelectorAll('.photo-lost-row').length,
+      targets: targets.length,
+      groupsOnTarget: targets[0] && targets[0].groups.length,
+      head: (document.querySelector('.photo-lost-head') || {}).textContent || '',
+      opens: (document.querySelector('.photo-lost-row') || {}).getAttribute
+        ? document.querySelector('.photo-lost-row').getAttribute('onclick') : '',
+    };
+  });
+  // A and B share the target; C never had a photo and must not be reported as lost.
+  ck('one shared target is reported once, not once per group', report.targets === 1);
+  ck('and it says how many groups it covers', report.groupsOnTarget === 2);
+  ck('a group that never had a photo is not called missing', report.rows === 1);
+  ck('the heading counts targets', /1 target/.test(report.head));
+  ck('the row opens a group on that target', /openLogGroup\('g1','[AB]'\)/.test(report.opens));
+
+  // Following the row must land on the restore prompt, or the report is a dead end.
+  const followed = await page.evaluate(async () => {
+    const row = document.querySelector('.photo-lost-row');
+    eval(row.getAttribute('onclick'));
+    await new Promise(r => setTimeout(r, 300));
+    const el = document.getElementById('group-photo-missing');
+    return { open: document.getElementById('modal-group').classList.contains('open'),
+             prompt: el.style.display !== 'none' };
+  });
+  ck('following it opens that group', followed.open);
+  ck('and lands on the restore prompt', followed.prompt);
+
+  // Once restored, the report must clear itself rather than keep listing a fixed target.
+  const cleared = await page.evaluate(async () => {
+    await putPhoto('ph_shared', new Blob(['image-bytes'], { type: 'image/png' }));
+    await refreshAvailablePhotoIds();
+    await renderPhotoStorage();
+    return document.querySelectorAll('.photo-lost-row').length;
+  });
+  ck('a restored target drops off the report', cleared === 0);
+
   let bad = 0;
   checks.forEach(([n, ok]) => { if (!ok) bad++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${n}`); });
   if (errs.length) { bad++; console.log('ERRORS ' + [...new Set(errs)].join(' | ')); }

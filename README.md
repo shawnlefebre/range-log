@@ -372,6 +372,8 @@ Photos are downscaled before storing, so each one lands around 30–100 KB — a
 
 **Settings → Target Photos** shows exactly what's stored: how many photos, their total size, and how much room the app has. If any photos are no longer attached to a group — which can happen after importing a backup — it offers to reclaim that space.
 
+It also reports the opposite case: groups pointing at a photo the device no longer has. These cost nothing and break nothing, but they quietly remove the ability to re-mark, and finding them otherwise would mean opening every group. They're listed one row per **target** rather than per group, since restoring one photo repairs every group marked on it — tap a row to go straight to the group that can restore it.
+
 Because photos are left out of the JSON backup, moving them to another device is a separate step: **Export photos** writes a bundle you import on the new device *after* restoring the JSON backup. Importing a bundle only restores images that some group actually refers to.
 
 ### If your saved data can't be read

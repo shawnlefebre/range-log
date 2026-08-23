@@ -782,6 +782,29 @@ async function photoStoreStats() {
   return { count: keys.length, bytes, orphans: keys.filter(k => !keep.has(k)).length };
 }
 
+// The inverse of an orphan: a group pointing at a photo the store no longer has. Orphans
+// waste space and are invisible; these cost nothing but quietly remove the ability to
+// re-mark, and until now there was no way to find them short of opening every group.
+//
+// Keyed by photoId rather than by group, because one target is one thing to fix — restoring
+// it repairs every group marked on it, so listing them separately would overstate the work.
+function missingPhotoTargets() {
+  const byPhoto = new Map();
+  (data.firearms || []).forEach(gun => (gun.groups || []).forEach(g => {
+    if (!g.photoId || availablePhotoIds.has(g.photoId)) return;
+    const t = byPhoto.get(g.photoId)
+      || { photoId: g.photoId, gunId: gun.id, gunName: gun.name, groups: [] };
+    t.groups.push(g);
+    byPhoto.set(g.photoId, t);
+  }));
+  return [...byPhoto.values()]
+    .map(t => {
+      const dates = [...new Set(t.groups.map(g => g.date))].sort();
+      return { ...t, dates, openId: t.groups[0].id };
+    })
+    .sort((a, b) => (b.dates[0] || '').localeCompare(a.dates[0] || ''));
+}
+
 // ── UTILS ─────────────────────────────────────────────────────────
 function uid() { return 'id_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
 
@@ -6575,6 +6598,9 @@ async function renderPhotoStorage() {
   const el = document.getElementById('photo-storage');
   if (!el) return;
 
+  // Both readouts below are only as honest as this cache, so it is re-read here rather
+  // than trusted from whenever it was last touched.
+  await refreshAvailablePhotoIds();
   const stats = await photoStoreStats();
   let quotaLine = '';
   try {
@@ -6598,6 +6624,23 @@ async function renderPhotoStorage() {
       <button class="btn-mini" style="margin-top:8px;" onclick="reclaimOrphanedPhotos()">Reclaim space</button>
     </div>` : '';
 
+  // Each row opens the first group on that target, which is where the restore prompt lives.
+  // Any of them would do — restoring writes back under the shared id and repairs the lot.
+  const missing = missingPhotoTargets();
+  const missingBlock = missing.length ? `
+    <div class="photo-lost">
+      <div class="photo-lost-head">⚠ ${missing.length} target${missing.length > 1 ? 's' : ''}
+        missing ${missing.length > 1 ? 'their photos' : 'its photo'}</div>
+      <div class="photo-lost-text">Every measurement is intact — only re-marking needs the
+        image. Open one to put the photo back; that repairs every group marked on it.</div>
+      ${missing.map(t => `
+        <button class="photo-lost-row" onclick="openLogGroup('${t.gunId}','${t.openId}')">
+          <span class="photo-lost-name">${esc(t.gunName)} · ${fmtDate(t.dates[0])}${
+            t.dates.length > 1 ? ` +${t.dates.length - 1} more` : ''}</span>
+          <span class="photo-lost-n">${t.groups.length} group${t.groups.length > 1 ? 's' : ''}</span>
+        </button>`).join('')}
+    </div>` : '';
+
   el.innerHTML = `
     <div class="photo-stats">
       <div class="photo-stat">
@@ -6614,7 +6657,8 @@ async function renderPhotoStorage() {
       </div>
     </div>
     ${quotaLine}
-    ${orphanBlock}`;
+    ${orphanBlock}
+    ${missingBlock}`;
 }
 
 async function reclaimOrphanedPhotos() {
@@ -6712,7 +6756,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.5.5';
+const APP_VERSION = '7.5.6';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
