@@ -1837,6 +1837,74 @@
   }
   .dim { color: var(--text-dim); }
 
+  /* ── Accuracy by firearm ──────────────────────────────────────────
+     Same skeleton as the group comparison rows, but the bar is an uncertainty range rather
+     than an observed spread, so the dot is the estimate and the bar is what the data cannot
+     rule out. Neutral color throughout: this is one measurement per row, not a series. */
+  .fa-row {
+    display: grid;
+    grid-template-columns: 1fr 3.4rem;
+    gap: 4px 8px;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .fa-name { grid-column: 1 / -1; min-width: 0; }
+  .fa-name-t {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .fa-name span, .fa-name > span:last-child {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+  }
+  .fa-track {
+    position: relative;
+    height: 14px;
+    background: var(--surface2);
+    border-radius: 7px;
+  }
+  .fa-span {
+    position: absolute;
+    top: 4px;
+    height: 6px;
+    min-width: 2px;
+    background: var(--accent-dim);
+    border-radius: 3px;
+  }
+  .fa-dot {
+    position: absolute;
+    top: 3px;
+    width: 8px;
+    height: 8px;
+    margin-left: -4px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  /* Its own axis rather than .cmp-axis: that one absolutely positions each label from an
+     inline left the comparison chart computes, so reusing the class without it stacked all
+     three on the same spot. */
+  .fa-axis {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--text-dim);
+    margin: -4px 3.8rem 10px 0;
+  }
+  .fa-val {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--accent);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
   /* ── Groups scope chips ───────────────────────────────────────────
      Multi-select, so these are toggles rather than a <select>: on a phone a native
      multi-select is a modal list you cannot see the chart behind. Rows scroll sideways

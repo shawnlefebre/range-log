@@ -3699,6 +3699,185 @@ function renderGroupScope(groups) {
     </div>`;
 }
 
+// ── COMPARING FIREARMS ────────────────────────────────────────────
+// Two-sided 95% t by degrees of freedom, indexed df = 1..29, flat 1.96 beyond. A normal
+// multiplier is wrong at these sample sizes and wrong in the flattering direction: with two
+// groups it produced a *narrower* interval than pooling every shot did, which would have
+// dressed up the emptiest data in the collection as the most certain.
+const T95 = [0, 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228,
+  2.201, 2.179, 2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074,
+  2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045];
+function tCrit(df) { return df < 1 ? NaN : (df < T95.length ? T95[df] : 1.96); }
+
+// Below this a spread across groups cannot be estimated at all — two groups can happen to
+// agree closely and say nothing by it. Such firearms still appear with their figure, but
+// carry no interval and take no part in any claim that two differ.
+const MIN_GROUPS_FOR_INTERVAL = 3;
+
+// Accuracy per firearm over whatever the shared filters and the distance chips leave in
+// scope. The estimate averages each group's mean radius; the uncertainty is the spread
+// *between* groups, because the question is how the firearm shoots in general, not how one
+// particular target came out.
+function firearmAccuracy(distances) {
+  const { start, end } = getStatsRangeBounds();
+  const locId = document.getElementById('stats-location').value;
+
+  return (data.firearms || []).map(gun => {
+    const mrs = [];
+    let shots = 0;
+    const seen = new Set();
+    (gun.groups || []).forEach(g => {
+      if (start && g.date < start) return;
+      if (end && g.date > end) return;
+      if (locId) {
+        const ses = g.sessionId ? (data.sessions || []).find(s => s.id === g.sessionId) : null;
+        if (!ses || ses.locationId !== locId) return;
+      }
+      const label = groupDistanceLabel(g);
+      if (distances && distances.size && !distances.has(label)) return;
+      const dIn = groupDistanceInches(g);
+      const m = groupMetrics(groupToInches(g));
+      if (!m || !dIn) return;
+      seen.add(label);
+      mrs.push(toMOA(m.meanRadius, dIn));
+      shots += m.n;
+    });
+    if (!mrs.length) return null;
+
+    const n = mrs.length;
+    const mean = mrs.reduce((a, b) => a + b, 0) / n;
+    const sd = n > 1
+      ? Math.sqrt(mrs.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1)) : 0;
+    const half = n >= MIN_GROUPS_FOR_INTERVAL ? tCrit(n - 1) * (sd / Math.sqrt(n)) : null;
+    return {
+      gun, n, shots, mean,
+      lo: half == null ? null : Math.max(0, mean - half),
+      hi: half == null ? null : mean + half,
+      distances: [...seen].sort(),
+    };
+  }).filter(Boolean).sort((a, b) => a.mean - b.mean);
+}
+
+// Two firearms are only called apart when their intervals clear each other. Anything less is
+// an ordering the data does not support, and printing a ranked list without saying so is the
+// quiet kind of wrong this app tries not to be.
+function accuracySeparated(a, b) {
+  if (a.lo == null || b.lo == null) return false;
+  return a.hi < b.lo || b.hi < a.lo;
+}
+
+function renderFirearmCompare(el) {
+  const withGroups = (data.firearms || []).filter(g => (g.groups || []).length);
+  if (withGroups.length < 2) {
+    el.innerHTML = `<div class="empty-state" style="padding:26px 16px;">
+      Pick a firearm above to see its groups.<br>
+      <span style="font-size:0.72rem;color:var(--text-dim);">
+        Once two firearms have groups, leaving this on All Firearms compares them.
+      </span></div>`;
+    return;
+  }
+
+  // Distance only. Ammo means different things across calibers, so filtering on it here
+  // would compare loads that were never alternatives to each other.
+  // null, not a sentinel string: the source is allowed exactly one of those and it means
+  // "type your own" in the dropdowns. Scope state starts null anyway, so the all-firearms
+  // view and a fresh app agree without a special value.
+  resetGroupScopeIfGunChanged(null);
+  const everything = firearmAccuracy(null);
+  const allDistances = [...new Set(everything.flatMap(r => r.distances))]
+    .sort((a, b) => parseFloat(a) - parseFloat(b));
+  [...groupScope.distance].forEach(d => { if (!allDistances.includes(d)) groupScope.distance.delete(d); });
+
+  const rows = firearmAccuracy(groupScope.distance);
+  const inScope = [...new Set(rows.flatMap(r => r.distances))];
+
+  const chips = allDistances.length > 1 ? `
+    <div class="scope-row">
+      <label class="filter-label">Distance</label>
+      <div class="scope-chips">
+        <button class="scope-chip scope-all${groupScope.distance.size ? '' : ' on'}"
+                onclick="toggleGroupScope('distance', null)">All</button>
+        ${allDistances.map(d => {
+          const n = everything.filter(r => r.distances.includes(d)).length;
+          return `<button class="scope-chip${groupScope.distance.has(d) ? ' on' : ''}"
+                    onclick="toggleGroupScope('distance', ${JSON.stringify(d).replace(/"/g, '&quot;')})"
+                    ><span class="scope-chip-t">${esc(d)}</span><b>${n}</b></button>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  // The gap between a bench rifle at 50 yd and a handgun at 25 ft dwarfs any difference
+  // between the firearms themselves, so an unfiltered list mostly ranks shooting positions.
+  const mixed = inScope.length > 1 ? `
+    <div class="poi-caveat"><span class="i">⚠</span><span>${inScope.length} distances in scope
+      (${esc(inScope.join(', '))}). A handgun at close range and a rifle off a bench are
+      different disciplines before they are different firearms — <b>pick one distance</b> for
+      this to be about the firearms.</span></div>` : '';
+
+  if (!rows.length) {
+    el.innerHTML = `<div class="stats-chart-card">${chips}
+      <div class="stats-empty">No measurable groups in this range.</div></div>`;
+    return;
+  }
+
+  const max = Math.max(...rows.map(r => (r.hi == null ? r.mean : r.hi))) * 1.08 || 1;
+  const pct = v => Math.min(100, (v / max) * 100);
+
+  const rowsHtml = rows.map(r => {
+    const provisional = r.lo == null;
+    const bar = provisional
+      ? `<span class="fa-dot" style="left:${pct(r.mean)}%"></span>`
+      : `<span class="fa-span" style="left:${pct(r.lo)}%;width:${pct(r.hi - r.lo)}%"></span>
+         <span class="fa-dot" style="left:${pct(r.mean)}%"></span>`;
+    return `
+      <div class="fa-row">
+        <div class="fa-name">
+          <span class="fa-name-t">${esc(r.gun.name)}</span>
+          <span>${r.n} group${r.n === 1 ? '' : 's'} · ${r.shots} shots${
+            provisional ? ' · too few to bracket' : ''}</span>
+        </div>
+        <div class="fa-track">${bar}</div>
+        <div class="fa-val">${gFmt(r.mean)}</div>
+      </div>`;
+  }).join('');
+
+  // Stated for the top two that can actually be compared. A firearm with too few groups to
+  // bracket is not a contender for this claim in either direction — saying it "overlaps"
+  // would be wrong, since it has nothing to overlap with.
+  const bracketed = rows.filter(r => r.lo != null);
+  const thin = rows.length - bracketed.length;
+  const [best, next] = bracketed;
+  const thinNote = thin
+    ? ` ${thin} firearm${thin === 1 ? '' : 's'} here ${thin === 1 ? 'has' : 'have'} too few
+        groups to place at all.`
+    : '';
+
+  const verdict = !next
+    ? (bracketed.length && thin
+        ? `<div class="stats-note">Only one firearm here has enough groups to place.${thinNote}</div>`
+        : '')
+    : accuracySeparated(best, next)
+      ? `<div class="stats-note"><b>${esc(best.gun.name)}</b> is measurably tighter than
+         ${esc(next.gun.name)} here — their ranges don't overlap.${thinNote}</div>`
+      : `<div class="stats-note"><b>Too close to call.</b> ${esc(best.gun.name)} and
+         ${esc(next.gun.name)} overlap, so this order isn't evidence that one shoots better.
+         More groups of the same thing narrows the bars.${thinNote}</div>`;
+
+  el.innerHTML = `
+    <div class="stats-chart-card">
+      <div class="stats-chart-title">Accuracy by firearm</div>
+      ${chips}
+      ${rowsHtml}
+      <div class="fa-axis"><span>0</span><span>${gFmt(max / 2)}</span><span>${gFmt(max)} MOA</span></div>
+      <div class="stats-note">Mean radius in MOA, averaged across groups — lower is better.
+        The bar is the 95% range for where that firearm's true figure sits, from how much its
+        groups vary. Fewer than ${MIN_GROUPS_FOR_INTERVAL} groups gets no bar, because a
+        spread cannot be estimated from that.</div>
+      ${verdict}
+      ${mixed}
+    </div>`;
+}
+
 function renderGroupsStats() {
   const promptEl = document.getElementById('stats-groups-prompt');
   const bodyEl = document.getElementById('stats-groups-body');
@@ -3706,12 +3885,12 @@ function renderGroupsStats() {
 
   const { gun, groups: unscoped } = groupsInScope();
   if (!gun) {
+    // No firearm picked is its own question — how do these shoot against each other — rather
+    // than a dead end. It used to say group sizes aren't comparable between firearms, which
+    // is too strong: MOA is angular, so it is comparable. What is not comparable is
+    // everything that differs alongside the firearm, chiefly the distance you shoot it at.
     bodyEl.style.display = 'none';
-    promptEl.innerHTML = `<div class="empty-state" style="padding:26px 16px;">
-      Pick a firearm above to see its groups.<br>
-      <span style="font-size:0.72rem;color:var(--text-dim);">
-        Group sizes aren't comparable between firearms, so this view always looks at one.
-      </span></div>`;
+    renderFirearmCompare(promptEl);
     return;
   }
   promptEl.innerHTML = '';
@@ -6817,7 +6996,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.6.2';
+const APP_VERSION = '7.6.3';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

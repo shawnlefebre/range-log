@@ -1068,6 +1068,169 @@ describe('point of impact warns when distances are mixed', () => {
   });
 });
 
+// ── COMPARING FIREARMS ──────────────────────────────────────────────
+// Leaving the firearm filter on All compares them. The hard part is not the chart, it is
+// refusing to rank when the data cannot support it — which, on a real collection, is most of
+// the time.
+
+describe('accuracy by firearm', () => {
+  // Ring of shots at a fixed radius: mean radius comes out as exactly that radius, so the
+  // expected MOA is computable by hand rather than read back off the implementation.
+  function ringGroup(id, date, radiusIn, shots = 5, distance = 50) {
+    const poa = { x: 0.5, y: 0.5 };
+    // calPts 0.01 apart == 1 inch, so 1 inch is 0.01 normalized units.
+    const r = radiusIn * 0.01;
+    const impacts = [];
+    for (let i = 0; i < shots; i++) {
+      const a = (i / shots) * Math.PI * 2;
+      impacts.push({ x: poa.x + Math.cos(a) * r, y: poa.y + Math.sin(a) * r });
+    }
+    return {
+      id, date, ammo: 'load', tags: [], distance, distanceUnit: 'yd',
+      calMode: 'linear', calInches: 1,
+      calPts: [{ x: 0.40, y: 0.50 }, { x: 0.41, y: 0.50 }],
+      poa, impacts,
+    };
+  }
+
+  async function app(firearms) {
+    const win = await ready(loadApp());
+    win.eval(`data = {
+      schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      firearms: ${JSON.stringify(firearms.map((f, i) => ({
+        id: `g${i + 1}`, name: f.name, type: 'rifle', calibers: ['.223 Rem'], opticUnit: 'moa',
+        cleanThreshold: 500, totalRounds: 0, notes: '',
+        cleanings: [], zeros: [], dope: [], groups: f.groups,
+      })))},
+      locations: [], sellers: [], sessions: [], ammo: [] };`);
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-range').value = 'all';
+    win.document.getElementById('stats-firearm').value = '';
+    win.renderStats();
+    return win;
+  }
+
+  const rows = win => [...win.document.querySelectorAll('#stats-groups-prompt .fa-row')]
+    .map(r => ({ name: flat(r.querySelector('.fa-name-t')), val: flat(r.querySelector('.fa-val')),
+                 meta: flat(r.querySelector('.fa-name span:last-child')),
+                 hasBar: !!r.querySelector('.fa-span') }));
+
+  // Radii chosen so the two are far apart and each is consistent across its own groups.
+  const TIGHT = [1, 2, 3, 4].map((d, i) => ringGroup(`t${i}`, `2026-05-0${d}`, 0.5));
+  const LOOSE = [1, 2, 3, 4].map((d, i) => ringGroup(`l${i}`, `2026-05-0${d}`, 2.0));
+
+  test('a ring of shots gives back the radius it was built from', async () => {
+    // Anchors everything below: if this is wrong the rest is measuring the wrong thing.
+    // 0.5 in at 50 yd = 0.5 / 1800 rad = 0.955 MOA.
+    const win = await app([{ name: 'A', groups: TIGHT }]);
+    const mr = win.eval("groupMeanRadiusMOA(data.firearms[0].groups[0])");
+    assert.ok(Math.abs(mr - 0.955) < 0.01, `expected ~0.955 MOA, got ${mr}`);
+  });
+
+  test('firearms are listed tightest first, with their figure', async () => {
+    const win = await app([{ name: 'Loose', groups: LOOSE }, { name: 'Tight', groups: TIGHT }]);
+    const r = rows(win);
+    assert.strictEqual(r.length, 2);
+    assert.strictEqual(r[0].name, 'Tight', 'lower mean radius comes first');
+    assert.ok(Math.abs(parseFloat(r[0].val) - 0.96) < 0.02);
+    assert.ok(Math.abs(parseFloat(r[1].val) - 3.82) < 0.05);
+  });
+
+  test('a clear difference is called, rather than left to the reader', async () => {
+    const win = await app([{ name: 'Loose', groups: LOOSE }, { name: 'Tight', groups: TIGHT }]);
+    const note = flat(win.document.getElementById('stats-groups-prompt'));
+    assert.match(note, /measurably tighter/i);
+    assert.ok(!/too close to call/i.test(note));
+  });
+
+  test('two firearms that shoot the same are called too close, not ranked', async () => {
+    // Same radius, jittered a hair so the ordering is arbitrary rather than tied.
+    const A = [1, 2, 3, 4].map((d, i) => ringGroup(`a${i}`, `2026-05-0${d}`, 1.00 + i * 0.02));
+    const B = [1, 2, 3, 4].map((d, i) => ringGroup(`b${i}`, `2026-05-0${d}`, 1.01 + i * 0.02));
+    const win = await app([{ name: 'A', groups: A }, { name: 'B', groups: B }]);
+    const note = flat(win.document.getElementById('stats-groups-prompt'));
+    assert.match(note, /too close to call/i,
+      'overlapping ranges must not be presented as a ranking');
+    assert.match(note, /more groups/i, 'and should say what would resolve it');
+  });
+
+  test('fewer than three groups gets a figure but no bar, and no verdict from it', async () => {
+    // Two groups can agree closely by chance; a spread cannot be estimated from them.
+    const thin = [{ name: 'Thin', groups: TIGHT.slice(0, 2) },
+                  { name: 'Thick', groups: LOOSE }];
+    const win = await app(thin);
+    const r = rows(win);
+    const t = r.find(x => x.name === 'Thin');
+    assert.ok(t, 'it still appears — the figure is real, only the certainty is not');
+    assert.strictEqual(t.hasBar, false, 'no interval drawn from two groups');
+    assert.match(t.meta, /too few/i);
+    assert.ok(!/measurably tighter/i.test(flat(win.document.getElementById('stats-groups-prompt'))),
+      'a firearm with no interval cannot be declared the winner');
+  });
+
+  test('the verdict compares firearms that have intervals, and counts those that do not', async () => {
+    // A firearm with too few groups has nothing to overlap with, so saying it "overlaps"
+    // would be wrong in both directions. It is counted, not compared.
+    const win = await app([
+      { name: 'Thin', groups: TIGHT.slice(0, 1) },
+      { name: 'Tight', groups: TIGHT },
+      { name: 'Loose', groups: LOOSE },
+    ]);
+    const note = flat(win.document.getElementById('stats-groups-prompt'));
+    assert.match(note, /Tight is measurably tighter than Loose/i,
+      'the claim should be about the two that can carry one');
+    assert.ok(!/Thin (and|overlap)/i.test(note), 'the unbracketed firearm is not in the claim');
+    assert.match(note, /1 firearm here has too few groups/i, 'but it is accounted for');
+  });
+
+  test('the interval widens as groups get less consistent', async () => {
+    const steady = [1, 2, 3, 4].map((d, i) => ringGroup(`s${i}`, `2026-05-0${d}`, 1.0));
+    const erratic = [0.3, 1.0, 1.7, 2.4].map((r, i) => ringGroup(`e${i}`, `2026-05-0${i + 1}`, r));
+    const win = await app([{ name: 'Steady', groups: steady }, { name: 'Erratic', groups: erratic }]);
+    const widths = win.eval(`firearmAccuracy(null).map(r => r.hi - r.lo)`);
+    const [a, b] = [...widths];
+    assert.ok(Math.max(a, b) > Math.min(a, b) * 5,
+      'a firearm whose groups vary wildly must not look as certain as one that repeats');
+  });
+
+  test('picking a distance is offered, and narrows what is compared', async () => {
+    const near = [1, 2, 3].map((d, i) => ringGroup(`n${i}`, `2026-05-0${d}`, 0.5, 5, 25));
+    const far = [1, 2, 3].map((d, i) => ringGroup(`f${i}`, `2026-05-0${d}`, 0.5, 5, 100));
+    const win = await app([{ name: 'A', groups: [...near, ...far] },
+                           { name: 'B', groups: far }]);
+    assert.ok(win.document.querySelector('#stats-groups-prompt .scope-chip'),
+      'distance chips should be offered when more than one distance is in play');
+    // By name, not by position: the rows are sorted by figure, and narrowing changes the
+    // order as well as the counts — reading [0] twice compares two different firearms.
+    const countFor = (win, name, scoped) => win.eval(
+      `firearmAccuracy(${scoped ? 'groupScope.distance' : 'null'})
+         .find(r => r.gun.name === ${JSON.stringify(name)}).n`);
+    assert.strictEqual(countFor(win, 'A', false), 6, 'A shot at both distances');
+    win.toggleGroupScope('distance', '100 yd');
+    assert.strictEqual(countFor(win, 'A', true), 3, 'narrowing to one distance drops the rest');
+  });
+
+  test('mixed distances are called out as mixed disciplines', async () => {
+    const near = [1, 2, 3].map((d, i) => ringGroup(`n${i}`, `2026-05-0${d}`, 0.5, 5, 25));
+    const far = [1, 2, 3].map((d, i) => ringGroup(`f${i}`, `2026-05-0${d}`, 0.5, 5, 100));
+    const win = await app([{ name: 'A', groups: near }, { name: 'B', groups: far }]);
+    const text = flat(win.document.getElementById('stats-groups-prompt'));
+    assert.match(text, /distances in scope/i);
+    assert.match(text, /different disciplines/i,
+      'the rifle-versus-handgun trap is the whole reason this warning exists');
+  });
+
+  test('the t multiplier is used, not a flat 1.96', async () => {
+    // At three groups the normal multiplier understates the interval by about a third, and
+    // it understates it most for the firearms with the least data.
+    const win = await app([{ name: 'A', groups: TIGHT }]);
+    assert.ok(Math.abs(win.eval('tCrit(2)') - 4.303) < 0.001);
+    assert.ok(Math.abs(win.eval('tCrit(4)') - 2.776) < 0.001);
+    assert.strictEqual(win.eval('tCrit(60)'), 1.96, 'large samples converge on the normal');
+  });
+});
+
 // ── WHICH GROUP SIZE IS BEING SHOWN ─────────────────────────────────
 // Lists lead with extreme spread, because that is the figure quoted for a single group.
 // Stats charts use mean radius, because extreme spread grows with shot count and would rank
@@ -2160,12 +2323,14 @@ describe('stats groups pane', () => {
     }
   };
 
-  test('with no firearm chosen it explains itself instead of drawing an empty chart', async () => {
+  test('with no firearm chosen, and only one having groups, it explains itself', async () => {
+    // Demo data carries groups on the sample rifle alone, so there is nothing to compare
+    // against yet. It says what would make this view do something rather than sitting blank.
     const win = await ready(loadApp());
     pick(win, '', null);
     const prompt = win.document.getElementById('stats-groups-prompt').textContent;
     assert.match(prompt, /Pick a firearm/i);
-    assert.match(prompt, /comparable/i, 'it should say why this view is single-firearm');
+    assert.match(prompt, /two firearms/i, 'it should say what would fill this view');
     assert.strictEqual(win.document.getElementById('stats-groups-body').style.display, 'none');
   });
 

@@ -156,6 +156,23 @@ picker offers your zeros as anchors: **Since last zero**, and each earlier one. 
 the same day as a zero count as *after* it, since neither carries a time and you zero before
 you shoot groups.
 
+**Comparing firearms.** Leave the firearm filter on **All Firearms** and the pane compares
+them instead of asking you to pick one. Each is placed by its mean radius in MOA, averaged
+across its groups, with a bar showing the 95% range for where its true figure sits — derived
+from how much its own groups vary, not from how many shots you fired.
+
+Two things it refuses to do. It won't rank a firearm with **fewer than three groups**: two
+groups can agree closely by luck, and no spread can be estimated from them, so those appear
+with a figure and no bar and take no part in any comparison. And when two firearms' bars
+overlap it says **too close to call** rather than presenting the order as a result — an
+ordering the data doesn't support is worse than no ordering. More groups of the same thing
+narrows the bars.
+
+Distance is the thing to pin first. A handgun at 25 feet and a rifle off a bench at 50 yards
+differ by discipline long before they differ as firearms, and on a real collection that gap
+dwarfs everything else — so with more than one distance in scope, the view says so and offers
+the chips to narrow it.
+
 **Narrowing what's in play.** Above the charts sit three rows of chips — **ammo**, **distance**
 and **tag** — and everything below them follows: the trend, the comparison, and point of
 impact. Pick several within a row to mean *or*; pick across rows to mean *and*. So *77gr TMK*
