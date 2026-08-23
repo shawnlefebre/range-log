@@ -4230,6 +4230,39 @@ function isoDay(ms) {
 // Prone vs bench is the same chart as Norma vs CCI — one dot per group, a median tick, the
 // spread as a whisker. Only the grouping changes, so it is one view with a control rather
 // than three near-identical views.
+// Validated for four series against this surface; a fifth cannot be added without failing
+// color-blind separation, which is why both charts stop coloring rather than cycling.
+const GROUP_SERIES = ['#ba8c01', '#1f68bc', '#cf5a93', '#007c59'];
+const GROUP_ACCENT = '#c8a84b';
+
+// One color per bucket, decided once and handed to both charts. They used to each pick their
+// own: Compare colored by index after sorting on median, Point of Impact by whatever order
+// the buckets happened to be built in — so the same load was gold in one chart and green in
+// the other, and reading them together, which is the entire reason they share a dimension,
+// silently told you the wrong thing.
+//
+// The order is Compare's, best median first, because that one is meaningful; the map is
+// built from the full scoped set so a bucket keeps its color even in the chart that cannot
+// draw it. Whether to color at all is also decided here, so the two can never disagree about
+// that either.
+function groupSeriesFor(groups, dim) {
+  const buckets = {};
+  groups.forEach(g => dim.of(g).forEach(k => (buckets[k] = buckets[k] || []).push(g)));
+  const order = Object.entries(buckets)
+    .map(([k, gs]) => ({ k, med: statsMedian(gs.map(x => x.mrMOA)) }))
+    .sort((a, b) => a.med - b.med)
+    .map(x => x.k);
+
+  const colored = order.length >= 2 && order.length <= GROUP_SERIES.length;
+  const map = new Map();
+  order.forEach((k, i) => map.set(k, GROUP_SERIES[i % GROUP_SERIES.length]));
+  return {
+    order,
+    colored,
+    colorOf: k => (colored ? (map.get(k) || GROUP_ACCENT) : GROUP_ACCENT),
+  };
+}
+
 const GROUP_COMPARE_DIMS = {
   ammo:     { label: 'ammo', of: g => [g.ammo] },
   // Tags are multi-valued, so a group tagged prone + bipod lands in both buckets and the
@@ -4275,13 +4308,15 @@ function renderGroupCompare(groups) {
   // Plain HTML rows rather than SVG. Text inside an SVG scales with the viewBox, so on a
   // phone the labels came out smaller than body text; here they are real type at real sizes,
   // and they wrap and stay selectable.
-  const SERIES = ['#ba8c01', '#1f68bc', '#cf5a93', '#007c59'];
+  const series = groupSeriesFor(groups, dim);
   const all = groups.map(g => g.mrMOA);
   const xmax = Math.max(...all) * 1.08 || 1;
   const pct = v => (v / xmax) * 100;
 
-  const rowsHtml = rows.map((r, i) => {
-    const c = SERIES[i % SERIES.length];
+  const rowsHtml = rows.map(r => {
+    // By key, not by position — the same load has to come out the same color here as it does
+    // on the point-of-impact map beneath it.
+    const c = series.colorOf(r.key);
     const dots = r.gs.map(g =>
       `<span class="cmp-dot" style="left:${pct(g.mrMOA)}%;background:${c}"></span>`).join('');
     return `
@@ -4336,12 +4371,13 @@ function renderGroupPOI(gun, groups) {
   const dim = GROUP_COMPARE_DIMS[key] || GROUP_COMPARE_DIMS.ammo;
   const buckets = {};
   usable.forEach(g => dim.of(g).forEach(k => (buckets[k] = buckets[k] || []).push(g)));
-  const names = Object.keys(buckets);
-  const SERIES = ['#ba8c01', '#1f68bc', '#cf5a93', '#007c59'];
-  const ACCENT = '#c8a84b';
-  // The palette is validated for four series against this surface; a fifth cannot be added
-  // without failing color-blind separation, so beyond four everything goes one color.
-  const colored = names.length >= 2 && names.length <= SERIES.length;
+  // Ordered and colored by the same rule Compare uses, from the same scoped set, so a load
+  // that is gold up there is gold down here. Buckets with no measurable offset simply do not
+  // appear; the ones that do keep the color they were assigned.
+  const series = groupSeriesFor(groups, dim);
+  const names = series.order.filter(k => buckets[k]);
+  const ACCENT = GROUP_ACCENT;
+  const colored = series.colored;
 
   const W = 300, H = 300, C = W / 2, PAD = 26;
   const reach = Math.max(
@@ -4382,8 +4418,8 @@ function renderGroupPOI(gun, groups) {
           <text x="${C + 6}" y="${PAD - 6}" fill="${DIM}" font-family="IBM Plex Mono"
                 font-size="8.5">up</text>`;
 
-  names.forEach((n, i) => {
-    const c = colored ? SERIES[i % SERIES.length] : ACCENT;
+  names.forEach(n => {
+    const c = series.colorOf(n);
     buckets[n].forEach(g => {
       svg += `<circle cx="${px(g.offXMOA)}" cy="${py(g.offYMOA)}" r="4" fill="${c}"
                       opacity="0.82" stroke="var(--surface)" stroke-width="1.2"/>`;
@@ -4409,8 +4445,8 @@ function renderGroupPOI(gun, groups) {
   }
 
   const legend = colored
-    ? `<div class="poi-legend">${names.map((n, i) =>
-        `<span><i style="background:${SERIES[i % SERIES.length]}"></i>${
+    ? `<div class="poi-legend">${names.map(n =>
+        `<span><i style="background:${series.colorOf(n)}"></i>${
           key === 'day' ? fmtDate(n) : esc(shortLoadName(n))}</span>`).join('')}</div>`
     : '';
 
@@ -6756,7 +6792,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.6';
+const APP_VERSION = '7.6.1';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

@@ -1068,6 +1068,128 @@ describe('point of impact warns when distances are mixed', () => {
   });
 });
 
+// ── ONE COLOR PER LOAD, ACROSS BOTH CHARTS ──────────────────────────
+// Compare and Point of Impact are grouped by the same dimension so they can be read
+// together. They each used to choose colors independently — Compare by index after sorting
+// on median, POI by whatever order its buckets were built in — so the same load came out
+// gold in one and green in the other.
+
+describe('Compare and Point of Impact agree on colors', () => {
+  function grp(id, date, ammo, offX, offY, spread) {
+    const poa = { x: 0.5, y: 0.5 };
+    const c = { x: poa.x + offX / 100, y: poa.y - offY / 100 };
+    const s = spread * 0.0004;
+    return {
+      id, date, ammo, tags: [], distance: 50, distanceUnit: 'yd',
+      calMode: 'linear', calInches: 1,
+      calPts: [{ x: 0.40, y: 0.50 }, { x: 0.41, y: 0.50 }],
+      poa,
+      impacts: [{ x: c.x + s, y: c.y }, { x: c.x - s, y: c.y + s }, { x: c.x, y: c.y - s }],
+    };
+  }
+
+  async function app(groups) {
+    const win = await ready(loadApp());
+    win.eval(`data = {
+      schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      firearms: [{ id: 'g1', name: 'R', type: 'rifle', calibers: ['.223 Rem'], opticUnit: 'moa',
+        cleanThreshold: 500, totalRounds: 0, notes: '', cleanings: [], zeros: [], dope: [],
+        groups: ${JSON.stringify(groups)} }],
+      locations: [], sellers: [], sessions: [], ammo: [] };`);
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-range').value = 'all';
+    win.document.getElementById('stats-firearm').value = 'g1';
+    win.document.getElementById('stats-groups-compare-by').value = 'ammo';
+    win.renderStats();
+    return win;
+  }
+
+  // Compare labels are shortened for display, so the two charts are matched on the shortened
+  // form — which is what a reader actually sees under each.
+  const compareColors = win =>
+    [...win.document.querySelectorAll('#stats-groups-compare .cmp-row')].map(r => ({
+      label: flat(r.querySelector('.cmp-name-t')),
+      color: r.querySelector('.cmp-tick').style.background,
+    }));
+  const poiColors = win =>
+    [...win.document.querySelectorAll('#stats-groups-poi .poi-legend span')].map(s => ({
+      label: flat(s),
+      color: s.querySelector('i').style.background,
+    }));
+
+  // Deliberately built so median order and data order disagree: the load entered first
+  // shoots worst, so an index-based scheme lands them on opposite colors.
+  const MIXED = [
+    grp('a', '2026-05-01', 'Worst Load', 0.5, 0.5, 6),
+    grp('b', '2026-05-02', 'Worst Load', 0.5, 0.5, 6),
+    grp('c', '2026-05-03', 'Middle Load', -0.4, 0.2, 3),
+    grp('d', '2026-05-04', 'Middle Load', -0.4, 0.2, 3),
+    grp('e', '2026-05-05', 'Best Load', 0.1, -0.3, 1),
+    grp('f', '2026-05-06', 'Best Load', 0.1, -0.3, 1),
+  ];
+
+  test('the same load is the same color in both charts', async () => {
+    const win = await app(MIXED);
+    const cmp = compareColors(win), poi = poiColors(win);
+    assert.strictEqual(cmp.length, 3);
+    assert.strictEqual(poi.length, 3);
+    poi.forEach(p => {
+      const match = cmp.find(c => c.label === p.label);
+      assert.ok(match, `"${p.label}" should appear in both charts`);
+      assert.strictEqual(p.color, match.color,
+        `"${p.label}" is ${match.color} in Compare and ${p.color} in Point of Impact`);
+    });
+  });
+
+  test('the color follows the load, not the order it was entered', async () => {
+    // Checks both charts, not just Compare. Compare sorts before coloring, so it was already
+    // order-independent on its own — asserting on it alone passes against the very bug this
+    // describes, which is exactly the sort of test that lets one through.
+    const forward = await app(MIXED);
+    const reversed = await app([...MIXED].reverse());
+    const map = rows => Object.fromEntries(rows.map(r => [r.label, r.color]));
+    assert.deepStrictEqual(map(compareColors(forward)), map(compareColors(reversed)),
+      'Compare repainted when the same groups arrived in another order');
+    assert.deepStrictEqual(map(poiColors(forward)), map(poiColors(reversed)),
+      'Point of Impact repainted when the same groups arrived in another order');
+    assert.deepStrictEqual(map(poiColors(forward)), map(compareColors(forward)),
+      'and the two still agree with each other');
+  });
+
+  test('both charts stop coloring past four, rather than one of them cycling', async () => {
+    // Five loads: Compare used to reuse the palette, so rows 1 and 5 shared a color while
+    // POI had already dropped to a single one. Two charts, two different lies.
+    const five = ['L1', 'L2', 'L3', 'L4', 'L5'].flatMap((a, i) => [
+      grp(`${a}x`, `2026-05-0${i + 1}`, a, 0.2 * i, 0.1 * i, i + 1),
+      grp(`${a}y`, `2026-05-1${i}`, a, 0.2 * i, 0.1 * i, i + 1),
+    ]);
+    const win = await app(five);
+    const cmp = compareColors(win);
+    assert.strictEqual(cmp.length, 5);
+    assert.strictEqual(new Set(cmp.map(c => c.color)).size, 1,
+      'all one color: five series cannot be told apart, so none should claim to be');
+    assert.strictEqual(poiColors(win).length, 0, 'and no legend promising a mapping');
+  });
+
+  test('a load with no measurable offset keeps its color in Compare', async () => {
+    // No distance means no angular offset, so this load cannot plot on the POI map. It must
+    // still hold its own color rather than shifting the others along.
+    const groups = [
+      ...MIXED,
+      { ...grp('z', '2026-05-07', 'No Distance', 0, 0, 2), distance: 0 },
+    ];
+    const win = await app(groups);
+    const cmp = compareColors(win);
+    const poi = poiColors(win);
+    poi.forEach(p => {
+      const match = cmp.find(c => c.label === p.label);
+      assert.ok(match);
+      assert.strictEqual(p.color, match.color, `${p.label} shifted color`);
+    });
+  });
+});
+
 // ── POINT OF IMPACT: THE MEDIAN MARKER ──────────────────────────────
 // The cross is the answer to "where is this rifle actually hitting". It used to be drawn
 // only when the dots were colored by bucket, which needs 2–4 buckets — so a rifle shot
