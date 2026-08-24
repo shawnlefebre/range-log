@@ -2050,6 +2050,71 @@ describe('demo data generator', () => {
     });
   });
 
+  test('sample groups stay believable — no benchrest heroics', async () => {
+    // The generator drifted to a 0.38 MOA five-shot group while its own comment claimed
+    // 1.5 down to 0.8. Sample data that shows off is worse than sample data that is dull:
+    // it sets an expectation a real rifle will not meet. Bounds are deliberately wide —
+    // this guards against absurdity, not against retuning.
+    const win = await ready(loadApp());
+    const es = win.eval(`buildDefaultData().firearms
+      .flatMap(g => (g.groups || []).map(x => {
+        const dIn = groupDistanceInches(x), m = groupMetrics(groupToInches(x));
+        return m && dIn ? toMOA(m.es, dIn) : null;
+      })).filter(v => v != null)`);
+    const all = [...es];
+    assert.ok(all.length > 20, 'precondition: there are sample groups to check');
+    const best = Math.min(...all);
+    assert.ok(best > 0.5,
+      `tightest sample group is ${best.toFixed(2)} MOA — too good to hold up as an example`);
+  });
+
+  test('every firearm with sample groups reads as plausible for its type', async () => {
+    const win = await ready(loadApp());
+    const rows = win.eval(`buildDefaultData().firearms
+      .filter(g => (g.groups || []).length)
+      .map(gun => {
+        const es = gun.groups.map(x => {
+          const dIn = groupDistanceInches(x), m = groupMetrics(groupToInches(x));
+          return m && dIn ? toMOA(m.es, dIn) : null;
+        }).filter(v => v != null).sort((a, b) => a - b);
+        return { type: gun.type, med: es[Math.floor(es.length / 2)] };
+      })`);
+    [...rows].forEach(r => {
+      if (r.type === 'rifle') {
+        assert.ok(r.med > 0.8 && r.med < 4,
+          `sample rifle median ${r.med.toFixed(2)} MOA is outside anything believable`);
+      } else {
+        // Handguns are shot far closer, so their angular figures are much larger — a couple
+        // of inches at 25 yd is already several MOA.
+        assert.ok(r.med > 4 && r.med < 40,
+          `sample ${r.type} median ${r.med.toFixed(2)} MOA is outside anything believable`);
+      }
+    });
+  });
+
+  test('more than one firearm carries groups, so the comparison view has something to do', async () => {
+    const win = await ready(loadApp());
+    const n = win.eval('buildDefaultData().firearms.filter(g => (g.groups||[]).length).length');
+    assert.ok(n >= 2, 'the accuracy comparison is invisible on a fresh install below two');
+  });
+
+  test('two firearms share a distance, so pinning one still compares them', async () => {
+    // The comparison asks you to pin a distance. If no two firearms had ever been shot at
+    // the same one, doing so would empty the view and the demo would teach the wrong lesson.
+    const win = await ready(loadApp());
+    const byDistance = win.eval(`(function(){
+      const m = {};
+      buildDefaultData().firearms.forEach(g => (g.groups || []).forEach(x => {
+        const k = groupDistanceLabel(x);
+        (m[k] = m[k] || new Set()).add(g.id);
+      }));
+      return Object.entries(m).map(([k, v]) => [k, v.size]);
+    })()`);
+    const shared = [...byDistance].filter(([, n]) => n >= 2);
+    assert.ok(shared.length >= 1,
+      `no distance has two firearms: ${JSON.stringify([...byDistance])}`);
+  });
+
   test('sample groups span the year, so the trend chart demonstrates something', async () => {
     const win = await ready(loadApp());
     const demo = win.generateDemoData();
@@ -2406,15 +2471,24 @@ describe('stats groups pane', () => {
     }
   };
 
-  test('with no firearm chosen, and only one having groups, it explains itself', async () => {
-    // Demo data carries groups on the sample rifle alone, so there is nothing to compare
-    // against yet. It says what would make this view do something rather than sitting blank.
+  test('with no firearm chosen, demo data compares the ones that have groups', async () => {
+    // Sample data carries groups on the rifle and both handguns precisely so this view is
+    // discoverable on a fresh install rather than showing a prompt nobody would act on.
     const win = await ready(loadApp());
+    pick(win, '', null);
+    const prompt = win.document.getElementById('stats-groups-prompt');
+    assert.ok(prompt.querySelectorAll('.fa-row').length >= 2,
+      'the comparison should be showing, not a prompt to pick one');
+    assert.strictEqual(win.document.getElementById('stats-groups-body').style.display, 'none');
+  });
+
+  test('with only one firearm carrying groups it explains itself instead', async () => {
+    const win = await ready(loadApp());
+    win.eval("data.firearms.slice(1).forEach(g => { g.groups = []; });");
     pick(win, '', null);
     const prompt = win.document.getElementById('stats-groups-prompt').textContent;
     assert.match(prompt, /Pick a firearm/i);
     assert.match(prompt, /two firearms/i, 'it should say what would fill this view');
-    assert.strictEqual(win.document.getElementById('stats-groups-body').style.display, 'none');
   });
 
   test('choosing a firearm shows its groups and hides the prompt', async () => {

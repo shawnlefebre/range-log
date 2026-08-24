@@ -45,7 +45,7 @@ https://shawnlefebre.github.io/range-log/
 
 ## First Launch
 
-The app opens pre-loaded with a full year of sample data — firearms, sessions, cleanings, ammo purchases, plus a year of target groups and zeros on the sample rifle — so you can explore everything, including the Stats tab and Group Analysis, before entering anything of your own. The sample groups span the whole year at two distances and two loads, with a mid-year re-zero, so the trend and comparison charts have something real to show. A banner on the Dashboard lets you either:
+The app opens pre-loaded with a full year of sample data — firearms, sessions, cleanings, ammo purchases, plus a year of target groups and zeros — so you can explore everything, including the Stats tab and Group Analysis, before entering anything of your own. The rifle's groups span the whole year at two distances and two loads, with a mid-year re-zero, so the trend and comparison charts have something real to show. Both handguns carry groups at a shared distance as well, so the cross-firearm accuracy comparison has two things to compare and reaches a real verdict rather than sitting empty. A banner on the Dashboard lets you either:
 
 - **Clear & Start Fresh** — wipes the sample data for a blank app
 - **Keep This Data** — dismisses the banner and leaves the sample entries in place, if you'd rather edit them into your real setup than start from zero

@@ -145,8 +145,14 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
 
   await page.click('#statstab-groups');
   await page.waitForTimeout(300);
-  ck('Groups prompts for a firearm rather than drawing an empty chart',
-    /Pick a firearm/i.test(await page.locator('#stats-groups-prompt').textContent()));
+  // Sample data now carries groups on the rifle and both handguns, so leaving the firearm
+  // filter on All lands on the accuracy comparison rather than a prompt — which is the
+  // point of it being in the sample data at all.
+  ck('Groups compares the firearms rather than drawing an empty chart',
+    await page.locator('#stats-groups-prompt .fa-row').count() >= 2);
+  ck('and the comparison reaches a verdict about them',
+    /measurably tighter|too close to call/i.test(
+      await page.locator('#stats-groups-prompt').textContent()));
 
   const gunId = await page.evaluate(() => (data.firearms.find(f => (f.groups||[]).length)||{}).id);
   await page.selectOption('#stats-firearm', gunId);

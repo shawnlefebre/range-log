@@ -260,7 +260,10 @@ function generateDemoData() {
 
     // The story the sample data tells: bulk FMJ off bags to begin with, a match load and a
     // fresh zero around the middle of the year, and groups tightening as both settle in.
-    // Roughly 1.5 MOA at 50 yd down to 0.8 — a believable year, not a straight line.
+    // Roughly 2.1 MOA at 50 yd settling to 1.7 by year end — a believable year for a good
+    // factory rifle, not a straight line and not a benchrest gun. Measured, not guessed:
+    // this comment previously claimed 1.5 down to 0.8 while the generator was producing
+    // groups as tight as 0.38 MOA.
     const FMJ = 'Example Ammo Co 55gr FMJ';
     const MATCH = 'Example Match 69gr HPBT';
     const rezeroAt = Math.floor(rifleDays.length / 2);
@@ -275,8 +278,12 @@ function generateDemoData() {
       if (di % 5 === 4) return;
       const settled = di >= rezeroAt;
       // Base dispersion improves across the year, with the load change helping a little.
-      const base = 0.088 - (di / Math.max(1, rifleDays.length - 1)) * 0.038
-        + wobble[di % wobble.length] + (settled ? -0.004 : 0);
+      // Sized so the rifle reads as a good factory gun rather than a benchrest rig: the
+      // earlier values bottomed out at a 0.38 MOA five-shot group, which no sample data
+      // should be showing off. Floor is deliberate too, so a lucky draw cannot dip absurdly.
+      const base = Math.max(0.052,
+        0.125 - (di / Math.max(1, rifleDays.length - 1)) * 0.048
+        + wobble[di % wobble.length] * 1.4 + (settled ? -0.005 : 0));
 
       // Two or three groups a day: bench off bags, then prone off a bipod, which is
       // realistically a touch worse. Every few trips one gets shot at 100 instead of 50.
@@ -304,6 +311,54 @@ function generateDemoData() {
           ammo: s.ammo,
           tags: s.tags,
           bulletDia: 0.224,
+          calMode: 'linear',
+          calInches: 1,
+          calInchesH: 1,
+          calPts: [{ x: 0.30, y: 0.50 }, { x: 0.40, y: 0.50 }],
+          poa: { x: 0.50, y: 0.50 },
+          impacts,
+          photoId: null,
+        });
+      });
+    });
+
+    // Groups on both handguns, at the same distance as each other. Without a second firearm
+    // carrying groups, leaving the firearm filter on All Firearms has nothing to compare and
+    // the accuracy comparison is invisible on a fresh install. Two of them at 25 yd makes
+    // that view say something real, while the rifle's 50 and 100 yd groups are what make it
+    // warn about mixed distances until you pin one — which is the lesson that view teaches.
+    //
+    // Deliberately far enough apart to separate: the pistol should come out measurably
+    // tighter than the revolver rather than landing in "too close to call", so a fresh
+    // install demonstrates the comparison working rather than the comparison declining.
+    // Sized from the figure they should land on, not by eye. gauss() is four uniforms
+    // averaged, so its own sd is about 0.29 rather than 1 — scattering by `sd` directly
+    // produced roughly one-inch pistol groups at 25 yd, which is not what these should
+    // demonstrate. Aiming at ~3.5 MOA mean radius bench-rested and ~7 MOA offhand.
+    const handgunPlan = [
+      { idx: 1, ammo: 'Example Ammo Co 115gr FMJ', sd: 0.254, dia: 0.355, tags: ['bench'] },
+      { idx: 2, ammo: 'Example Ammo Co 125gr JHP', sd: 0.508, dia: 0.357, tags: ['offhand'] },
+    ];
+    handgunPlan.forEach(plan => {
+      const gunId = gunIds[plan.idx];
+      const days = [...sessions]
+        .filter(s => (s.rounds[gunId] || 0) > 0)
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .slice(-5);            // the most recent handful, not the whole year
+      days.forEach(host => {
+        const impacts = [0, 1, 2, 3, 4].map(() => ({
+          x: 0.5 + 0.006 + gauss() * plan.sd,
+          y: 0.5 - 0.004 + gauss() * plan.sd,
+        }));
+        firearms[plan.idx].groups.push({
+          id: `dgroup_${gi++}`,
+          date: host.date,
+          sessionId: host.id,
+          distance: 25,
+          distanceUnit: 'yd',
+          ammo: plan.ammo,
+          tags: plan.tags,
+          bulletDia: plan.dia,
           calMode: 'linear',
           calInches: 1,
           calInchesH: 1,
@@ -7004,7 +7059,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.6.5';
+const APP_VERSION = '7.6.6';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
