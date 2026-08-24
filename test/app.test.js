@@ -794,11 +794,16 @@ describe('the range day view', () => {
     assert.strictEqual(fig(win, 'shots measured'), '15', 'three groups of five');
   });
 
-  test('the two numbers are explained, since they never match', async () => {
+  test('each of the two numbers says where it came from', async () => {
+    // Naming the source of each is worth the line; spelling out that they differ is not,
+    // which is the difference between explaining a method and narrating the obvious.
     const win = await app();
     win.openGroupDay('g1', DAY);
-    assert.match(flat(win.document.getElementById('day-context')), /rarely match/i,
-      '60 next to 15 reads as an error without a word about it');
+    const ctx = flat(win.document.getElementById('day-context'));
+    assert.match(ctx, /Rounds logged.*what you recorded/i);
+    assert.match(ctx, /shots measured.*in the groups below/i);
+    assert.ok(!/rarely match|photograph every string/i.test(ctx),
+      'the reader can see they differ without being told');
   });
 
   test('a day with no session says so instead of showing an empty card', async () => {

@@ -144,10 +144,8 @@ asking. You get the location and your session note, the day's groups tightest-fi
 best one marked, and a way through to the full session if there is one. A group row opens
 that group.
 
-Two figures sit at the top and are worth reading as a pair: **rounds logged** is what you
-recorded for that firearm that day, **shots measured** is what's actually in the groups below.
-They rarely match, because you don't photograph every string — shown together so neither gets
-mistaken for the other.
+Two figures sit at the top: **rounds logged** is what you recorded for that firearm that day,
+**shots measured** is what's actually in the groups below.
 
 **Re-zero marks are always drawn**, whatever time range you're on. A re-zero is a hard
 boundary — point of impact before and after it aren't the same measurement — and hiding that

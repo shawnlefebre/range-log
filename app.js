@@ -4246,8 +4246,7 @@ function renderGroupDay() {
          ${figures}
        </div>
        ${roundsLogged ? `<div class="day-caveat"><b>Rounds logged</b> is what you recorded for
-          this firearm that day; <b>shots measured</b> is what is in the groups below. They
-          rarely match — you don't photograph every string.</div>` : ''}`
+          this firearm that day; <b>shots measured</b> is what is in the groups below.</div>` : ''}`
     : `<div class="day-nosession">No session logged for this day · ${shots} shot${
          shots === 1 ? '' : 's'} measured · median ${median} MOA spread</div>`;
 
@@ -7005,7 +7004,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.6.4';
+const APP_VERSION = '7.6.5';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
