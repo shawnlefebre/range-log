@@ -202,6 +202,28 @@ const seed = photoId => `
   });
   ck('a restored target drops off the report', cleared === 0);
 
+  // ── the availability cache maintains itself ─────────────────────────────
+  // It used to be refreshed by hand at six call sites. Any new write path that forgot would
+  // silently bring back the lying camera icon, so the primitives own it now — checked here
+  // by writing and deleting directly, with no refresh call anywhere near it.
+  await reset();
+  const selfMaintaining = await page.evaluate(async () => {
+    const before = availablePhotoIds.has('ph_new');
+    await putPhoto('ph_new', new Blob(['x'], { type: 'image/png' }));
+    const afterPut = availablePhotoIds.has('ph_new');
+    await deletePhoto('ph_new');
+    const afterDelete = availablePhotoIds.has('ph_new');
+    // And that it still agrees with the store itself, not just with itself.
+    const keys = await allPhotoKeys();
+    return { before, afterPut, afterDelete,
+             agrees: keys.every(k => availablePhotoIds.has(k))
+                     && availablePhotoIds.size === keys.length };
+  });
+  ck('a photo written straight to the store becomes available without a refresh call',
+    !selfMaintaining.before && selfMaintaining.afterPut);
+  ck('and deleting one drops it, again without a refresh call', !selfMaintaining.afterDelete);
+  ck('the cache still matches what the store actually holds', selfMaintaining.agrees);
+
   let bad = 0;
   checks.forEach(([n, ok]) => { if (!ok) bad++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${n}`); });
   if (errs.length) { bad++; console.log('ERRORS ' + [...new Set(errs)].join(' | ')); }

@@ -772,9 +772,22 @@ function photoTx(mode, fn) {
 }
 
 // All three swallow failure: a missing photo degrades the UI, it never breaks the data.
-function putPhoto(id, blob) { return photoTx('readwrite', s => s.put(blob, id)).catch(() => null); }
+//
+// The two that write also keep availablePhotoIds honest, so no caller has to remember to.
+// It used to be refreshed by hand at six call sites, which is one forgotten line away from
+// the bug that behavior exists to prevent — a group advertising a photo the store no longer
+// has. The set only changes when these change it, so maintaining it here cannot drift.
+function putPhoto(id, blob) {
+  return photoTx('readwrite', s => s.put(blob, id))
+    .then(r => { availablePhotoIds.add(id); return r; })
+    .catch(() => null);
+}
 function getPhoto(id) { return photoTx('readonly', s => s.get(id)).catch(() => null); }
-function deletePhoto(id) { return photoTx('readwrite', s => s.delete(id)).catch(() => null); }
+function deletePhoto(id) {
+  return photoTx('readwrite', s => s.delete(id))
+    .then(r => { availablePhotoIds.delete(id); return r; })
+    .catch(() => null);
+}
 
 function allPhotoKeys() { return photoTx('readonly', s => s.getAllKeys()).then(k => k || []).catch(() => []); }
 function clearAllPhotos() {
@@ -821,7 +834,6 @@ async function sweepOrphanedPhotos() {
   const keep = referencedPhotoIds();
   const orphans = keys.filter(k => !keep.has(k));
   for (const id of orphans) await deletePhoto(id);
-  await refreshAvailablePhotoIds();
   return orphans.length;
 }
 
@@ -6651,7 +6663,6 @@ async function groupPersist() {
   // Now that the record no longer claims it, the count is honest: delete the blob only if
   // no other group on any firearm still points at it.
   if (droppedPhotoId && !referencedPhotoIds().has(droppedPhotoId)) await deletePhoto(droppedPhotoId);
-  await refreshAvailablePhotoIds();
   return record;
 }
 
@@ -6690,7 +6701,6 @@ async function deleteGroup(gunId, groupId) {
   // still pointing at it — they'd keep their measurements but lose the ability to
   // re-mark. Checking after the removal is what makes the count correct.
   if (photoId && !referencedPhotoIds().has(photoId)) await deletePhoto(photoId);
-  await refreshAvailablePhotoIds();
   if (currentHistoryGunId === gunId) renderGunHistory(gunId);
 }
 
@@ -7025,7 +7035,6 @@ function importPhotos(input) {
         await putPhoto(id, await res.blob());
         restored++;
       }
-      await refreshAvailablePhotoIds();
       renderAll();
       alert(`${restored} photo${restored === 1 ? '' : 's'} restored.` +
         (skipped ? `\n\n${skipped} skipped — no group in this data refers to them.` : ''));
@@ -7059,7 +7068,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.6.6';
+const APP_VERSION = '7.6.7';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
