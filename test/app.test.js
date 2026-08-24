@@ -1068,6 +1068,84 @@ describe('point of impact warns when distances are mixed', () => {
   });
 });
 
+// ── EXPLANATORY TEXT MUST FOLLOW THE DATA ───────────────────────────
+// The cost-per-trip note ended "driven by what was shot rather than how much" unconditionally
+// — a causal claim that happened to hold for one dataset. It is now worked out per render.
+// The trend note is here for a related reason: it kept saying a tap opens the session two
+// releases after the tap started opening the range day.
+
+describe('notes describe the data in front of them', () => {
+  function app(sessions, ammo, firearms) {
+    return ready(loadApp()).then(win => {
+      win.eval(`data = {
+        schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+        firearms: ${JSON.stringify(firearms)},
+        locations: [{ id: 'l1', name: 'Range' }], sellers: [],
+        sessions: ${JSON.stringify(sessions)},
+        ammo: ${JSON.stringify(ammo)} };`);
+      win.showTab('stats');
+      win.showStatsSection('money');
+      win.document.getElementById('stats-range').value = 'all';
+      win.renderStats();
+      return win;
+    });
+  }
+
+  const GUNS = [
+    { id: 'g1', name: 'Cheap', type: 'rifle', calibers: ['.22 LR'], cleanThreshold: 500,
+      totalRounds: 0, notes: '', cleanings: [], zeros: [], dope: [], groups: [] },
+    { id: 'g2', name: 'Dear', type: 'rifle', calibers: ['.338 LM'], cleanThreshold: 500,
+      totalRounds: 0, notes: '', cleanings: [], zeros: [], dope: [], groups: [] },
+  ];
+  // Two calibers an order of magnitude apart in price per round.
+  const AMMO = [
+    { id: 'a1', date: '2026-01-01', caliber: '.22 LR', manufacturer: 'X', model: 'Y',
+      quantity: 1000, totalPrice: 50, status: 'instock', rangeAmmo: true, notes: '' },
+    { id: 'a2', date: '2026-01-01', caliber: '.338 LM', manufacturer: 'X', model: 'Z',
+      quantity: 100, totalPrice: 500, status: 'instock', rangeAmmo: true, notes: '' },
+  ];
+  const trip = (id, date, rounds) =>
+    ({ id, date, locationId: 'l1', rounds, totalRounds: Object.values(rounds)
+        .reduce((a, b) => a + b, 0), notes: '' });
+
+  const note = win => flat(win.document.getElementById('stats-as-trips'));
+
+  test('the multiplier itself is still computed, not asserted', async () => {
+    const win = await app([trip('s1', '2026-02-01', { g1: 100 }),
+                           trip('s2', '2026-02-02', { g1: 400 })], AMMO, GUNS);
+    assert.match(note(win), /4\.0× the cheapest/,
+      '400 rounds against 100 of the same ammo is exactly 4x');
+  });
+
+  test('the trend note names what a tap actually opens', async () => {
+    const win = await ready(loadApp());
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-range').value = 'all';
+    const gun = win.eval('data.firearms.find(g => (g.groups||[]).length)');
+    win.document.getElementById('stats-firearm').value = gun.id;
+    win.renderStats();
+    const t = flat(win.document.getElementById('stats-groups-trend'));
+    assert.match(t, /open that range day/i);
+    assert.ok(!/open that session/i.test(t),
+      'the tap stopped opening a session in v7.5.4; the note said otherwise until 7.6.4');
+  });
+
+  test('the tap hint shows even when no group carries a session', async () => {
+    // It used to be gated on a session existing, which is no longer what the tap needs.
+    const win = await ready(loadApp());
+    win.eval("data.firearms.forEach(g => (g.groups||[]).forEach(x => { x.sessionId = null; }));");
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-range').value = 'all';
+    const gun = win.eval('data.firearms.find(g => (g.groups||[]).length)');
+    win.document.getElementById('stats-firearm').value = gun.id;
+    win.renderStats();
+    assert.match(flat(win.document.getElementById('stats-groups-trend')), /open that range day/i,
+      'the tap works without a session, so the hint must not be hidden by one');
+  });
+});
+
 // ── COMPARING FIREARMS ──────────────────────────────────────────────
 // Leaving the firearm filter on All compares them. The hard part is not the chart, it is
 // refusing to rank when the data cannot support it — which, on a real collection, is most of

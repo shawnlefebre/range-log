@@ -3380,6 +3380,12 @@ function renderCostPerTrip() {
 
   const costs = rows.map(r => r.cost);
   const cheapest = Math.min(...costs), priciest = Math.max(...costs);
+
+  // The sentence below used to end "driven by what was shot rather than how much" — an
+  // unconditional causal claim that held for one dataset and would be plainly wrong for
+  // anyone shooting a single caliber at varying volumes. Dropped rather than computed: the
+  // ratio is the finding, and what makes one trip cost more than another is not something
+  // the reader needs told.
   // Scrolls inside itself past a handful of trips rather than capping the list — the same
   // treatment the Details lists get, so a long record stays browsable without pushing
   // everything below it off screen.
@@ -3395,8 +3401,7 @@ function renderCostPerTrip() {
       </div>
       <div class="trip-list${panel}" id="stats-trip-list">${rowsHtml}</div>
       <div class="stats-note">${rows.length} trips — tap one to open it. The most expensive ran
-        ${(priciest / cheapest).toFixed(1)}× the cheapest, driven by what was shot rather than
-        how much.${
+        ${(priciest / cheapest).toFixed(1)}× the cheapest.${
         rows.some(r => r.estimated)
           ? ' Trips marked ≈ predate every purchase of what was shot and use the earliest price on record.'
           : ''}</div>
@@ -4138,7 +4143,11 @@ function renderGroupTrend(gun, groups) {
     }
   });
 
-  const tappable = days.some(d => d.sessionId);
+  // Every point is tappable, session or not: since v7.5.4 a tap opens the *range day*, which
+  // is keyed on the date. This used to require a session and the hint below still said the
+  // tap opened one — so a firearm whose groups carry no session was told nothing, while the
+  // tap worked the whole time.
+  const tappable = days.length > 0;
   el.innerHTML = `
     <div class="stats-chart-card">
       <div class="stats-chart-title">Mean radius over time</div>
@@ -4157,7 +4166,7 @@ function renderGroupTrend(gun, groups) {
       </div>
       <div class="stats-note">Bold line joins each range day's <b>median</b>; every group is
         plotted faintly behind it, with the vertical bar showing that day's best to worst.${
-        tappable ? ' Tap a point to open that session.' : ''}${
+        tappable ? ' Tap a point to open that range day.' : ''}${
         dates.length < 3 ? ' Too few range days for a trend yet.' : ''}</div>
     </div>`;
 
@@ -6996,7 +7005,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.6.3';
+const APP_VERSION = '7.6.4';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
