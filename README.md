@@ -18,11 +18,12 @@ All data is stored locally in your browser (nothing is sent to a server), and ca
 ![Sessions](images/sessions.png)
 ![Group analysis](images/groups.png)
 ![Group stats](images/groups-stats.png)
+![Comparing firearms](images/firearm-compare.png)
 ![Ammo](images/ammo.png)
 ![Stats](images/stats.png)
 
-*(These show the app's built-in demo data — [see below](#first-launch). Some were taken on an
-earlier release, so the version badge and styling may lag the current build.)*
+*(All taken on v7.7 against the app's built-in demo data — [see below](#first-launch) — so
+nothing here is anyone's real record.)*
 
 ## Access via Web
 https://shawnlefebre.github.io/range-log/
