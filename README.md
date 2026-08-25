@@ -1,6 +1,8 @@
 # Range Log
 A simple, private tracker for your range sessions — built as a lightweight web app you can install on your phone like a native app, with no account, no ads, and no data ever leaving your device.
 
+**[Open Range Log →](https://shawnlefebre.github.io/range-log/)** — or [host your own copy](#hosting-your-own-copy-github-pages).
+
 **Tracks:**
 - 🔫 Firearms — type, caliber(s), round counts, and clean-interval thresholds
 - 📅 Range sessions — date, location, rounds fired per firearm, notes
@@ -9,9 +11,19 @@ A simple, private tracker for your range sessions — built as a lightweight web
 - 🎯 Target groups — photograph a target, mark the shots, get group size in inches, MOA and MRAD
 - 📐 Dope tables — come-ups per firearm and load, entered by hand and editable, in MOA or mils
 - 💵 Ammo purchases — cost per round, seller, stock status, with running averages
-- 📊 Stats — group analysis, rounds fired, ammo spend and cleaning status, filterable by firearm, caliber, and location
+- 📊 Stats — group analysis, rounds fired, ammo spend and cleaning status, filterable by time range, firearm, caliber, and location
 
 All data is stored locally in your browser (nothing is sent to a server), and can be exported/imported as JSON for backup or moving between devices.
+
+## Contents
+
+**Getting started** — [Screenshots](#screenshots) · [Access via Web](#access-via-web) · [Installing as an app](#installing-as-an-app) · [First Launch](#first-launch)
+
+**Using it** — [Firearms and sessions](#firearms-and-sessions) · [Group Analysis](#group-analysis) · [Stats](#stats) ([Groups](#groups), [Money](#money)) · [Dope Tables](#dope-tables) · [Text size](#text-size)
+
+**Reference** — [Reading the numbers](#reading-the-numbers) · [Reading the bar charts](#reading-the-bar-charts) · [Photo storage](#photo-storage) · [If your saved data can't be read](#if-your-saved-data-cant-be-read)
+
+**For developers** — [Hosting your own copy](#hosting-your-own-copy-github-pages) · [Development & Testing](#development--testing)
 
 ## Screenshots
 ![Home](images/home.png)
@@ -28,21 +40,31 @@ nothing here is anyone's real record.)*
 ## Access via Web
 https://shawnlefebre.github.io/range-log/
 
-## Installing on iPhone (Home Screen App)
+## Installing as an App
 
-1. Open the hosted URL (see above or your own if [hosting your own](#hosting-your-own-copy-github-pages)) in **Safari** — not Chrome or another browser, since only Safari supports adding web apps to the home screen on iOS
+**On iPhone or iPad:**
+
+1. Open the hosted URL (see above or your own if [hosting your own](#hosting-your-own-copy-github-pages)) in **Safari** — not Chrome or another browser, since only Safari can add web apps to the home screen on iOS
 2. Tap the **Share** button (square with an arrow pointing up)
 3. Scroll down and tap **Add to Home Screen**
 4. Confirm the name and tap **Add**
 5. Launch the app from its new home screen icon going forward — it'll behave like a native app (full screen, no browser bar)
 
+**On Android, or on a desktop:** open the URL in Chrome or Edge and use **Install app** — it's
+in the address bar, or in the ⋮ menu. You get the same standalone window, no browser bar.
+
 **Note on updates:** Range Log checks for new versions automatically each time you open it. When an update is available, a banner appears at the bottom — tap it to reload with the latest version. If you don't see a banner, your app already has the newest version.
 
 **Note on data:** All your data (firearms, sessions, ammo, etc.) is stored locally in your browser/device — nothing is sent to a server. This means:
 - Data does **not** sync automatically between devices (e.g. iPhone and Mac)
-- Use **Settings → Export JSON** periodically to back up your data
-- Use **Settings → Import JSON** to restore a backup or move data to another device
-- Use **Settings → Danger Zone** to permanently delete everything and start over (requires typing DELETE to confirm — there's no undo)
+- Use **Setup → Data → Export JSON (backup)** periodically to back up your data
+- Use **Setup → Data → Import JSON backup** to restore a backup or move data to another device
+- Use **Setup → Danger Zone → Delete All Data** to permanently delete everything and start over (requires typing DELETE to confirm — there's no undo)
+
+**Export CSV** sits beside the JSON button and does a different job: it writes your range
+sessions as a spreadsheet — date, location, firearm, caliber, rounds and notes, one row per
+firearm per session. It's a one-way export for reading elsewhere, not a backup: it covers
+sessions only, and nothing imports it back. The JSON is the file to keep.
 
 ## First Launch
 
@@ -407,7 +429,7 @@ the bars whose own number was thinned away.
 
 Photos are downscaled before storing, so each one lands around 30–100 KB — a few range trips a month works out to under 10 MB a year, against the gigabytes a browser will give an installed app.
 
-**Settings → Target Photos** shows exactly what's stored: how many photos, their total size, and how much room the app has. If any photos are no longer attached to a group — which can happen after importing a backup — it offers to reclaim that space.
+**Setup → Target Photos** shows exactly what's stored: how many photos, their total size, and how much room the app has. If any photos are no longer attached to a group — which can happen after importing a backup — it offers to reclaim that space.
 
 It also reports the opposite case: groups pointing at a photo the device no longer has. These cost nothing and break nothing, but they quietly remove the ability to re-mark, and finding them otherwise would mean opening every group. They're listed one row per **target** rather than per group, since restoring one photo repairs every group marked on it — tap a row to go straight to the group that can restore it.
 
@@ -417,20 +439,22 @@ Because photos are left out of the JSON backup, moving them to another device is
 
 If Range Log ever finds saved data on startup that it can't open — a write interrupted partway through, say — it will **not** overwrite it. It sets a copy aside, starts you with an empty app rather than sample data, and shows a banner offering the copy as a download. Take the download: it's the raw text exactly as it was found, which is what any repair would start from.
 
-Nothing else clears that copy, so it survives normal use. **Settings → Delete All Data** does remove it, along with everything else.
+Nothing else clears that copy, so it survives normal use. **Setup → Danger Zone → Delete All Data** does remove it, along with everything else.
 
 ---
 
 ## Hosting Your Own Copy (GitHub Pages)
 
-1. **Fork this repository** (or create a new one and copy in `index.html`, `app.css`, `app.js` and `sw.js`)
+1. **Fork this repository** (or create a new one and copy in everything at the repo root — `index.html`, `app.css`, `app.js`, `sw.js`, `manifest.json`, and the icon files)
 2. Make sure the repo is **public** — GitHub Pages requires this on free accounts
 3. In your repo, go to **Settings → Pages**
 4. Under **Source**, select the **main** branch and **/ (root)** folder, then **Save**
 5. Wait about a minute, then your app will be live at:
    `https://YOUR-USERNAME.github.io/YOUR-REPO-NAME/`
 
-**Important:** all four files — `index.html`, `app.css`, `app.js` and `sw.js` — must sit together in the same folder (repo root). The app has no build step, but it does need all four: `index.html` loads the other two, and `sw.js` handles updates. Deploy them together, or you can end up with new markup running against old code.
+**Important:** the app's files must sit together in the same folder (repo root). There's no build step, but each is doing a job: `index.html` loads `app.css` and `app.js`, `sw.js` handles updates, and `manifest.json` plus `icon-*.png` are what let a phone install it with a real icon. Deploy them together, or you can end up with new markup running against old code.
+
+`icon.svg` is the source the PNGs are generated from — `node tools/make-icons.js` rewrites them. Nothing at runtime reads it except as a favicon, so a fork can leave it alone.
 
 ## Development & Testing
 
@@ -452,4 +476,4 @@ npx playwright install chromium   # one time
 npm run test:browser
 ```
 
-It is deliberately kept out of `npm test` so the unit suite stays fast and CI needs no browser download.
+It is deliberately kept out of `npm test` so the unit suite stays fast and CI needs no browser download. Pass a suite name to run just that one — `node test/browser/run.js install-check`.

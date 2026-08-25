@@ -1,7 +1,7 @@
 // Range Log service worker
 // Strategy: network-first for HTML so app updates propagate quickly.
 // Bump APP_VERSION whenever the HTML changes to force a new SW install.
-const APP_VERSION = '7.7';
+const APP_VERSION = '7.7.1';
 const CACHE_NAME = `range-log-${APP_VERSION}`;
 
 // No install handler on purpose: skipWaiting is not called here. The new worker waits until

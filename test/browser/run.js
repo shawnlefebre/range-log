@@ -35,6 +35,7 @@ const SUITES = [
   ['stats-tabs-check', 'Stats sub-tabs: pane switching, moved charts, Upkeep ranking'],
   ['textsize-check', 'text size: every step scales without clipping or overflow'],
   ['trend-zoom-check', 'group trend: zoom, drag-to-pan, pinned axis, tap a point for its range day'],
+  ['install-check', 'manifest and icons resolve, and are the sizes they claim'],
 ];
 
 const waitForServer = () => new Promise((resolve, reject) => {
@@ -70,8 +71,18 @@ const waitForServer = () => new Promise((resolve, reject) => {
     process.exit(1);
   }
 
+  // Named suites run alone: rerunning one after a fix should not cost the whole set.
+  const wanted = process.argv.slice(2).map(a => a.replace(/\.js$/, ''));
+  const unknown = wanted.filter(w => !SUITES.some(([n]) => n === w));
+  if (unknown.length) {
+    stop();
+    console.error(`unknown suite: ${unknown.join(', ')}\nknown: ${SUITES.map(([n]) => n).join(', ')}`);
+    process.exit(1);
+  }
+  const running = wanted.length ? SUITES.filter(([n]) => wanted.includes(n)) : SUITES;
+
   let failed = 0;
-  for (const [name, what] of SUITES) {
+  for (const [name, what] of running) {
     process.stdout.write(`\n── ${name} — ${what}\n`);
     const r = spawnSync(process.execPath, [path.join(__dirname, `${name}.js`)], {
       stdio: 'inherit',
@@ -81,8 +92,9 @@ const waitForServer = () => new Promise((resolve, reject) => {
   }
 
   stop();
+  const n = running.length;
   console.log(failed
-    ? `\n${failed} of ${SUITES.length} browser suites FAILED`
-    : `\nAll ${SUITES.length} browser suites passed.`);
+    ? `\n${failed} of ${n} browser suite${n === 1 ? '' : 's'} FAILED`
+    : n === 1 ? `\n${running[0][0]} passed.` : `\nAll ${n} browser suites passed.`);
   process.exit(failed ? 1 : 0);
 })();

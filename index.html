@@ -6,7 +6,15 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Range Log">
+<meta name="theme-color" content="#0e0e0e">
 <title>Range Log</title>
+<!-- The manifest is what lets Android and desktop offer a real install. The apple- tags
+     above predate it and are Safari-only, which is why iOS worked without one. -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-32.png" sizes="32x32" type="image/png">
+<!-- iOS ignores the manifest's icons; without this it screenshots the page instead. -->
+<link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="app.css">
@@ -15,7 +23,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.7</span>
+    <span id="app-version">v7.7.1</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
