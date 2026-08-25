@@ -275,6 +275,10 @@ Several things there are deliberately careful:
   comparisons between stores. It is *not* left out of the Ammo Spend totals: those three
   figures — spend, rounds bought, and average cost per round — all describe every purchase,
   so dividing the first two gives you the third.
+- **Where a store sold you both**, its row shows both prices — *$0.247/rd range · $0.311/rd
+  all-in* — so you can compare stores on practice ammo without losing sight of what you
+  actually paid there. Stores with nothing flagged show a single price and are unchanged. The
+  round count beside a price is always the one that price was computed from.
 - **Burn rate is not inventory.** It's rounds actually fired, from your session log, which
   is complete. What's *left on the shelf* can't be computed — ammo bought before you started
   logging was never recorded — so the app doesn't guess. It's grouped by a firearm's whole

@@ -3383,37 +3383,117 @@ describe('non-range ammo', () => {
     assert.doesNotMatch(el, /Avg CPR · range/i);
   });
 
-  test('store prices exclude non-range ammo too, while store spend does not', async () => {
-    const win = await ready(loadApp());
-    openMoney(win);
-    // Narrow to the caliber the carry load is in, which is when per-round prices appear.
+  // Narrows to the caliber the carry load is in, which is when per-round prices appear at
+  // all — across calibers they would be comparing different products.
+  function storeRowForCarry(win) {
     const stored = win.buildDefaultData().ammo;
     const carry = stored.find(a => a.rangeAmmo === false);
+    assert.ok(carry, 'precondition: demo data has a non-range purchase');
     const sel = win.document.getElementById('stats-caliber');
     const opt = [...sel.options].find(o => o.value === carry.caliber);
     assert.ok(opt, 'the caliber of the carry load is selectable');
     sel.value = opt.value;
     win.renderStats();
-
     const seller = win.buildDefaultData().sellers.find(x => x.id === carry.sellerId);
     const row = [...win.document.querySelectorAll('#stats-as-seller-breakdown .breakdown-row')]
       .find(r => r.querySelector('.breakdown-name').textContent === seller.name);
     assert.ok(row, 'the store that sold the carry load is listed');
+    const sameStore = stored.filter(a => a.sellerId === carry.sellerId
+      && a.caliber === carry.caliber);
+    return { row, carry, sameStore, text: flat(row.querySelector('.breakdown-pct')) };
+  }
 
-    const sameStore = stored.filter(a => a.sellerId === carry.sellerId && a.caliber === carry.caliber);
+  test('store spend includes the carry box; its range price does not', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const { row, sameStore, text } = storeRowForCarry(win);
+
     const spend = sameStore.reduce((s2, a) => s2 + a.totalPrice, 0);
     const shownSpend = parseFloat(row.querySelector('.breakdown-val').textContent.replace('$', ''));
     assert.ok(Math.abs(shownSpend - spend) < 0.02, 'store spend includes the carry box');
 
     const rangeAt = sameStore.filter(a => a.rangeAmmo !== false);
-    const cprText = row.querySelector('.breakdown-pct').textContent.match(/\$([\d.]+)\/rd/);
-    if (rangeAt.length && cprText) {
-      const expect = rangeAt.reduce((s2, a) => s2 + a.totalPrice, 0)
-        / rangeAt.reduce((s2, a) => s2 + a.quantity, 0);
-      assert.ok(Math.abs(parseFloat(cprText[1]) - expect) < 0.0011,
-        'one defensive box must not make a shop look dear');
-    }
+    // Asserted rather than guarded: if the demo store had no range ammo alongside its carry
+    // box there would be nothing to compare, and this test would pass by doing nothing.
+    assert.ok(rangeAt.length, 'the carry load\'s store must also sell range ammo here');
+    const expect = rangeAt.reduce((s2, a) => s2 + a.totalPrice, 0)
+      / rangeAt.reduce((s2, a) => s2 + a.quantity, 0);
+    const shown = text.match(/\$([\d.]+)\/rd/);
+    assert.ok(shown, `expected a per-round price in: ${text}`);
+    assert.ok(Math.abs(parseFloat(shown[1]) - expect) < 0.0011,
+      'one defensive box must not make a shop look dear');
   });
+
+  test('a store with carry ammo shows the all-in price beside the range one', async () => {
+    const win = await ready(loadApp());
+    openMoney(win);
+    const { sameStore, text } = storeRowForCarry(win);
+    const allIn = sameStore.reduce((s2, a) => s2 + a.totalPrice, 0)
+      / sameStore.reduce((s2, a) => s2 + a.quantity, 0);
+    assert.match(text, /range/, 'the range figure should be named as such once there are two');
+    assert.match(text, /all-in/, 'and the true cost of everything bought there shown too');
+    const both = [...text.matchAll(/\$([\d.]+)/g)].map(m => parseFloat(m[1]));
+    assert.ok(both.some(v => Math.abs(v - allIn) < 0.0011),
+      `all-in ${allIn.toFixed(3)} should appear in: ${text}`);
+  });
+
+  test('the round count matches the price it sits beside, so they divide', async () => {
+    // The row used to print a range-only price next to an all-purchases round count — the
+    // same failure to reconcile the headline tiles had one level up.
+    const win = await ready(loadApp());
+    openMoney(win);
+    const { sameStore, text } = storeRowForCarry(win);
+    const rangeRounds = sameStore.filter(a => a.rangeAmmo !== false)
+      .reduce((s2, a) => s2 + a.quantity, 0);
+    const shownRounds = parseInt((text.match(/([\d,]+) range rds/) || [])[1]
+      ?.replace(/,/g, ''), 10);
+    assert.strictEqual(shownRounds, rangeRounds,
+      'the count shown must be the one the range price was computed from');
+  });
+
+  test('a store with nothing flagged reads exactly as before', async () => {
+    // Built rather than taken from demo data: only one demo store sells the carry caliber,
+    // so there was no unaffected store to compare against and the check found nothing.
+    const win = await ready(loadApp());
+    win.eval(`data = {
+      schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      firearms: [], locations: [],
+      sellers: [{ id: 's1', name: 'Mixed Store' }, { id: 's2', name: 'Range Only Store' }],
+      sessions: [],
+      ammo: [
+        { id: 'a1', date: '2026-01-01', caliber: '9mm', manufacturer: 'X', model: 'P',
+          quantity: 500, totalPrice: 100, sellerId: 's1', status: 'instock',
+          rangeAmmo: true, notes: '' },
+        { id: 'a2', date: '2026-01-02', caliber: '9mm', manufacturer: 'X', model: 'D',
+          quantity: 20, totalPrice: 40, sellerId: 's1', status: 'instock',
+          rangeAmmo: false, notes: '' },
+        { id: 'a3', date: '2026-01-03', caliber: '9mm', manufacturer: 'X', model: 'P',
+          quantity: 400, totalPrice: 88, sellerId: 's2', status: 'instock',
+          rangeAmmo: true, notes: '' }
+      ] };`);
+    openMoney(win);
+    const sel = win.document.getElementById('stats-caliber');
+    const opt = [...sel.options].find(o => o.value === '9mm');
+    assert.ok(opt, 'the single caliber should be selectable');
+    sel.value = opt.value;
+    win.renderStats();
+
+    const rows = {};
+    win.document.querySelectorAll('#stats-as-seller-breakdown .breakdown-row').forEach(r => {
+      rows[flat(r.querySelector('.breakdown-name'))] = flat(r.querySelector('.breakdown-pct'));
+    });
+
+    // 500 range rounds at $100 is $0.200; all-in is $140 over 520 = $0.269.
+    assert.match(rows['Mixed Store'], /\$0\.200\/rd range/);
+    assert.match(rows['Mixed Store'], /\$0\.269\/rd all-in/);
+    assert.match(rows['Mixed Store'], /500 range rds/);
+
+    // The untouched store keeps the plain form: one price, no qualifier, no second figure.
+    assert.match(rows['Range Only Store'], /\$0\.220\/rd · 400 rds/);
+    assert.ok(!/all-in|range/.test(rows['Range Only Store']),
+      `an unaffected store should qualify nothing: ${rows['Range Only Store']}`);
+  });
+
 });
 
 // ── VIEWING AN AMMO PURCHASE ────────────────────────────────────────

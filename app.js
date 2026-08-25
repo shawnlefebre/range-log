@@ -5161,8 +5161,8 @@ function renderSellerSpend(purchases, tokens, rangeOnly) {
     if (a.caliber) per[key].cals.add(a.caliber);
   });
 
-  // Price per store follows the same rule as the headline: spend counts everything, the
-  // per-round figure counts range ammo only, or one defensive box makes a shop look dear.
+  // Spend counts everything — you paid it either way. The per-round figure counts range ammo
+  // only, or one defensive box makes a shop look dear on ammo you never practise with.
   const rangeSet = new Set((rangeOnly || purchases).map(a => a.id));
   const perRange = {};
   purchases.filter(a => rangeSet.has(a.id)).forEach(a => {
@@ -5173,9 +5173,20 @@ function renderSellerSpend(purchases, tokens, rangeOnly) {
     perRange[key].rounds += (a.quantity || 0);
   });
   const rows = Object.entries(per)
-    .map(([name, v]) => ({ name, ...v,
-      cpr: perRange[name] && perRange[name].rounds
-        ? perRange[name].spend / perRange[name].rounds : null }))
+    .map(([name, v]) => {
+      const r = perRange[name];
+      return { name, ...v,
+        // The range figure and the rounds it was computed from, so the two divide into each
+        // other. The row used to print a range-only price beside an all-purchases round
+        // count, which is the same failure to reconcile the headline tiles had.
+        cpr: r && r.rounds ? r.spend / r.rounds : null,
+        cprRounds: r ? r.rounds : 0,
+        // What the store actually cost per round across everything bought there. Equal to
+        // the above unless some of it was flagged non-range, which is the only case worth
+        // spending a line on.
+        cprAll: v.rounds ? v.spend / v.rounds : null,
+      };
+    })
     .sort((a, b) => b.spend - a.spend);
   if (!rows.length) { el.innerHTML = ''; return; }
 
@@ -5186,8 +5197,15 @@ function renderSellerSpend(purchases, tokens, rangeOnly) {
 
   const html = rows.map(r => {
     const pct = total > 0 ? Math.round((r.spend / total) * 100) : 0;
+    // A store with nothing flagged reads exactly as it always did; only the ones where the
+    // two prices actually part company spend a second figure saying so.
+    const split = comparable && r.cpr != null && r.cprAll != null
+      && Math.abs(r.cprAll - r.cpr) >= 0.0005;
     const sub = comparable && r.cpr != null
-      ? `${pct}% of spend · $${r.cpr.toFixed(3)}/rd · ${r.rounds.toLocaleString()} rds`
+      ? (split
+          ? `${pct}% of spend · $${r.cpr.toFixed(3)}/rd range · $${r.cprAll.toFixed(3)}/rd all-in
+             · ${r.cprRounds.toLocaleString()} range rds`
+          : `${pct}% of spend · $${r.cpr.toFixed(3)}/rd · ${r.cprRounds.toLocaleString()} rds`)
       : `${pct}% of spend · ${r.buys} purchase${r.buys === 1 ? '' : 's'} · ${esc([...r.cals].join(', ')) || '—'}`;
     return `
       <div class="breakdown-row">
@@ -7068,7 +7086,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.6.8';
+const APP_VERSION = '7.6.9';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
