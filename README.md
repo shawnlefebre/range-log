@@ -284,6 +284,12 @@ Several things there are deliberately careful:
   logging was never recorded — so the app doesn't guess. It's grouped by a firearm's whole
   chambering, so a .357/.38 revolver counts once: rounds are logged per firearm, and asking
   which of the two it fired has no answer.
+- **Each chambering is divided by its own window**, not by the span of the whole log. A rifle
+  you bought three months into a twelve-month view is measured over those three months — the
+  earlier ones aren't yours to be charged for. But a caliber you'd owned *before* the window
+  opened is measured across the whole window, dormant months included: if you have had it all
+  year and only shot it in March, a low rate is the true answer, and that's the number worth
+  acting on. Each row states the span behind its own figure.
 - **Spend by store withholds price per round until one caliber is in scope.** A shop that
   only ever sold you 5.56 would look expensive beside one that sold you bulk .22, and that
   compares products rather than prices.

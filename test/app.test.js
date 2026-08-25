@@ -4340,6 +4340,120 @@ describe('burn rate', () => {
       'a rate means nothing without the span it was measured over');
   });
 
+  // ── the window each rate is divided by ──────────────────────────────────
+  // Every caliber used to be divided by the span of the whole log, so one acquired part-way
+  // through came out at a fraction of its real rate. The window is now how long you had that
+  // chambering, within the range being viewed.
+  //
+  // Two sessions a year apart, and a caliber that only appears in the second one.
+  function twoCalibers(win, extra = {}) {
+    win.eval(`data = {
+      schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      firearms: [
+        { id: 'old', name: 'Long Held', type: 'rifle', calibers: ['.22 LR'],
+          cleanThreshold: 500, totalRounds: 0, notes: '',
+          cleanings: [], zeros: [], dope: [], groups: [] },
+        { id: 'new', name: 'Just Bought', type: 'rifle', calibers: ['5.56 NATO'],
+          cleanThreshold: 500, totalRounds: 0, notes: '',
+          cleanings: [], zeros: [], dope: [], groups: [] }],
+      locations: [], sellers: [], ammo: [],
+      sessions: ${JSON.stringify(extra.sessions)} };`);
+  }
+  const rowFor = (win, label) => rows(win).find(r => r.label === label);
+  const spanOf = (win, label) => {
+    const row = [...win.document.querySelectorAll('#stats-as-burn .breakdown-row')]
+      .find(r => r.querySelector('.breakdown-name').textContent === label);
+    return row ? flat(row.querySelector('.breakdown-pct')) : null;
+  };
+
+  test('a caliber first fired part-way through is measured from then, not from the start',
+    async () => {
+      const win = await ready(loadApp());
+      const y = new Date().getFullYear();
+      // The old caliber runs the whole span; the new one appears only at the end.
+      twoCalibers(win, { sessions: [
+        { id: 's1', date: `${y - 1}-01-15`, locationId: null, rounds: { old: 600 },
+          totalRounds: 600, notes: '' },
+        { id: 's2', date: `${y - 1}-07-15`, locationId: null, rounds: { old: 600 },
+          totalRounds: 600, notes: '' },
+        { id: 's3', date: `${y}-01-10`, locationId: null, rounds: { old: 600, new: 600 },
+          totalRounds: 1200, notes: '' },
+        { id: 's4', date: `${y}-02-10`, locationId: null, rounds: { new: 600 },
+          totalRounds: 600, notes: '' },
+      ] });
+      openMoney(win, 'all');
+      const oldC = rowFor(win, '.22 LR');
+      const newC = rowFor(win, '5.56 NATO');
+      assert.ok(oldC && newC, 'both chamberings should be listed');
+      // Same rounds fired for the new one over a far shorter window, so a higher rate. Under
+      // the old shared-window arithmetic these two came out identical.
+      assert.ok(newC.rate > oldC.rate * 1.5,
+        `the newer caliber burns faster (${newC.rate}/mo vs ${oldC.rate}/mo)`);
+      assert.ok(!/over 1[0-9] months|year/.test(spanOf(win, '5.56 NATO')),
+        `a caliber first fired this year cannot report a multi-year span: ${spanOf(win, '5.56 NATO')}`);
+    });
+
+  test('a caliber held since before the window is charged for the whole window', async () => {
+    // The case that stops this over-correcting: owned for years, barely shot lately. The
+    // dormant months are real and belong in the denominator, or a rate you should act on
+    // reads as though you are burning through it.
+    const win = await ready(loadApp());
+    const y = new Date().getFullYear();
+    twoCalibers(win, { sessions: [
+      { id: 's1', date: `${y - 2}-03-01`, locationId: null, rounds: { old: 500 },
+        totalRounds: 500, notes: '' },
+      { id: 's2', date: `${y - 2}-06-01`, locationId: null, rounds: { old: 500 },
+        totalRounds: 500, notes: '' },
+      // One recent outing, well inside a 12-month view.
+      { id: 's3', date: localToday(-20), locationId: null, rounds: { old: 120 },
+        totalRounds: 120, notes: '' },
+    ] });
+    openMoney(win, '12months');
+    const r = rowFor(win, '.22 LR');
+    assert.ok(r, 'the chambering should be listed');
+    assert.strictEqual(r.rounds, 120, 'only rounds inside the window count');
+    // 120 rounds across roughly a year, not across the three weeks since that one trip.
+    assert.ok(r.rate < 30,
+      `dormant months must count: expected a low rate, got ${r.rate}/mo`);
+    assert.match(spanOf(win, '.22 LR'), /over (1[01] months|1 year)/,
+      `the span should be the window, not the gap between trips: ${spanOf(win, '.22 LR')}`);
+  });
+
+  test('a chambering fired on a single day still reports a rate', async () => {
+    // Its window is how long it was held, not how many times it went out. Suppressing this
+    // would hide the slowest burners, which are the ones worth noticing.
+    const win = await ready(loadApp());
+    const y = new Date().getFullYear();
+    twoCalibers(win, { sessions: [
+      { id: 's1', date: `${y}-01-05`, locationId: null, rounds: { old: 400 },
+        totalRounds: 400, notes: '' },
+      { id: 's2', date: localToday(-10), locationId: null, rounds: { old: 400, new: 30 },
+        totalRounds: 430, notes: '' },
+    ] });
+    openMoney(win, 'all');
+    const once = rowFor(win, '5.56 NATO');
+    assert.ok(once, 'a chambering fired once is still listed');
+    assert.ok(once.rate > 0, 'and carries a rate rather than a dash');
+    assert.match(spanOf(win, '5.56 NATO'), /rounds over/,
+      'with the span it was measured over');
+  });
+
+  test('each row states its own span, not one shared figure', async () => {
+    const win = await ready(loadApp());
+    const y = new Date().getFullYear();
+    twoCalibers(win, { sessions: [
+      { id: 's1', date: `${y - 1}-01-15`, locationId: null, rounds: { old: 600 },
+        totalRounds: 600, notes: '' },
+      { id: 's2', date: `${y}-01-10`, locationId: null, rounds: { old: 600, new: 600 },
+        totalRounds: 1200, notes: '' },
+      { id: 's3', date: localToday(-5), locationId: null, rounds: { new: 600 },
+        totalRounds: 600, notes: '' },
+    ] });
+    openMoney(win, 'all');
+    assert.notStrictEqual(spanOf(win, '.22 LR'), spanOf(win, '5.56 NATO'),
+      'two calibers with different histories must not report the same window');
+  });
+
   test('it narrows to the filtered firearm', async () => {
     const win = await ready(loadApp());
     openMoney(win);

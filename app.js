@@ -3499,6 +3499,10 @@ function burnRateBuckets(start, end, scoped) {
       (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     return cs.length ? cs.join(' / ') : '(no caliber)';
   };
+  // Each chambering carries the days it was actually fired on, not just a total. A rate needs
+  // its own window: dividing every caliber by the span of the whole log understates one you
+  // only started shooting part-way through, and by a lot — a rifle bought three months into a
+  // year of records came out at a third of its real rate.
   const rounds = {};
   (data.sessions || []).forEach(s => {
     if (start && s.date < start) return;
@@ -3508,10 +3512,58 @@ function burnRateBuckets(start, end, scoped) {
       const gun = (data.firearms || []).find(g => g.id === gid);
       if (!gun) return;
       const k = key(gun);
-      rounds[k] = (rounds[k] || 0) + n;
+      const b = rounds[k] || (rounds[k] = { rounds: 0, days: new Set() });
+      b.rounds += n;
+      b.days.add(s.date);
     });
   });
   return rounds;
+}
+
+// The earliest a chambering was ever fired, across the whole log rather than the selected
+// range. This is what says whether you had it before the window opened.
+function firstEverFiredByCaliber() {
+  const first = {};
+  const key = gun => {
+    const cs = gunCalibers(gun).map(c => c.trim()).filter(Boolean).sort(
+      (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    return cs.length ? cs.join(' / ') : '(no caliber)';
+  };
+  (data.sessions || []).forEach(s => {
+    Object.entries(s.rounds || {}).forEach(([gid, n]) => {
+      if (!(n > 0)) return;
+      const gun = (data.firearms || []).find(g => g.id === gid);
+      if (!gun) return;
+      const k = key(gun);
+      if (!first[k] || s.date < first[k]) first[k] = s.date;
+    });
+  });
+  return first;
+}
+
+// How long you had a chambering, within the range being looked at — which is the only honest
+// denominator for a rate.
+//
+// Neither obvious rule works alone. Dividing every caliber by the whole selected range
+// understates one you acquired part-way through: a rifle first fired three months into a
+// twelve-month view came out at a third of its real rate. But measuring first-fired to
+// last-fired would overstate one you have owned for years and barely touched lately, because
+// the months you owned it and left it alone are real — that is precisely what a low burn rate
+// means.
+//
+// So: start at whichever is later, the window opening or the first time you ever fired it;
+// end at the window's close, capped at today so a range reaching into the future cannot
+// deflate anything.
+function burnWindowMonths(windowStart, windowEnd, firstEver, firedDays) {
+  const days = [...firedDays].sort();
+  if (!days.length) return null;
+  const now = today();
+  const from = windowStart && windowStart > (firstEver || days[0])
+    ? windowStart : (firstEver || days[0]);
+  const toRaw = windowEnd && windowEnd < now ? windowEnd : now;
+  const to = toRaw < from ? from : toRaw;
+  const span = (new Date(to) - new Date(from)) / 86400000;
+  return Math.max(span / 30.44, 0.5);
 }
 
 function renderBurnRate() {
@@ -3520,34 +3572,41 @@ function renderBurnRate() {
   const { start, end } = getStatsRangeBounds();
   const scoped = scopedGunIdsFromFilters();
 
-  // The window is what was actually shot in, not what was asked for: "all time" has no start,
-  // and a range reaching into the future would deflate the rate.
-  const dates = (data.sessions || [])
-    .filter(s => (!start || s.date >= start) && (!end || s.date <= end))
-    .map(s => s.date).sort();
-  if (dates.length < 2) { el.innerHTML = ''; return; }
-  const days = (new Date(dates[dates.length - 1]) - new Date(dates[0])) / 86400000;
-  const months = Math.max(days / 30.44, 0.5);
-
+  // Each row gets the window it was actually shot in. "All time" has no start, and a range
+  // reaching into the future would deflate every rate alike; per-caliber spans avoid both,
+  // and avoid charging a caliber for months before you owned it.
   const rounds = burnRateBuckets(start, end, scoped);
+  const firstEver = firstEverFiredByCaliber();
   const rows = Object.entries(rounds)
-    .map(([k, n]) => ({ label: k, rounds: n, rate: n / months }))
-    .filter(r => r.rounds > 0)
+    .map(([k, v]) => {
+      // Every chambering gets a rate, however few days it was fired on. The window is how
+      // long you had it, not how many times you went out — 18 rounds across a three-month
+      // window is 6/mo whether that was one trip or six, and suppressing it would hide the
+      // slowest burners, which are exactly the ones you are least likely to notice running
+      // low. How brief the window was is stated beside the figure instead.
+      const months = burnWindowMonths(start, end, firstEver[k], v.days);
+      return { label: k, rounds: v.rounds, months, rate: months ? v.rounds / months : null };
+    })
+    .filter(r => r.rounds > 0 && r.rate != null)
     .sort((a, b) => b.rate - a.rate);
   if (!rows.length) { el.innerHTML = ''; return; }
 
   const max = rows[0].rate;
+  // Each row states the window its own figure came from, so a rate and the span behind it are
+  // never separated — the previous version printed one shared span under every caliber.
+  const spanText = m => m < 1.5 ? 'about a month'
+    : m < 11.5 ? `${Math.round(m)} months` : `${(m / 12).toFixed(m < 23 ? 0 : 1)} year${m < 18 ? '' : 's'}`;
   const rowsHtml = rows.map(r => `
     <div class="breakdown-row">
       <div class="breakdown-top">
         <span class="breakdown-name">${esc(r.label)}</span>
-        <span class="breakdown-val" style="color:${'#1f68bc'}">${Math.round(r.rate).toLocaleString()} / mo</span>
+        <span class="breakdown-val" style="color:#1f68bc">${
+          Math.round(r.rate).toLocaleString()} / mo</span>
       </div>
       <div class="breakdown-bar-track">
         <div class="breakdown-bar-fill" style="width:${Math.round((r.rate / max) * 100)}%;background:#1f68bc;"></div>
       </div>
-      <div class="breakdown-pct">${r.rounds.toLocaleString()} rounds over ${
-        months < 1.5 ? 'about a month' : `${Math.round(months)} months`}</div>
+      <div class="breakdown-pct">${r.rounds.toLocaleString()} rounds over ${spanText(r.months)}</div>
     </div>`).join('');
 
   el.innerHTML = `
@@ -7086,7 +7145,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.6.9';
+const APP_VERSION = '7.6.10';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
