@@ -3338,50 +3338,49 @@ describe('non-range ammo', () => {
       'reopening shows what was saved');
   });
 
-  test('spend counts every purchase; price per round counts only range ammo', async () => {
+  test('all three tiles describe the same purchases, so they reconcile', async () => {
+    // The per-round tile used to exclude carry and defensive ammo while the two beside it
+    // counted everything, so dividing the first two did not give the third. Whichever figure
+    // is preferable, three tiles that cannot be reconciled is the wrong answer.
     const win = await ready(loadApp());
     openMoney(win);
     const stored = win.buildDefaultData().ammo;
-    const carry = stored.filter(a => a.rangeAmmo === false);
-    assert.ok(carry.length, 'demo data includes a non-range purchase');
+    assert.ok(stored.some(a => a.rangeAmmo === false),
+      'precondition: demo data has a non-range purchase, or this proves nothing');
 
     const totalSpend = stored.reduce((s2, a) => s2 + a.totalPrice, 0);
     const totalRounds = stored.reduce((s2, a) => s2 + a.quantity, 0);
-    const rangeSpend = stored.filter(a => a.rangeAmmo !== false)
-      .reduce((s2, a) => s2 + a.totalPrice, 0);
-    const rangeRounds = stored.filter(a => a.rangeAmmo !== false)
-      .reduce((s2, a) => s2 + a.quantity, 0);
 
-    assert.ok(Math.abs(stat(win, 'Total Spend') - totalSpend) < 0.02,
-      'the money was spent either way');
+    assert.ok(Math.abs(stat(win, 'Total Spend') - totalSpend) < 0.02);
     assert.ok(Math.abs(stat(win, 'Rounds Bought') - totalRounds) < 1);
-
-    const shown = stat(win, 'CPR');
-    assert.ok(Math.abs(shown - rangeSpend / rangeRounds) < 0.0006,
-      `per-round should be the range-only figure (${shown} vs ${(rangeSpend/rangeRounds).toFixed(4)})`);
-    assert.ok(Math.abs(shown - totalSpend / totalRounds) > 0.0001,
-      'and it should differ from the blended figure, or the exclusion is doing nothing');
+    assert.ok(Math.abs(stat(win, 'CPR') - totalSpend / totalRounds) < 0.0006,
+      'per-round must be the two tiles beside it divided into each other');
   });
 
-  test('it says how many purchases it left out', async () => {
+  test('carry ammo is still kept out of range trip estimates', async () => {
+    // The exclusion was not wrong, only misplaced. A trip cost is a question about practice,
+    // so a box of defensive rounds must not inflate it.
     const win = await ready(loadApp());
-    openMoney(win);
-    const note = flat(win.document.getElementById('stats-as-stats'));
-    assert.match(note, /non-range purchase/i);
-    assert.match(note, /still include/i, 'and that the totals are unaffected');
+    const carry = win.buildDefaultData().ammo.find(a => a.rangeAmmo === false);
+    assert.ok(carry, 'precondition: demo data has a non-range purchase');
+    const priced = win.eval(
+      `buildCaliberPricer().forCaliber(${JSON.stringify(carry.caliber)}, '2099-01-01')`);
+    const blended = win.eval(`(function(){
+      const lots = (data.ammo||[]).filter(a => (a.caliber||'').trim() === ${JSON.stringify(carry.caliber)});
+      const spend = lots.reduce((s,a) => s + (a.totalPrice||0), 0);
+      const rounds = lots.reduce((s,a) => s + (a.quantity||0), 0);
+      return rounds ? spend / rounds : 0; })()`);
+    assert.ok(priced && priced.cpr > 0, 'the caliber should price');
+    assert.ok(priced.cpr < blended - 0.0001,
+      `trip pricing should sit below the blended figure (${priced.cpr} vs ${blended})`);
   });
 
-  test('with nothing flagged there is no note and no relabelling', async () => {
+  test('the money tiles carry no note about exclusions, because there are none', async () => {
     const win = await ready(loadApp());
-    // Clear the flag on the demo carry purchase and the exclusion should disappear entirely.
-    const carryId = win.buildDefaultData().ammo.find(a => a.rangeAmmo === false).id;
-    win.openEditAmmo(carryId);
-    win.document.getElementById('ammo-not-range').checked = false;
-    win.saveAmmo();
     openMoney(win);
     const el = flat(win.document.getElementById('stats-as-stats'));
     assert.doesNotMatch(el, /non-range purchase/i);
-    assert.doesNotMatch(el, /Avg CPR · range/i, 'no exclusion, no qualifier on the label');
+    assert.doesNotMatch(el, /Avg CPR · range/i);
   });
 
   test('store prices exclude non-range ammo too, while store spend does not', async () => {

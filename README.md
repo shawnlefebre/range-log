@@ -270,9 +270,11 @@ Several things there are deliberately careful:
   are reachable when you want to look up what something cost last time without wading past
   what's on the shelf.
 - **Carry ammo can be marked "not range ammo"** on a purchase, unchecked by default. A
-  20-round box of defensive ammo at five times the price says nothing about what practice
-  costs, so per-round prices leave it out — while spend and round totals still include it,
-  because you spent the money either way. The screen says how many purchases it left out.
+  20-round box of defensive ammo at five times the price says nothing about what a range trip
+  costs, so it's left out of the **estimated cost of shooting** and of per-round price
+  comparisons between stores. It is *not* left out of the Ammo Spend totals: those three
+  figures — spend, rounds bought, and average cost per round — all describe every purchase,
+  so dividing the first two gives you the third.
 - **Burn rate is not inventory.** It's rounds actually fired, from your session log, which
   is complete. What's *left on the shelf* can't be computed — ammo bought before you started
   logging was never recorded — so the app doesn't guess. It's grouped by a firearm's whole

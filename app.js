@@ -5036,27 +5036,27 @@ function renderAmmoSpendStats() {
   const totalSpend = purchases.reduce((sum, a) => sum + (a.totalPrice || 0), 0);
   const totalRoundsBought = purchases.reduce((sum, a) => sum + (a.quantity || 0), 0);
 
-  // Totals count every purchase — you spent the money either way. The per-round figure does
-  // not: a 20-round box of defensive ammo at five times the price describes nothing about
-  // what practice costs, and averaging it in makes the number useless for planning.
+  // All three tiles describe the same set of purchases, so they divide into each other:
+  // spend over rounds is the price shown. This figure used to exclude carry and defensive
+  // ammo, which left the three sitting side by side unable to reconcile — $1,886 over 7,670
+  // rounds is not the $0.237 the third tile claimed.
+  //
+  // The exclusion still exists where it was actually needed: buildCaliberPricer drops
+  // non-range ammo, so a box of defensive rounds never inflates the estimated cost of a
+  // range trip. That is a question about practice; this tile is a question about what was
+  // spent, and the answer to that includes every round bought.
+  const avgCPR = totalRoundsBought > 0 ? totalSpend / totalRoundsBought : 0;
+
+  // Still needed below: the per-store price comparison uses it to keep a defensive load out
+  // of a store's per-round figure, which is a price question rather than a spend one.
   const rangeOnly = purchases.filter(a => a.rangeAmmo !== false);
-  const excluded = purchases.length - rangeOnly.length;
-  const rangeSpend = rangeOnly.reduce((sum, a) => sum + (a.totalPrice || 0), 0);
-  const rangeRounds = rangeOnly.reduce((sum, a) => sum + (a.quantity || 0), 0);
-  const avgCPR = rangeRounds > 0 ? (rangeSpend / rangeRounds)
-    : (totalRoundsBought > 0 ? totalSpend / totalRoundsBought : 0);
 
   document.getElementById('stats-as-stats').innerHTML = `
     <div class="stats-stat-grid">
       <div class="stats-stat-box"><div class="stats-stat-num">$${totalSpend.toFixed(2)}</div><div class="stats-stat-label">Total Spend</div></div>
       <div class="stats-stat-box"><div class="stats-stat-num">${totalRoundsBought.toLocaleString()}</div><div class="stats-stat-label">Rounds Bought</div></div>
-      <div class="stats-stat-box"><div class="stats-stat-num">$${avgCPR.toFixed(3)}</div><div class="stats-stat-label">Avg CPR${
-        excluded ? ' · range' : ''}</div></div>
+      <div class="stats-stat-box"><div class="stats-stat-num">$${avgCPR.toFixed(3)}</div><div class="stats-stat-label">Avg CPR</div></div>
     </div>
-    ${excluded ? `<div class="stats-note">Per-round price leaves out ${excluded}
-      non-range purchase${excluded === 1 ? '' : 's'} — carry, defensive or match ammo you
-      don't shoot for practice. The spend and round totals still include ${
-      excluded === 1 ? 'it' : 'them'}.</div>` : ''}
   `;
 
   const buckets = pickBuckets(purchases, 'date', start, end);
@@ -7068,7 +7068,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.6.7';
+const APP_VERSION = '7.6.8';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
