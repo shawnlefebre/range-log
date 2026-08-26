@@ -129,7 +129,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   ck('cost of shooting reports a total and a per-trip figure',
     cost.tiles.length === 2 && /Per Range Trip/i.test(cost.tiles.join(' ')));
   ck('cost of shooting ranks firearms', cost.rows > 1);
-  ck('cost of shooting is labelled an estimate', /estimated/i.test(cost.note));
+  ck('cost of shooting is labeled an estimate', /estimated/i.test(cost.note));
   await page.locator('#stats-as-cost').screenshot({ path: path.join(ARTIFACTS,'stats-cost.png') });
 
   const burn = await page.evaluate(() =>

@@ -418,7 +418,7 @@
     font-weight: 600;
     font-variant-numeric: tabular-nums;
   }
-  /* Every figure carries its unit — with the headline in MOA, an unlabelled number
+  /* Every figure carries its unit — with the headline in MOA, an unlabeled number
      beneath it would read as MOA too. */
   .group-unit { font-size: 0.62rem; color: var(--text-dim); font-weight: 400; }
   .req {
@@ -554,7 +554,7 @@
   }
   .group-row-main { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text); }
   /* Names the measure without competing with the figure. Every list leads with extreme
-     spread and every Stats chart plots mean radius, so an unlabelled "MOA" in either place
+     spread and every Stats chart plots mean radius, so an unlabeled "MOA" in either place
      is the one thing that cannot be allowed. */
   .group-row-main .unit,
   .group-row-size .unit { font-size: 0.68em; color: var(--text-dim); font-weight: 400; }
@@ -1709,7 +1709,7 @@
   }
 
   /* Point-of-impact legend. Identity never rests on color alone — the row name sits beside
-     the swatch, and the same buckets are labelled in the comparison chart above it. */
+     the swatch, and the same buckets are labeled in the comparison chart above it. */
   /* Settings readout for the inverse of an orphan: groups pointing at photos that are gone.
      Accent, not --danger — nothing is damaged, and each row is a repair you can make. */
   .photo-lost {

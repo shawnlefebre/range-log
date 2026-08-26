@@ -1319,7 +1319,7 @@ describe('accuracy by firearm', () => {
 // Stats charts use mean radius, because extreme spread grows with shot count and would rank
 // a 3-shot group above a 5-shot one from the same rifle. Both are right for their job — but
 // on real groups they differ by two to three and a half times with no fixed ratio, so an
-// unlabelled "MOA" in one place and an unlabelled "MOA" in the other cannot be reconciled.
+// unlabeled "MOA" in one place and an unlabeled "MOA" in the other cannot be reconciled.
 
 describe('every group figure says which measure it is', () => {
   function grp(id, date, ammo, spread, shots = 5) {
@@ -2224,7 +2224,7 @@ describe('Details modal never stays open behind Cleaning/Zero modals', () => {
     assert.ok(win.document.getElementById('modal-history').classList.contains('open'), 'Details should reopen after saving');
   });
 
-  test('cancelling Log Cleaning (closeModal) also reopens Details', async () => {
+  test('canceling Log Cleaning (closeModal) also reopens Details', async () => {
     const win = await ready(loadApp());
     win.openGunHistory('dg1');
     win.openLogCleaning('dg1');
@@ -2947,7 +2947,7 @@ describe('point of impact map', () => {
     assert.match(flat(poi(win)), /MOA (high|low|right|left)/, 'an unset turret falls back to MOA');
   });
 
-  test('the offset rings are labelled in that same unit', async () => {
+  test('the offset rings are labeled in that same unit', async () => {
     const win = await ready(loadApp());
     const gun = gunWithGroups(win);
     const ringLabels = () => [...poi(win).querySelectorAll('svg text')]
@@ -2996,9 +2996,9 @@ describe('point of impact map', () => {
         const rings = ringLabels();
         assert.ok(rings.length,
           `${unit} rifle offset ${offset} drew no rings, leaving the plot with no scale`);
-        // A ring labelled "0" is not a scale either — the label needs decimals for its step.
+        // A ring labeled "0" is not a scale either — the label needs decimals for its step.
         assert.ok(rings.every(r => Number(r) > 0),
-          `${unit} rifle offset ${offset} labelled a ring ${rings.join()}`);
+          `${unit} rifle offset ${offset} labeled a ring ${rings.join()}`);
         // Distinct labels, or two rings claim the same value.
         assert.strictEqual(new Set(rings).size, rings.length,
           `${unit} rifle offset ${offset} repeated a ring label: ${rings.join()}`);
@@ -3678,7 +3678,7 @@ describe('cost of shooting', () => {
     });
   });
 
-  test('it is labelled an estimate, and names what shapes it', async () => {
+  test('it is labeled an estimate, and names what shapes it', async () => {
     const win = await ready(loadApp());
     openMoney(win);
     const note = flat(win.document.querySelector('#stats-as-cost .stats-note'));
@@ -4734,7 +4734,9 @@ describe('text contrast', () => {
 // rendered text rather than relying on noticing them by eye.
 
 describe('spelling', () => {
-  const BRITISH = /\b(centre|centres|centred|centrefire|colour|colours|coloured|colourblind|behaviour|favour|neighbour|normalise[sd]?|organise[sd]?|recognise[sd]?|analyse|analysed|summarise[sd]?|metre|metres|litre|practising)\b/i;   // spelling-allow: the detector must contain what it looks for
+  // The doubled-L family is the easiest to slip past a reader, and did: the README carried one
+  // through a full rewrite because nothing was looking for it.
+  const BRITISH = /\b(centre|centres|centred|centrefire|colour|colours|coloured|colourblind|behaviour|favour|neighbour|normalise[sd]?|organise[sd]?|recognise[sd]?|analyse|analysed|summarise[sd]?|standardise[sd]?|metre|metres|litre|practising|(?:un)?labelled|labelling|cancelled|cancelling|modelled|modelling|travelled|travelling)\b/i;   // spelling-allow: the detector must contain what it looks for
 
   // The suite splices app.js into a <script> inside the document, so body.textContent would
   // include the entire source — comments and all — and report code as if it were on screen.

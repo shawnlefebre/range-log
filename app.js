@@ -1789,8 +1789,8 @@ function renderGunHistory(gunId) {
       //
       // Named rather than left as a bare "MOA". This figure is extreme spread; every chart
       // in Stats plots mean radius, and on real groups the two differ by two to three and a
-      // half times with no fixed ratio between them — so an unlabelled number here and an
-      // unlabelled number there cannot be reconciled by eye.
+      // half times with no fixed ratio between them — so an unlabeled number here and an
+      // unlabeled number there cannot be reconciled by eye.
       const mr = groupMeanRadiusMOA(g);
       const primary = moa != null ? `${gFmt(moa)}<span class="unit"> MOA spread</span>`
         : size != null ? `${gFmt(size)}<span class="unit">"</span>` : '—';
@@ -6105,7 +6105,7 @@ function handleGroupCalModeChange() {
   }
 }
 
-// Sessions are listed newest first, labelled by date and location. When a group's date
+// Sessions are listed newest first, labeled by date and location. When a group's date
 // matches exactly one session we preselect it, since that's almost always the right
 // answer — but it stays changeable, and "not linked" is always available.
 function populateGroupSessionDropdown(selectedId, groupDate) {

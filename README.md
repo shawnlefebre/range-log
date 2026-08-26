@@ -1,5 +1,7 @@
 # Range Log
-A simple, private tracker for your range sessions — built as a lightweight web app you can install on your phone like a native app, with no account, no ads, and no data ever leaving your device.
+
+A simple, private tracker for your range sessions — a lightweight web app you can install on
+your phone like a native app, with no account, no ads, and no data ever leaving your device.
 
 **[Open Range Log →](https://shawnlefebre.github.io/range-log/)** — or [host your own copy](#hosting-your-own-copy-github-pages).
 
@@ -9,23 +11,25 @@ A simple, private tracker for your range sessions — built as a lightweight web
 - 🧼 Cleaning history — quick / deep / detail-strip, with automatic round-count resets
 - 🎯 Zeros — distance, ammo, optic, and notes per firearm
 - 🎯 Target groups — photograph a target, mark the shots, get group size in inches, MOA and MRAD
-- 📐 Dope tables — come-ups per firearm and load, entered by hand and editable, in MOA or mils
+- 📐 Dope tables — come-ups per firearm and load, entered by hand, in MOA or mils
 - 💵 Ammo purchases — cost per round, seller, stock status, with running averages
 - 📊 Stats — group analysis, rounds fired, ammo spend and cleaning status, filterable by time range, firearm, caliber, and location
 
-All data is stored locally in your browser (nothing is sent to a server), and can be exported/imported as JSON for backup or moving between devices.
+All data is stored locally in your browser. Nothing is sent to a server, and everything can be
+exported and imported as JSON for backup or moving between devices.
 
 ## Contents
 
-**Getting started** — [Screenshots](#screenshots) · [Access via Web](#access-via-web) · [Installing as an app](#installing-as-an-app) · [First Launch](#first-launch)
+**Getting started** — [Screenshots](#screenshots) · [Installing as an app](#installing-as-an-app) · [First launch](#first-launch)
 
-**Using it** — [Firearms and sessions](#firearms-and-sessions) · [Group Analysis](#group-analysis) · [Stats](#stats) ([Groups](#groups), [Money](#money)) · [Dope Tables](#dope-tables) · [Text size](#text-size)
+**Using it** — [Firearms and sessions](#firearms-and-sessions) · [Group analysis](#group-analysis) · [Stats](#stats) ([Groups](#groups), [Money](#money)) · [Dope tables](#dope-tables) · [Text size](#text-size)
 
 **Reference** — [Reading the numbers](#reading-the-numbers) · [Reading the bar charts](#reading-the-bar-charts) · [Photo storage](#photo-storage) · [If your saved data can't be read](#if-your-saved-data-cant-be-read)
 
-**For developers** — [Hosting your own copy](#hosting-your-own-copy-github-pages) · [Development & Testing](#development--testing)
+**For developers** — [Hosting your own copy](#hosting-your-own-copy-github-pages) · [Development and testing](#development-and-testing)
 
 ## Screenshots
+
 ![Home](images/home.png)
 ![Sessions](images/sessions.png)
 ![Group analysis](images/groups.png)
@@ -34,325 +38,243 @@ All data is stored locally in your browser (nothing is sent to a server), and ca
 ![Ammo](images/ammo.png)
 ![Stats](images/stats.png)
 
-*(All taken on v7.7 against the app's built-in demo data — [see below](#first-launch) — so
-nothing here is anyone's real record.)*
+*(Taken on v7.7 against the app's built-in [demo data](#first-launch), so nothing here is
+anyone's real record.)*
 
-## Access via Web
-https://shawnlefebre.github.io/range-log/
+## Installing as an app
 
-## Installing as an App
+Hosted at **https://shawnlefebre.github.io/range-log/** — or use your own URL if you're
+[hosting your own copy](#hosting-your-own-copy-github-pages).
 
-**On iPhone or iPad:**
+**iPhone or iPad.** Open the URL in **Safari** — only Safari can add web apps to the iOS home
+screen. Tap **Share**, then **Add to Home Screen**, then **Add**. Launch it from the new icon
+and it runs full screen, with no browser bar.
 
-1. Open the hosted URL (see above or your own if [hosting your own](#hosting-your-own-copy-github-pages)) in **Safari** — not Chrome or another browser, since only Safari can add web apps to the home screen on iOS
-2. Tap the **Share** button (square with an arrow pointing up)
-3. Scroll down and tap **Add to Home Screen**
-4. Confirm the name and tap **Add**
-5. Launch the app from its new home screen icon going forward — it'll behave like a native app (full screen, no browser bar)
+**Android or desktop.** Open the URL in Chrome or Edge and use **Install app**, in the address
+bar or the ⋮ menu. Same standalone window.
 
-**On Android, or on a desktop:** open the URL in Chrome or Edge and use **Install app** — it's
-in the address bar, or in the ⋮ menu. You get the same standalone window, no browser bar.
+**Updates** are automatic: the app checks on every launch and shows a banner at the bottom when
+a new version is ready. Tap it to reload. No banner means you're up to date.
 
-**Note on updates:** Range Log checks for new versions automatically each time you open it. When an update is available, a banner appears at the bottom — tap it to reload with the latest version. If you don't see a banner, your app already has the newest version.
+**Your data lives on the device:**
 
-**Note on data:** All your data (firearms, sessions, ammo, etc.) is stored locally in your browser/device — nothing is sent to a server. This means:
-- Data does **not** sync automatically between devices (e.g. iPhone and Mac)
-- Use **Setup → Data → Export JSON (backup)** periodically to back up your data
-- Use **Setup → Data → Import JSON backup** to restore a backup or move data to another device
-- Use **Setup → Danger Zone → Delete All Data** to permanently delete everything and start over (requires typing DELETE to confirm — there's no undo)
+- It does **not** sync between devices — your phone and your Mac keep separate records
+- **Setup → Data → Export JSON (backup)** is your backup. Do it periodically
+- **Setup → Data → Import JSON backup** restores one, or moves your data to another device
+- **Setup → Danger Zone → Delete All Data** wipes everything, and asks you to type DELETE first because there's no undo
 
-**Export CSV** sits beside the JSON button and does a different job: it writes your range
-sessions as a spreadsheet — date, location, firearm, caliber, rounds and notes, one row per
-firearm per session. It's a one-way export for reading elsewhere, not a backup: it covers
-sessions only, and nothing imports it back. The JSON is the file to keep.
+**Export CSV** sits beside the JSON button and does a different job: your sessions as a
+spreadsheet — date, location, firearm, caliber, rounds, notes, one row per firearm per session.
+It's for reading elsewhere, not for backup. Nothing imports it back, and it covers only
+sessions. The JSON is the file to keep.
 
-## First Launch
+## First launch
 
-The app opens pre-loaded with a full year of sample data — firearms, sessions, cleanings, ammo purchases, plus a year of target groups and zeros — so you can explore everything, including the Stats tab and Group Analysis, before entering anything of your own. The rifle's groups span the whole year at two distances and two loads, with a mid-year re-zero, so the trend and comparison charts have something real to show. Both handguns carry groups at a shared distance as well, so the cross-firearm accuracy comparison has two things to compare and reaches a real verdict rather than sitting empty. A banner on the Dashboard lets you either:
+The app opens pre-loaded with a year of sample data — firearms, sessions, cleanings, ammo,
+target groups and zeros — so every screen has something in it before you've entered anything of
+your own. The sample rifle's groups span the year at two distances with a mid-year re-zero, and
+the handguns share a distance, so the trend, comparison and point-of-impact charts all have real
+work to do.
 
-- **Clear & Start Fresh** — wipes the sample data for a blank app
-- **Keep This Data** — dismisses the banner and leaves the sample entries in place, if you'd rather edit them into your real setup than start from zero
+A banner on the Dashboard offers **Clear & Start Fresh** to wipe it, or **Keep This Data** if
+you'd rather edit the samples into your real setup.
 
-Demo data is generated fresh each time and dated relative to today, so it never shows a session in the future. If you clear it and later want it back — for a screenshot, or to try a feature without touching your own records — **Setup → Danger Zone → Load Demo Data** regenerates it. It replaces everything currently stored, so it asks you to type `DEMO` first unless the app is already empty.
+Demo data is regenerated fresh each time and dated relative to today, so it never shows a
+session in the future. To get it back later, **Setup → Danger Zone → Load Demo Data**. It
+replaces everything currently stored, so it asks you to type `DEMO` first unless the app is
+already empty.
 
 ---
 
 ## Firearms and sessions
 
-**Log** records a range trip: date, location, rounds fired per firearm, and a note. Those
-rounds accumulate against each firearm's own round count, which is what drives the clean
-reminder on the Dashboard. **Sessions** lists every trip, and a session that has groups
-attached shows a scorecard of what you shot that day.
+**Log** records a range trip: date, location, rounds fired per firearm, and a note. Those rounds
+accumulate against each firearm's round count, which drives the clean reminder on the Dashboard.
+**Sessions** lists every trip; one with groups attached shows a scorecard of what you shot.
 
 Cleanings are logged per firearm as **quick**, **deep** or **detail-strip**, and reset the
-rounds-since-clean count automatically. Zeros record distance, ammo, optic and notes.
+rounds-since-clean count. Zeros record distance, ammo, optic and notes.
 
-**View Details** on any firearm gathers its cleaning history, zeros, dope tables and groups
-in one place, above a running count of rounds since each clean.
+**View Details** on a firearm gathers its cleaning history, zeros, dope tables and groups in one
+place. Each list shows its most recent few with the rest behind a **Show all** count, and
+expanding one scrolls inside its own panel rather than stretching the modal.
 
-Each of those lists shows its most recent few with the rest behind a **Show all** count, so
-a rifle with a year of use doesn't turn the screen into one long scroll. Expanding a long
-list scrolls it inside its own panel rather than stretching the modal, and everything
-returns to the capped view when you reopen Details.
+Tapping a zero, dope table, group or ammo purchase opens it **read-only** — the fields are
+inert, so a stray tap can't alter what a rifle is actually zeroed at. The pencil opens it for
+editing.
 
-Tapping a zero, dope table or group opens it read-only — the fields are genuinely inert, so
-a stray tap can't alter what the rifle is actually zeroed at. The pencil goes straight to
-editing. Ammo purchases work the same way: tap the card to read it, and the card's own
-buttons still act on their own without opening the view.
+## Group analysis
 
-## Group Analysis
-
-Open a firearm's **View Details → Groups → + Add Group** to measure a target from a photo.
+**View Details → Groups → + Add Group** measures a target from a photo:
 
 1. Take or choose a photo of the target
-2. Mark a **known distance** on it — one square of a 1-inch grid, say — so the app knows the scale
-3. Mark your **point of aim**, then the **center of each hole**
+2. Mark a **known distance** on it — one square of a 1-inch grid, say — to set the scale
+3. Mark your **point of aim**, then the center of each hole
 
-You get group size (extreme spread), mean radius, width and height, and how far the group sits from your point of aim — in inches, MOA and MRAD. The reticle is drawn at your bullet's true diameter as you mark, so it sits over the hole like a lid.
+You get group size (extreme spread), mean radius, width and height, and how far the group sits
+from your point of aim, in inches, MOA and MRAD. The reticle is drawn at your bullet's true
+diameter as you mark, so it sits over the hole like a lid. For which figure to trust, see
+[Reading the numbers](#reading-the-numbers).
 
-For what those numbers mean and which to trust, see [Reading the numbers](#reading-the-numbers).
-
-- **Photos taken at an angle** are handled: switch the scale method to *4 corners* and mark the corners of a known rectangle, in any order, and the distortion is corrected mathematically
+- **Photos taken at an angle** are handled — switch the scale method to *4 corners*, mark the corners of a known rectangle in any order, and the distortion is corrected mathematically
 - **The date** defaults to when the photo was taken, not when you logged it
 - **Bullet diameter** comes from the ammo you select
-- **Several groups on one target.** A target often carries four or five separate groups at the same distance with the same load. Mark the scale once, then point of aim and impacts for each group — everything else is entered once and shared. Each saves as its own group, and they share a single stored photo. Groups already marked stay visible on the photo, dimmed, so you can see which clusters you've covered
-- **Fixing one bad mark.** Move the crosshair over an impact and it highlights; a **Remove**
-  control appears in the prompt naming which one. Set point stays the primary action
-  throughout, so you can still add a hole right beside an existing one — on a tight group the
-  crosshair sits near a marked hole most of the time. Undo reverses whichever you did last,
-  so changing your mind about a removal restores that impact where it was rather than
-  deleting a good one
-- **Groups link to a range session**, so each session shows a scorecard of what you shot
-- **Tags** let you label a group however you like — prone, bench, bipod, windy — picking from tags you've used before or typing a new one. Matching ignores case, so *Prone* reuses *prone* rather than creating a second tag that would split your comparisons later
-- **Keeping the photo is optional.** Marked points are always saved, so every measurement still recomputes without it — you just can't re-mark impacts. Photos are stored on the device only and are never included in a JSON export, which keeps backups small
-- **A target photographed once is stored once**, however many groups you mark on it. The image is only deleted when the last group referencing it lets go — dropping the photo from one group, or deleting that group, leaves the others able to re-mark
-- **If a photo does go missing** — a backup restored without its photo bundle, say — the group says so and offers to restore it. Impacts are stored relative to the image, so putting the same photo back lines the marks up again exactly. Restoring repairs every group that shared that target at once, and the camera icon in a group list means the image is genuinely there, not merely that one was attached at some point
+- **Several groups on one target.** Mark the scale once, then point of aim and impacts for each group. Each saves separately but they share one stored photo, and groups you've already marked stay visible on it, dimmed
+- **Fixing one bad mark.** Move the crosshair over an impact and it highlights, with a **Remove** control naming which one. Setting a point stays the primary action, so you can still add a hole right beside an existing one. Undo reverses whichever you did last
+- **Tags** label a group however you like — prone, bench, bipod, windy — from tags you've used before or a new one. Matching ignores case, so *Prone* reuses *prone* instead of splitting your comparisons later
+- **Groups link to a range session**, which is what gives each session its scorecard
+- **Keeping the photo is optional.** Marked points are always saved, so measurements still recompute without it — you just can't re-mark impacts. Photos never leave the device and are never in a JSON export, which keeps backups small
+- **A target photographed once is stored once.** The image is deleted only when the last group referencing it lets go
+- **If a photo goes missing** — a backup restored without its photo bundle, say — the group says so and offers to restore it. Impacts are stored relative to the image, so putting the same photo back lines the marks up exactly, and restoring repairs every group that shared that target at once
 
 ## Stats
 
-Split into four sub-tabs rather than one long scroll, because they answer unrelated
-questions and nobody reads past the first:
+Four sub-tabs, one shared filter bar:
 
-- **Groups** — per-firearm shooting analysis; three charts, covered below
+- **Groups** — per-firearm shooting analysis; three charts, [below](#groups)
 - **Practice** — rounds fired and range trips over time, by firearm, caliber and location
-- **Money** — ammo spend, cost per round, spend by store, what shooting actually costs, and how fast you burn each chambering
-- **Upkeep** — rounds since the last deep clean against each firearm's own threshold, sorted
-  by whoever needs it most. Amber past 80%, red past due — always with the number and the
-  word beside it, so the state never depends on color alone
+- **Money** — ammo spend, cost per round, spend by store, what shooting costs, and how fast you burn each chambering
+- **Upkeep** — rounds since the last deep clean against each firearm's threshold, worst first. Amber past 80%, red past due, always with the number and the word beside it so the state never depends on color alone
 
-One filter bar — time range, location, firearm, caliber — drives all four panes, so the whole
-screen answers the same question. A filter that can't apply to the pane you're on is dimmed
-and disabled with a line saying why, rather than silently ignored: purchases record a *seller*
-rather than a range, so Location is inert on Money, and "rounds since clean" is a fact about
-now, so Time Range is inert on Upkeep.
+The filter bar — time range, location, firearm, caliber — drives all four panes. A filter that
+can't apply to the pane you're on is dimmed and disabled with a line saying why: purchases record
+a *seller* rather than a range, so Location is inert on Money; "rounds since clean" is a fact
+about now, so Time Range is inert on Upkeep.
 
 ### Groups
 
-Always scoped to a single firearm — comparing group sizes across firearms isn't meaningful,
-since a rimfire rifle at 50 yd and a pistol at 25 ft aren't on the same scale. Pick one in
-the filter bar to see the three charts below.
+Scoped to one firearm at a time, since a rifle at 50 yd and a pistol at 25 ft aren't on the same
+scale. Three charts, all driven by the chips above them.
 
-**Group size over time.** The chart plots **every group faintly** and joins each range day's
-**median** with the bold line. That distinction matters more than it looks: a single group is
-a noisy estimate of how well something shoots. One afternoon with the same rifle and load has
-spanned better than 3× from best to worst — so a line drawn through individual groups would
-show dramatic trends that are nothing but sampling noise. The faint vertical bar is that day's
-best-to-worst range, which is the honest width of the estimate: a trend is real when the
-medians move further than those bars are tall. Median rather than mean, so one called flyer
-doesn't drag a day's figure.
+**Group size over time.** Every group is plotted faintly; the bold line joins each range day's
+**median**. The faint vertical bar is that day's best-to-worst spread — a trend is real when the
+medians move further than those bars are tall. One afternoon with the same rifle and load can
+span 3× from best to worst, so a line through individual groups would show trends that are
+nothing but noise.
 
-**Tapping a point opens that range day.** It's keyed on the date rather than the session, so
-a group you marked without linking a session still shows up — that's usually the point of
-asking. You get the location and your session note, the day's groups tightest-first with the
-best one marked, and a way through to the full session if there is one. A group row opens
-that group.
+Tapping a point opens that **range day**: location, your session note, the day's groups
+tightest-first with the best marked, and a way through to the full session. It's keyed on the
+date rather than the session, so a group you never linked still shows up. Two figures sit at the
+top — **rounds logged** is what you recorded for that firearm that day, **shots measured** is
+what's actually in the groups below.
 
-Two figures sit at the top: **rounds logged** is what you recorded for that firearm that day,
-**shots measured** is what's actually in the groups below.
+**Re-zero marks are always drawn**, whatever time range you're on, because point of impact before
+and after a zero aren't the same measurement. The time range picker offers your zeros as anchors:
+**Since last zero**, and each earlier one. Groups dated the same day as a zero count as *after*
+it.
 
-**Re-zero marks are always drawn**, whatever time range you're on. A re-zero is a hard
-boundary — point of impact before and after it aren't the same measurement — and hiding that
-line unless you happened to filter by it is how you read straight through one. The time range
-picker offers your zeros as anchors: **Since last zero**, and each earlier one. Groups dated
-the same day as a zero count as *after* it, since neither carries a time and you zero before
-you shoot groups.
+**Comparing firearms.** Leave the firearm filter on **All Firearms** and the pane compares them
+instead. Each sits at its mean radius in MOA, averaged across its groups, with a bar showing the
+95% range for its true figure — derived from how much its own groups vary, not from how many
+shots you fired.
 
-**Comparing firearms.** Leave the firearm filter on **All Firearms** and the pane compares
-them instead of asking you to pick one. Each is placed by its mean radius in MOA, averaged
-across its groups, with a bar showing the 95% range for where its true figure sits — derived
-from how much its own groups vary, not from how many shots you fired.
+It won't rank a firearm with **fewer than three groups** — two can agree by luck, and no spread
+can be estimated from them — so those show a figure, no bar, and take no part in the comparison.
+When two bars overlap it says **too close to call** rather than presenting an order the data
+doesn't support. More groups narrow the bars.
 
-Two things it refuses to do. It won't rank a firearm with **fewer than three groups**: two
-groups can agree closely by luck, and no spread can be estimated from them, so those appear
-with a figure and no bar and take no part in any comparison. And when two firearms' bars
-overlap it says **too close to call** rather than presenting the order as a result — an
-ordering the data doesn't support is worse than no ordering. More groups of the same thing
-narrows the bars.
+Pin the distance first: a handgun at 25 ft and a rifle at 50 yd differ by discipline long before
+they differ as firearms. With more than one distance in scope, the view says so and offers chips
+to narrow it.
 
-Distance is the thing to pin first. A handgun at 25 feet and a rifle off a bench at 50 yards
-differ by discipline long before they differ as firearms, and on a real collection that gap
-dwarfs everything else — so with more than one distance in scope, the view says so and offers
-the chips to narrow it.
+**Narrowing what's in play.** Three rows of chips — **ammo**, **distance**, **tag** — drive all
+three charts. Several within a row mean *or*; across rows means *and*, so *55gr FMJ* plus *50 yd*
+is "that load at that distance," which is where a zero actually lives. A row appears only when it
+has more than one value to offer.
 
-**Narrowing what's in play.** Above the charts sit three rows of chips — **ammo**, **distance**
-and **tag** — and everything below them follows: the trend, the comparison, and point of
-impact. Pick several within a row to mean *or*; pick across rows to mean *and*. So *77gr TMK*
-plus *50 yd* is "that load at that distance," which is the combination a zero actually lives
-at. A row only appears when it has more than one value to choose between, since one chip that
-changes nothing is just clutter.
+Each chip carries the number of groups you'd get **if you clicked it**, not how many exist — pick
+100 yd and the ammo counts redraw to what's available there. Empty combinations are dimmed rather
+than offered. Selections belong to the firearm you're on and reset when you switch.
 
-Each chip carries the number of groups you'd get **if you clicked it**, not how many exist —
-select 100 yd and the ammo counts redraw to what's available at 100 yd. A combination with
-nothing in it is dimmed rather than offered. Selections belong to the firearm you're looking
-at and reset when you switch, and if a load drops out of your date range its selection is
-dropped with it rather than silently emptying the pane.
+**Comparing groups** puts a **Compare by** control over one chart: ammo, tag, range day or
+distance. One dot per group, a median tick, the spread as a bar — prone versus bench is the same
+question as one load versus another, so it's one view rather than three.
 
-**Comparing groups** puts a **Compare by** control over one chart: ammo, tag, range day, or
-distance. Prone versus bench is the same question as Norma versus CCI — one dot per group, a
-median tick, the spread as a bar — so it's one view rather than three.
+Each option shows how many buckets it would split into — *Ammo (3), Tag (1)* — so you can see
+which comparisons are worth making. Land on a dimension with one bucket and it names the ones
+that aren't, as chips that switch the control for you. It also warns when **every bucket comes
+from one range day**, since then you're comparing afternoons rather than tags, and when **a group
+appears in more than one row**, which happens with tags because they're multi-valued and the
+counts won't add to your total.
 
-Each option carries the number of buckets it would split the current groups into — *Ammo (3),
-Tag (1)* — so you can see which comparisons are worth making without selecting each in turn.
-A dimension with one bucket has nothing to compare, and when you land on one it names the
-dimensions that do, as chips that switch the control for you.
+Distances are normalized first, so 25 ft and 8.333 yd are one bucket.
 
-Two things it deliberately tells you:
+**Point of impact** answers the other half: not what the firearm can do, but whether it's pointed
+where you think. Each dot is one group's *center* relative to your aim, with rings marking
+distance out from it — spaced from how far the dots actually sit, so a tight rifle still gets a
+scale to read against.
 
-- **When every bucket comes from one range day**, it says so. Comparing two tags that happen
-  to be from two different afternoons compares the afternoons, not the tags — and switching
-  to "range day" will show you whether that's what you're looking at.
-- **A group can appear in more than one row when comparing tags**, since tags are
-  multi-valued. The counts won't add up to your group total, and the chart says why rather
-  than quietly disagreeing with itself.
+It's colored by whatever **Compare by** is set to, with a cross at each row's median, so the two
+charts read together. Beyond four rows it stops coloring, since the palette is validated for four
+series against the dark background and a fifth would fail colorblind separation; the whole set
+then gets one cross, so the typical point of impact is always drawn.
 
-Distances are normalized first, so 25 ft and 8.333 yd are one bucket rather than two.
+Underneath, it states in words where things sit — *"typical center is 0.6 MOA high and 0.3 MOA
+right of aim across 23 groups"*. That sentence and the rings both read in the firearm's own
+[optic adjustment unit](#reading-the-numbers).
 
-**Point of impact** answers the other half of the question. Group size tells you what the
-firearm can do; this tells you whether it's pointed where you think — each dot is one group's
-*center* relative to your aim, with rings marking the distance out from it. The ring spacing
-is chosen from how far the dots actually sit, so a rifle grouping tightly still gets a scale
-to read against rather than an empty plot.
-
-It's colored by whatever **Compare by** is set to, so the two charts read together, with a
-cross marking each row's median. Beyond four rows it stops coloring: the palette is
-validated for four series against the dark background, and a fifth can't be added without
-failing colorblind separation. When the dots aren't split into rows — one load, or more rows
-than the palette can carry — there's a single cross for the whole set, so the typical point
-of impact is always drawn and not merely described.
-
-**If more than one distance is in scope, it says so.** Offsets are angular, so a correctly
-dialed rifle lands on aim at any distance and mixing them is fine in principle. In practice
-the come-up is the thing in question: a wrong one at 100 puts those groups somewhere else
-entirely and drags the median with them, which reads as a zero problem at 50. The plot names
-the distances it's mixing and offers to narrow to one.
-
-Underneath, it says in words where things actually sit — *"typical center is 0.74 MOA high
-and 0.48 MOA right of aim across 15 groups"* — which is usually the sentence you wanted. Both
-that sentence and the rings read in the firearm's own [optic adjustment
-unit](#reading-the-numbers).
-
-**If a re-zero falls inside the range you're looking at, it says so.** Point of impact before
-and after a zero change aren't the same measurement, and averaging across one gives a number
-describing neither. Anchor the time range to a zero to read them as one.
+It flags two situations. **More than one distance in scope**: offsets are angular, so mixing
+distances is fine in principle, but a wrong come-up at 100 drags the median and reads as a zero
+problem at 50. **A re-zero inside your time range**: averaging across one gives a number
+describing neither side of it. Anchor the time range to a zero to read them separately.
 
 ### Money
 
-Several things there are deliberately careful:
+**Cost per trip.** Every range trip carries an estimated cost, on the session card and ranked
+here, most expensive first or flipped to find a cheap afternoon. Each row lists the firearms,
+round counts and session note behind the figure; tapping it opens that session. The per-round
+rate beside each trip explains the spread, since a rimfire afternoon and a centerfire one cost
+very different money for the same round count.
 
-- **The caliber picker offers individual calibers and, separately, shared chambers.** A rifle
-  chambered .223/5.56 can't have its rounds attributed to one or the other, so the merged
-  entry exists for the shooting views. But a purchase always names exactly one caliber, and
-  .223 match is a different product from bulk 5.56 — so on Money you pick the one you mean.
-- **Filtering money by firearm is an inference.** Purchases are logged per caliber and never
-  per firearm, so picking a rifle shows spend on the calibers it uses — including ammo you
-  actually put through something else chambered the same way. The screen says so.
-- **Each range trip carries its estimated cost**, on the session card and ranked under Money
-  — most expensive first, or flip it to see what a cheap afternoon looks like. Each row lists
-  the firearms and round counts that explain the figure, plus the session note on one line —
-  "AR15 Carbine/Rifle close range drills Class" explains a $95 afternoon at a glance. Tapping
-  a row opens that session. The spread is wider than an average suggests — the per-round rate beside each
-  trip is what explains it, since a rimfire afternoon and a centerfire one cost very different
-  money for the same round count.
-- **Cost of shooting is not total spend.** Total spend is what left your wallet; this is
-  what actually went downrange — rounds fired times the price of range ammo for that
-  firearm's chambering, ranked by firearm, with a per-range-trip figure. It's explicitly an
-  estimate: rounds are logged per firearm and purchases per caliber, so there's no way to
-  know which box a given round came from. Rounds whose chambering has no logged ammo are
-  reported rather than quietly dropped.
-- **Each trip is priced from the ammo you'd bought by that date.** Buying expensive ammo
-  today never changes what last March cost — a figure that moves after the fact isn't a
-  record of anything. Trips that predate every purchase of what was shot (real, if you were
-  shooting before you started logging) fall back to the earliest price on record and are
-  marked `≈` rather than reading $0.
-- **Marking a lot used up records when.** The date is set the first time you mark it, and
-  kept — not cleared — if you toggle back to in stock, so mis-tapping the button and
-  correcting it leaves the record as it was rather than silently restamping it as today. The
-  date is editable on the purchase, and blank is allowed: lots that ran out before the app
-  tracked this have no date, and unknown beats a made-up one. The Ammo tab filters on this
-  three ways — **In stock only** (the default), **Used up only**, or **All** — so past lots
-  are reachable when you want to look up what something cost last time without wading past
-  what's on the shelf.
-- **Carry ammo can be marked "not range ammo"** on a purchase, unchecked by default. A
-  20-round box of defensive ammo at five times the price says nothing about what a range trip
-  costs, so it's left out of the **estimated cost of shooting** and of per-round price
-  comparisons between stores. It is *not* left out of the Ammo Spend totals: those three
-  figures — spend, rounds bought, and average cost per round — all describe every purchase,
-  so dividing the first two gives you the third.
-- **Where a store sold you both**, its row shows both prices — *$0.247/rd range · $0.311/rd
-  all-in* — so you can compare stores on practice ammo without losing sight of what you
-  actually paid there. Stores with nothing flagged show a single price and are unchanged. The
-  round count beside a price is always the one that price was computed from.
-- **Burn rate is not inventory.** It's rounds actually fired, from your session log, which
-  is complete. What's *left on the shelf* can't be computed — ammo bought before you started
-  logging was never recorded — so the app doesn't guess. It's grouped by a firearm's whole
-  chambering, so a .357/.38 revolver counts once: rounds are logged per firearm, and asking
-  which of the two it fired has no answer.
-- **Each chambering is divided by its own window**, not by the span of the whole log. A rifle
-  you bought three months into a twelve-month view is measured over those three months — the
-  earlier ones aren't yours to be charged for. But a caliber you'd owned *before* the window
-  opened is measured across the whole window, dormant months included: if you have had it all
-  year and only shot it in March, a low rate is the true answer, and that's the number worth
-  acting on. Each row states the span behind its own figure.
-- **Spend by store withholds price per round until one caliber is in scope.** A shop that
-  only ever sold you 5.56 would look expensive beside one that sold you bulk .22, and that
-  compares products rather than prices.
+Trips are priced from the ammo you'd bought **by that date**, so buying expensive ammo today
+never changes what last March cost. A trip predating every purchase of what was shot falls back
+to the earliest price on record and is marked `≈`.
 
-## Dope Tables
+**Cost of shooting is not total spend.** Total spend is what left your wallet; this is what went
+downrange — rounds fired times the price of range ammo for that chambering, ranked by firearm.
+It's an estimate: rounds are logged per firearm and purchases per caliber, so there's no knowing
+which box a round came from. Rounds whose chambering has no logged ammo are reported, not
+dropped.
 
-Open a firearm's **View Details → Dope → + Add Table** to record the come-ups for a load.
+**Burn rate is not inventory** either. It's rounds actually fired, from your session log. What's
+left on the shelf can't be computed, since ammo bought before you started logging was never
+recorded. Each chambering is divided by **its own window**: a rifle bought three months into a
+twelve-month view is measured over those three months, while a caliber you owned before the
+window opened is measured across all of it, dormant months included. Each row states its span.
 
-A dope table is one ammo, one zero distance, and a list of distances with the elevation to
-dial for each. Tap a card to read the whole table; the pencil opens it for editing.
+Other things worth knowing:
+
+- **The caliber picker offers individual calibers and, separately, shared chambers.** A rifle chambered .223/5.56 can't have its rounds attributed to one or the other, so the merged entry exists for the shooting views — but a purchase names exactly one caliber, so here you pick the one you mean
+- **Filtering money by firearm is an inference.** Purchases are logged per caliber, never per firearm, so picking a rifle shows spend on the calibers it uses — including ammo you put through something else chambered the same way. The screen says so
+- **Burn rate groups by whole chambering**, so a .357/.38 revolver counts once. Rounds are logged per firearm, and which of the two it fired has no answer
+- **Carry ammo can be marked "not range ammo"**, unchecked by default. It's then left out of the cost of shooting and of per-round comparisons between stores, but stays *in* the Ammo Spend totals — so spend ÷ rounds bought still equals the average shown beside them
+- **Where a store sold you both**, its row shows both prices — *$0.28/rd range · $0.34/rd all-in*. The round count beside a price is always the one it was computed from
+- **Spend by store withholds price per round until one caliber is in scope**, since a shop that only ever sold you 12 Gauge would look expensive beside one selling bulk 9mm
+- **Marking a lot used up records when.** The date is set the first time and kept if you toggle back to in stock, so correcting a mis-tap doesn't restamp it as today. It's editable, and blank is allowed. The Ammo tab filters **In stock only** (default), **Used up only**, or **All**
+
+## Dope tables
+
+**View Details → Dope → + Add Table** records the come-ups for a load: one ammo, one zero
+distance, and a list of distances with the elevation to dial for each.
 
 **The app does not calculate ballistics.** The numbers come from whatever solver you already
-trust — this stores them and, more to the point, lets you correct them once you've actually
-shot the distance. Nothing here second-guesses your table, and logged group data never
-adjusts it.
+trust; this stores them and lets you correct them once you've actually shot the distance. Logged
+group data never adjusts your table.
 
-A few things worth knowing:
-
-- **The unit is per table, and switching it converts the numbers.** 6.0 MOA becomes 1.75 mil,
-  not 6.0 mil. A new table starts in whatever unit you set as the firearm's turret unit.
-- **The distance unit is set once** at the top, so each row is just two numbers — four
-  controls per row would be unusable at phone width.
-- **Conditions are a note to yourself**, not a model. Dope drifts with altitude and
-  temperature, and recording that these came from 900 ft at 70°F is what stops you trusting
-  them somewhere they don't apply.
-- **The card shows six distances**, then a count of the rest, so a long table doesn't push
-  everything below it off screen.
+- **The unit is per table, and switching it converts the numbers** — 6.0 MOA becomes 1.75 mil, not 6.0 mil. New tables start in the firearm's turret unit
+- **The distance unit is set once** at the top, so each row is just two numbers
+- **Conditions are a note to yourself**, not a model. Dope drifts with altitude and temperature, and recording that these came from 900 ft at 70°F is what stops you trusting them somewhere they don't apply
+- **The card shows six distances**, then a count of the rest
 
 ## Text size
 
 **Setup → Display → Text size**, four steps from Normal to Largest. It scales the whole app
-together — headings, labels, numbers, charts — so proportions and hierarchy are preserved
-rather than one tier growing while the rest stays put.
+together — headings, labels, numbers, charts — so hierarchy is preserved rather than one tier
+growing while the rest stays put.
 
-The default is **Large**. The app originally rendered its typical text around 11px, which is
-readable but not comfortable on a phone; Large puts that nearer 14px, and the two steps above
-go further.
-
-It's stored per device rather than in your backup: it describes this screen and these eyes,
-not your shooting record, so restoring a backup somewhere else won't drag it along.
+The default is **Large**: the app originally rendered its typical text around 11px, and Large puts
+that nearer 14px. It's stored per device rather than in your backup, since it describes this
+screen and these eyes, not your shooting record.
 
 ---
 
@@ -360,120 +282,130 @@ not your shooting record, so restoring a backup somewhere else won't drag it alo
 
 ### Reading the numbers
 
-The app reports several measurements because they answer different questions.
-
 **Group size (extreme spread)** is the conventional figure — the distance between the two
-farthest holes, center to center. It's what most people quote, but it uses only two shots
-and ignores the rest, so it grows with how many rounds you fired. From the same rifle, a
-5-shot group runs roughly 25% larger than a 3-shot, and a 10-shot roughly 55% larger.
-Comparing groups of different shot counts by this number flatters whichever had fewer
-shots.
+farthest holes, center to center. It uses only two shots and ignores the rest, so it grows with
+round count: from the same rifle, a 5-shot group runs roughly 25% larger than a 3-shot, and a
+10-shot roughly 55% larger. Comparing groups of different shot counts by this number flatters
+whichever had fewer shots.
 
-**Mean radius** is the average distance of each hole from the center of the group. It uses
-every shot and doesn't drift with sample size, which makes it the fair way to compare
-groups — and the number to trust when your shot counts aren't consistent.
+**Mean radius** is the average distance of each hole from the group's center. It uses every shot
+and doesn't drift with sample size, which makes it the fair way to compare groups.
 
-**Which one you're looking at is always named.** The app uses both, deliberately: a group
-listed on its own leads with **extreme spread**, because that's the figure people quote for
-a single group, while every chart under Stats → Groups plots **mean radius**, because
-ranking loads by extreme spread would quietly favor whichever you happened to shoot in
-3-round strings. On real groups the two differ by roughly two to three and a half times,
-and the ratio isn't fixed — so no figure is left as a bare "MOA". A list row reads *2.45 MOA
-spread* and carries *0.70 MOA mean radius* beneath it, which is the number that group sits at
-on the trend and comparison charts.
+**Which one you're looking at is always named.** A group listed on its own leads with **extreme
+spread**, because that's the figure people quote. Every chart under Stats → Groups plots **mean
+radius**, because ranking loads by extreme spread would favor whichever you happened to shoot in
+3-round strings. The two differ by roughly two to three and a half times and the ratio isn't
+fixed, so no figure is left as a bare "MOA" — a list row reads *2.45 MOA spread* with *0.70 MOA
+mean radius* beneath it.
 
-**Why MOA rather than inches.** A 1″ group at 50 yards and a 1″ group at 100 yards are not
-the same performance; the second is twice as good. MOA is angular, so it stays comparable
-across distances. One MOA subtends about 1.047″ at 100 yards. Inches are still shown, but
-the headline figures are MOA for this reason.
+**Why MOA rather than inches.** A 1″ group at 50 yards and a 1″ group at 100 yards are not the
+same performance; the second is twice as good. MOA is angular, so it stays comparable across
+distances. One MOA subtends about 1.047″ at 100 yards. Inches are still shown.
 
-**Elevation and windage offsets** describe where the group sat relative to your point of
-aim — a zeroing question, not an accuracy one. A tight group in the wrong place and a loose
-group centered on your aim are different problems, and the offsets separate them.
+**Elevation and windage offsets** describe where the group sat relative to your aim — a zeroing
+question, not an accuracy one. A tight group in the wrong place and a loose group centered on
+your aim are different problems.
 
-**Offsets follow your turret; group size doesn't.** Set a firearm's **optic adjustment unit**
-(MOA or MRAD) and its offsets lead with that unit wherever they appear — in a group's details
-and on the point-of-impact map — so they read in whatever you actually dial; all three units
-are shown either way. Group sizes stay in MOA whatever the optic, because those are compared
-*between* firearms and need one common unit.
+**Offsets follow your turret; group size doesn't.** Set a firearm's **optic adjustment unit** (MOA
+or MRAD) and its offsets lead with that unit everywhere, so they read in whatever you actually
+dial — all three units are shown either way. Group sizes stay in MOA whatever the optic, because
+those get compared *between* firearms and need one common unit.
 
-**Shot count is worth standardising.** Five shots per group is the usual convention and a
-reasonable balance: enough for the number to mean something, not so many that barrel heat
-or fatigue creep in. Rimfire is cheap enough that ten is worth it. Shooting several groups
-in a session tells you more than one large one, because the spread *between* groups is
-where fliers and inconsistency show up.
+**Shot count is worth standardizing.** Five per group is the usual convention: enough for the
+number to mean something, not so many that barrel heat or fatigue creep in. Rimfire is cheap
+enough that ten is worth it. Several groups in a session tell you more than one large one,
+because the spread *between* groups is where fliers show up.
 
-**When to use 4-corner scaling.** Rotation doesn't change group size — distances between
-holes are unaffected by how the camera was held — but it does skew the elevation and
-windage split, since those are measured against the image's own axes. If the photo wasn't
-taken square-on and you care about the offsets, mark four corners of a known rectangle and
-the distortion is corrected mathematically.
+**When to use 4-corner scaling.** Rotation doesn't change group size — distances between holes
+don't care how the camera was held — but it does skew the elevation and windage split, which are
+measured against the image's own axes. If the photo wasn't square-on and you care about offsets,
+mark four corners of a known rectangle.
 
 ### Reading the bar charts
 
-Rounds fired, range trips and ammo spend share one chart, with a **y-axis and gridlines**.
-The scale rounds up to a number a person would have picked — a 510-round month is drawn
-against a ceiling of 600, with lines at 200 and 400 — so a bar's height means something on
-its own rather than only in comparison to the tallest one. The trade is that no bar ever
-touches the top of the plot. Ticks are drawn from the same formatter as the values, so the
-Money chart's axis reads in dollars.
+Rounds fired, range trips and ammo spend share one chart with a **y-axis and gridlines**. The
+scale rounds up to a number a person would have picked — a 510-round month is drawn against a
+ceiling of 600, with lines at 200 and 400 — so a bar's height means something on its own rather
+than only against the tallest one. The trade is that no bar ever touches the top. Ticks use the
+same formatter as the values, so the Money chart's axis reads in dollars.
 
-**Month labels thin out instead of shrinking.** At the larger text sizes three-letter months
-no longer fit side by side, so every second or third one is labelled rather than reducing the
-type — the point of the setting is that text stays readable. Which ones survive is measured
-against the space actually available, so it depends on your text size and screen width rather
-than a fixed rule, and every bar is still drawn. The gridlines are what carry magnitude for
-the bars whose own number was thinned away.
+**Month labels thin out instead of shrinking.** At larger text sizes, three-letter months stop
+fitting side by side, so every second or third is labeled rather than reducing the type. Which
+ones survive is measured against the space actually available, and every bar is still drawn — the
+gridlines carry magnitude for the bars whose label was thinned away.
 
 ### Photo storage
 
-Photos are downscaled before storing, so each one lands around 30–100 KB — a few range trips a month works out to under 10 MB a year, against the gigabytes a browser will give an installed app.
+Photos are downscaled before storing, landing around 30–100 KB each — a few range trips a month
+works out to under 10 MB a year, against the gigabytes a browser gives an installed app.
 
-**Setup → Target Photos** shows exactly what's stored: how many photos, their total size, and how much room the app has. If any photos are no longer attached to a group — which can happen after importing a backup — it offers to reclaim that space.
+**Setup → Target Photos** shows how many photos are stored, their total size, and how much room
+the app has. If any are no longer attached to a group — which can happen after importing a backup
+— it offers to reclaim the space.
 
-It also reports the opposite case: groups pointing at a photo the device no longer has. These cost nothing and break nothing, but they quietly remove the ability to re-mark, and finding them otherwise would mean opening every group. They're listed one row per **target** rather than per group, since restoring one photo repairs every group marked on it — tap a row to go straight to the group that can restore it.
+It also reports the opposite case: groups pointing at a photo the device no longer has. These
+break nothing, but they quietly remove the ability to re-mark, and finding them otherwise would
+mean opening every group. They're listed one row per **target** rather than per group, since
+restoring one photo repairs every group marked on it.
 
-Because photos are left out of the JSON backup, moving them to another device is a separate step: **Export photos** writes a bundle you import on the new device *after* restoring the JSON backup. Importing a bundle only restores images that some group actually refers to.
+Because photos are left out of the JSON backup, moving them to another device is a separate step.
+**Export photos** writes a bundle you import on the new device *after* restoring the JSON backup.
+Importing a bundle only restores images some group actually refers to.
 
 ### If your saved data can't be read
 
-If Range Log ever finds saved data on startup that it can't open — a write interrupted partway through, say — it will **not** overwrite it. It sets a copy aside, starts you with an empty app rather than sample data, and shows a banner offering the copy as a download. Take the download: it's the raw text exactly as it was found, which is what any repair would start from.
+If Range Log finds saved data on startup that it can't open — a write interrupted partway
+through, say — it will **not** overwrite it. It sets a copy aside, starts you with an empty app
+rather than sample data, and shows a banner offering the copy as a download. Take the download:
+it's the raw text exactly as found, which is what any repair would start from.
 
-Nothing else clears that copy, so it survives normal use. **Setup → Danger Zone → Delete All Data** does remove it, along with everything else.
+Nothing else clears that copy, so it survives normal use. **Setup → Danger Zone → Delete All
+Data** removes it along with everything else.
 
 ---
 
-## Hosting Your Own Copy (GitHub Pages)
+## Hosting your own copy (GitHub Pages)
 
-1. **Fork this repository** (or create a new one and copy in everything at the repo root — `index.html`, `app.css`, `app.js`, `sw.js`, `manifest.json`, and the icon files)
+1. **Fork this repository** — or create a new one and copy in everything at the repo root: `index.html`, `app.css`, `app.js`, `sw.js`, `manifest.json` and the icon files
 2. Make sure the repo is **public** — GitHub Pages requires this on free accounts
-3. In your repo, go to **Settings → Pages**
+3. Go to **Settings → Pages**
 4. Under **Source**, select the **main** branch and **/ (root)** folder, then **Save**
-5. Wait about a minute, then your app will be live at:
-   `https://YOUR-USERNAME.github.io/YOUR-REPO-NAME/`
+5. Wait about a minute; your app will be live at `https://YOUR-USERNAME.github.io/YOUR-REPO-NAME/`
 
-**Important:** the app's files must sit together in the same folder (repo root). There's no build step, but each is doing a job: `index.html` loads `app.css` and `app.js`, `sw.js` handles updates, and `manifest.json` plus `icon-*.png` are what let a phone install it with a real icon. Deploy them together, or you can end up with new markup running against old code.
+**All of it deploys together.** There's no build step, but each file is doing a job:
+`index.html` loads `app.css` and `app.js`, `sw.js` handles updates, and `manifest.json` plus
+`icon-*.png` are what let a phone install it with a real icon. Deploy them as a set, or you can
+end up with new markup running against old code.
 
-`icon.svg` is the source the PNGs are generated from — `node tools/make-icons.js` rewrites them. Nothing at runtime reads it except as a favicon, so a fork can leave it alone.
+`icon.svg` is the source the PNGs are generated from, via `node tools/make-icons.js`. Nothing at
+runtime reads it except as a favicon.
 
-## Development & Testing
+## Development and testing
 
-The app itself has zero runtime dependencies and no build step — nothing here affects anyone just using or hosting it. This section is for anyone modifying the code.
+The app has zero runtime dependencies and no build step — nothing in this section affects anyone
+just using or hosting it.
 
-`index.html` is markup only; `app.css` and `app.js` hold the styles and all the application code. `app.js` is loaded as a plain script rather than an ES module, because the markup uses inline `onclick` handlers that need global scope.
+`index.html` is markup only; `app.css` and `app.js` hold the styles and all the application code.
+`app.js` is loaded as a plain script rather than an ES module, because the markup uses inline
+`onclick` handlers that need global scope.
 
-A regression suite lives in `test/`, using Node's built-in test runner and `jsdom`. It covers the trickier logic: data-schema migrations, Stats filtering, weekly/monthly chart bucketing, group geometry (including the perspective correction), and demo-data generation.
+The **unit suite** uses Node's built-in test runner and `jsdom`, covering the trickier logic:
+schema migrations, Stats filtering, chart bucketing, group geometry including the perspective
+correction, and demo-data generation.
 
 ```bash
 npm install
 npm test
 ```
 
-There is also a **browser suite** covering what jsdom can't reach — canvas rendering, IndexedDB, real file inputs, pointer gestures and layout, which is where most real bugs in this app have turned up. It drives a headless Chromium against a throwaway local server:
+The **browser suite** covers what jsdom can't reach — canvas rendering, IndexedDB, real file
+inputs, pointer gestures and layout, which is where most real bugs here have turned up. It drives
+a headless Chromium against a throwaway local server:
 
 ```bash
 npx playwright install chromium   # one time
 npm run test:browser
 ```
 
-It is deliberately kept out of `npm test` so the unit suite stays fast and CI needs no browser download. Pass a suite name to run just that one — `node test/browser/run.js install-check`.
+It's kept out of `npm test` so the unit suite stays fast and CI needs no browser download. Pass a
+suite name to run one on its own — `node test/browser/run.js install-check`.

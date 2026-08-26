@@ -55,7 +55,7 @@ const TABS = ['dashboard', 'log', 'sessions', 'ammo', 'stats', 'settings'];
 
     // The y-axis gutter is measured from its own ticks, so it has to grow with the text or
     // the numbers get clipped; and each line has to sit where its own label claims it does.
-    ck(`${size}: every gridline sits at the value it is labelled with`,
+    ck(`${size}: every gridline sits at the value it is labeled with`,
       bars.every(c => c.misaligned <= 1.5));
     ck(`${size}: the axis gutter fits its widest tick`,
       bars.every(c => c.gutter >= c.widestTick + 2));

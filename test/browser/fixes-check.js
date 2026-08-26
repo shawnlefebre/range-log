@@ -76,7 +76,7 @@ require('fs').mkdirSync(ARTIFACTS, { recursive: true });
   await page.waitForTimeout(300);
   check('Cancel still closes it',
     await page.evaluate(() => !document.getElementById('modal-group').classList.contains('open')));
-  // Cancelling returns to Details rather than dumping you on the dashboard.
+  // Canceling returns to Details rather than dumping you on the dashboard.
   check('Cancel returns to the Details view',
     await page.evaluate(() => document.getElementById('modal-history').classList.contains('open')));
 
