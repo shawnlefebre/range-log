@@ -2754,6 +2754,37 @@ describe('stats groups pane', () => {
       'individual groups are plotted as well as the medians');
   });
 
+  // The first date label lost its leading letter at every zoom: it is centered on a point
+  // sitting PAD=12 from the edge, and "Jun 27" wants 16px of half-width, so the overflow was
+  // clipped by the SVG itself — nothing to do with running out of room, which is why it
+  // happened on a chart that was otherwise empty.
+  test('no axis label is clipped by the edge of the plot', async () => {
+    const win = await ready(loadApp());
+    const gun = gunWithGroups(win);
+
+    // IBM Plex Mono advances a fixed 0.6em, so 5.4px per character at font-size 9. A font
+    // fact rather than a choice the code makes, which is why asserting with it is fair.
+    const CH = 5.4;
+    for (const zoom of ['fit', '6mo', '3mo', '1mo']) {
+      win.setTrendZoom(zoom);
+      pick(win, gun.id);
+      const svg = win.document.querySelector('#stats-groups-trend .trend-scroll svg');
+      const W = Number(svg.getAttribute('width'));
+      const centered = [...svg.querySelectorAll('text')]
+        .filter(t => t.getAttribute('text-anchor') === 'middle');
+      assert.ok(centered.length, `${zoom}: the chart should carry centered labels to check`);
+
+      for (const t of centered) {
+        const half = t.textContent.length * CH / 2;
+        const at = Number(t.getAttribute('x'));
+        assert.ok(at - half >= 0,
+          `${zoom}: "${t.textContent}" starts at ${(at - half).toFixed(1)}, off the left edge`);
+        assert.ok(at + half <= W,
+          `${zoom}: "${t.textContent}" ends at ${(at + half).toFixed(1)}, past the right edge ${W}`);
+      }
+    }
+  });
+
   test('re-zero marks are drawn even when the range is not anchored to one', async () => {
     const win = await ready(loadApp());
     const gun = gunWithGroups(win);

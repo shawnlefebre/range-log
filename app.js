@@ -4177,6 +4177,18 @@ function renderGroupTrend(gun, groups) {
   const pxPerDay = (z.days ? viewW / z.days : viewW / spanDays);
   const W = Math.max(viewW, spanDays * pxPerDay);
   const x = t => PAD + ((t - T0) / 86400000) * pxPerDay;
+  // Labels are centered on the thing they name, so one near either end of the plot sits half
+  // outside the SVG and is clipped by it — not by running out of room, which is why the first
+  // date lost a letter with the whole chart empty to its right. The first point is PAD=12 from
+  // the edge and "Jun 27" wants 16 of half-width, so it never fit at any zoom. Nudge the anchor
+  // inward rather than letting it spill: IBM Plex Mono advances a fixed 0.6em, so the width is
+  // known without measuring, and a few pixels off-center reads better than a truncated date.
+  const MONO_CH = 5.4;                         // one character at font-size 9
+  const clampLabel = (at, text) => {
+    const half = String(text).length * MONO_CH / 2;
+    if (half * 2 + 2 >= W) return W / 2;       // narrower than its own label; centering is all there is
+    return Math.min(Math.max(at, half + 1), W - half - 1);
+  };
   const vals = groups.map(g => g.mrMOA);
   const ymax = Math.max(...vals) * 1.2 || 1;
   const y = v => H - PB - (v / ymax) * (H - PT - PB);
@@ -4209,8 +4221,10 @@ function renderGroupTrend(gun, groups) {
     let lastX = -Infinity;
     days.forEach(d => {
       if (x(d.t) - lastX < 40) return;      // trips cluster; skip what will not fit
-      svg += `<text x="${x(d.t)}" y="${H - 14}" fill="${DIM}" font-family="IBM Plex Mono"
-                    font-size="9" text-anchor="middle">${trendDayLabel(d.date)}</text>`;
+      const label = trendDayLabel(d.date);
+      svg += `<text x="${clampLabel(x(d.t), label)}" y="${H - 14}" fill="${DIM}"
+                    font-family="IBM Plex Mono"
+                    font-size="9" text-anchor="middle">${label}</text>`;
       lastX = x(d.t);
     });
   } else {
@@ -4218,8 +4232,10 @@ function renderGroupTrend(gun, groups) {
     let prev = null;
     months.forEach((m, i) => {
       if (i % everyN) return;
-      svg += `<text x="${x(m)}" y="${H - 14}" fill="${DIM}" font-family="IBM Plex Mono"
-                    font-size="9" text-anchor="middle">${trendMonthLabel(m, prev)}</text>`;
+      const label = trendMonthLabel(m, prev);
+      svg += `<text x="${clampLabel(x(m), label)}" y="${H - 14}" fill="${DIM}"
+                    font-family="IBM Plex Mono"
+                    font-size="9" text-anchor="middle">${label}</text>`;
       prev = m;
     });
   }
@@ -4267,8 +4283,10 @@ function renderGroupTrend(gun, groups) {
                     cx="${x(d.t)}" cy="${y(d.med)}" r="4.2" fill="${ACCENT}"
                     stroke="var(--surface)" stroke-width="2"/>`;
     if (x(d.t) - lastLabel >= 30) {
-      svg += `<text x="${x(d.t)}" y="${y(d.med) - 9}" fill="${ACCENT}" font-family="IBM Plex Mono"
-                    font-size="9" text-anchor="middle">${gFmt(d.med)}</text>`;
+      const label = gFmt(d.med);
+      svg += `<text x="${clampLabel(x(d.t), label)}" y="${y(d.med) - 9}" fill="${ACCENT}"
+                    font-family="IBM Plex Mono"
+                    font-size="9" text-anchor="middle">${label}</text>`;
       lastLabel = x(d.t);
     }
   });
@@ -7244,7 +7262,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.8.1';
+const APP_VERSION = '7.8.2';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
