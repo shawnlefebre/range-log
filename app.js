@@ -1799,6 +1799,9 @@ function renderGunHistory(gunId) {
         // The number Stats charts this group by, so a row can be found on them.
         mr != null ? `${gFmt(mr)} MOA mean radius` : '',
       ].filter(Boolean).join(' · ');
+      // Scale doubts ride on the row rather than only inside the group, so a mistyped
+      // reference from months ago surfaces without opening every entry to look for it.
+      const chk = groupScaleCheck(g);
       const sub = [`${g.distance} ${g.distanceUnit || 'yd'}`, `${(g.impacts || []).length} shots`];
       // Shortened here as everywhere else: the full load name runs to three lines on a phone
       // and pushes every other group off the panel. Tapping the row shows it in full.
@@ -1810,7 +1813,8 @@ function renderGunHistory(gunId) {
         <div class="group-row tappable" onclick="openViewGroup('${gunId}','${g.id}')"
              role="button" tabindex="0" title="View this group">
           <div class="group-row-info">
-            <div class="group-row-main">${fmtDate(g.date)}</div>
+            <div class="group-row-main">${fmtDate(g.date)}${chk
+              ? ` <span class="scale-flag" title="Scale reference — ${esc(chk.short)}">⚠</span>` : ''}</div>
             <div class="group-row-sub">${sub.join(' · ')}${hasPhoto(g) ? ' · 📷' : ''}</div>
             ${tagLine}
           </div>
@@ -4395,7 +4399,9 @@ function renderGroupDay() {
                   ? `${gFmt(r.moa)}<span class="unit"> MOA spread</span>` : '—'}${
                 r.moa != null && r.moa === best && measured.length > 1
                   ? ' <span class="dim">· best</span>' : ''}${
-                hasPhoto(g) ? ' 📷' : ''}</div>
+                hasPhoto(g) ? ' 📷' : ''}${(chk => chk
+                  ? ` <span class="scale-flag" title="Scale reference — ${esc(chk.short)}">⚠</span>`
+                  : '')(groupScaleCheck(g))}</div>
               <div class="group-row-sub">${sub.join(' · ')}</div>
               ${tags}
             </div>
@@ -5422,6 +5428,86 @@ function groupUnitsPerInch(g) {
   return gDist(g.calPts[0], g.calPts[1]) / calW;
 }
 
+// Does the rectangle you *declared* match the rectangle you *marked*? Nothing else here
+// can catch a mistyped dimension: the homography will rectify any convex quad onto any
+// rectangle you name, producing measurements that look entirely reasonable and are
+// quietly wrong. Only the reference's own shape can contradict the numbers entered.
+//
+// Two failures, needing two different tests:
+//  - Wrong dimension (4 entered for a 5 in tall card): the marked quad's aspect ratio
+//    disagrees with the declared one, and one axis ends up scaled differently from the
+//    other. Caught by comparing the two ratios.
+//  - Width and height swapped: orderedQuad() re-picks which edges count as "width" to fit
+//    the declared ratio, so the ratio agrees perfectly and the test above sees nothing.
+//    What actually breaks is orientation — the measurement frame turns a quarter turn,
+//    swapping width with height and windage with elevation while leaving group size
+//    untouched. Caught by asking which way the declared-width edge runs.
+//
+// Thresholds are set from quads marked in real use, where declared and observed ratios
+// agree to within 6% and the quads sit within 8% of square-on. The tolerance scales with
+// each quad's own convergence, since opposite edges only differ by as much as the camera
+// angle foreshortened them — that way a deliberately oblique photo isn't flagged for the
+// very distortion this mode exists to correct.
+const GROUP_RATIO_TOL = 1.10;
+const GROUP_RATIO_TOL_STRONG = 1.25;
+
+// Reference dimensions read back as they'd be typed: 5, 6.5, 3.25.
+function gDim(v) { return String(+v.toFixed(2)); }
+
+function groupScaleCheck(g) {
+  if (!g || g.calMode !== 'perspective') return null;
+  const calW = Number(g.calInches), calH = Number(g.calInchesH);
+  if (!(calW > 0) || !(calH > 0)) return null;
+  if (!Array.isArray(g.calPts) || g.calPts.length !== 4) return null;
+
+  const q = orderedQuad(g.calPts, calW, calH);
+  const side = (a, b) => gDist(q[a], q[b]);
+  const top = side(0, 1), bottom = side(3, 2), left = side(0, 3), right = side(1, 2);
+  if (!(top > 0 && bottom > 0 && left > 0 && right > 0)) return null;
+
+  // Which side is "width" is only a question a near-square reference can't answer, so don't
+  // ask it of one: at 5 x 5.01 the shape carries no signal and orderedQuad is picking an
+  // orientation off rounding noise. A quarter turn there costs nothing to report and would
+  // fire on honest photos.
+  const aspect = Math.max(calW / calH, calH / calW);
+  if (aspect > 1.02) {
+    const deg = Math.abs(Math.atan2(q[1].y - q[0].y, q[1].x - q[0].x) * 180 / Math.PI);
+    if (Math.min(deg, 180 - deg) > 45) {
+      // Two readings, and the geometry cannot separate them — a card photographed on its
+      // side and a card whose dimensions were swapped mark identically. Both are worth
+      // raising, because both leave the measurement frame a quarter turn from upright, so
+      // the message names each rather than accusing you of the mistake it can't prove.
+      return {
+        level: 'strong',
+        short: 'width and height may be swapped',
+        text: `The side entered as <b>${gDim(calW)}″ wide</b> runs up the photo rather than across
+               it — either the photo is sideways, or the width and height are the wrong way round.
+               Group size and mean radius survive either way, but width and height swap over, and
+               so do the windage and elevation offsets.`,
+      };
+    }
+  }
+
+  const observed = ((top + bottom) / 2) / ((left + right) / 2);
+  const declared = calW / calH;
+  const off = Math.max(observed / declared, declared / observed);
+  const converge = Math.max(top / bottom, bottom / top, left / right, right / left);
+  if (off < GROUP_RATIO_TOL * converge) return null;
+
+  // Report the mismatch as the height that the marked corners imply, holding the width
+  // given: "shaped more like 3 x 5" is checkable against the card on the bench in a way
+  // that a bare ratio is not. The width may be the wrong one instead, hence "or".
+  const impliedH = calW / observed, impliedW = calH * observed;
+  return {
+    level: off >= GROUP_RATIO_TOL_STRONG * converge ? 'strong' : 'warn',
+    short: `marked corners look more like ${gDim(calW)} × ${gDim(impliedH)}″`,
+    text: `Entered <b>${gDim(calW)} × ${gDim(calH)}″</b>, but the corners marked are shaped more like
+           <b>${gDim(calW)} × ${gDim(impliedH)}″</b> — or <b>${gDim(impliedW)} × ${gDim(calH)}″</b> if it's
+           the width that's off. One axis is scaled about ${Math.round((off - 1) * 100)}% differently
+           from the other until this matches.`,
+  };
+}
+
 // Everything downstream works in inches, so distance converts once here. Unknown or
 // missing units fall back to yards, which is what pre-existing records assumed.
 const DISTANCE_UNIT_INCHES = { yd: 36, ft: 12, m: 39.3701 };
@@ -5999,9 +6085,22 @@ function gRefresh() {
     G.readOnly ? 'Close' : finished ? 'Done' : 'Cancel';
 
   gRenderMarked();
+  gRenderScaleCheck();
 
   gDrawCanvas();
   gRenderResults();
+}
+
+// Sits directly under the dimension inputs, so the warning and the fields it's about are
+// on screen together — while marking and while viewing a saved group alike, since both go
+// through gRefresh(). It appears the moment the fourth corner lands, before any impact is
+// marked, which is the cheapest possible moment to correct the numbers.
+function gRenderScaleCheck() {
+  const box = document.getElementById('group-cal-warn');
+  const chk = G ? groupScaleCheck(gFormGroup()) : null;
+  box.innerHTML = chk
+    ? `<div class="cal-warn ${chk.level}"><span class="cal-warn-mark">⚠</span><span>${chk.text}</span></div>`
+    : '';
 }
 
 // Starts the next group on the same photo: the scale, the photo and every shared field
@@ -7145,7 +7244,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.8';
+const APP_VERSION = '7.8.1';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

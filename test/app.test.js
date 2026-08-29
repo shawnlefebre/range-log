@@ -2365,6 +2365,149 @@ describe('group analysis math', () => {
     assert.strictEqual(seen.size, 1, `non-square reference must not flip width and height, got ${[...seen]}`);
   });
 
+  // A mistyped reference dimension is the one scale error nothing else can catch: the
+  // homography rectifies any quad onto any rectangle you name, so the measurements come
+  // out plausible and wrong. Only the marked shape can contradict the numbers entered.
+  describe('scale reference sanity check', () => {
+    // A rectangle wIn x hIn as it would be marked on a square-on photo, 0.01 units/inch.
+    const rect = (wIn, hIn) => [
+      { x: 0.30, y: 0.30 }, { x: 0.30 + wIn / 100, y: 0.30 },
+      { x: 0.30 + wIn / 100, y: 0.30 + hIn / 100 }, { x: 0.30, y: 0.30 + hIn / 100 },
+    ];
+    const check = (calPts, calInches, calInchesH) =>
+      win.groupScaleCheck({ calMode: 'perspective', calPts, calInches, calInchesH });
+
+    test('a reference declared as marked raises nothing', () => {
+      assert.strictEqual(check(rect(5, 6), 5, 6), null);
+      assert.strictEqual(check(rect(4, 4), 4, 4), null, 'a square reference has no ratio to disagree');
+      assert.strictEqual(check(rect(10, 4), 10, 4), null, 'a strongly non-square one is fine too');
+    });
+
+    test('a wrong dimension is flagged and names the shape actually marked', () => {
+      // The reported case: 3 x 4 entered for a card that is really 3 x 5.
+      const chk = check(rect(3, 5), 3, 4);
+      assert.ok(chk, '3 x 4 declared for a 3 x 5 shape must be caught');
+      assert.strictEqual(chk.level, 'strong', 'a whole inch out on a 4 in side is well past 1.25');
+      assert.match(chk.short, /3 × 5″/, `should name the marked shape, got: ${chk.short}`);
+      assert.match(chk.text, /25% differently/, 'should quantify the axis mismatch');
+    });
+
+    test('the flag scales with how wrong the ratio is', () => {
+      assert.strictEqual(check(rect(5, 6.5), 5, 6), null, 'inside the 1.10 floor, stays quiet');
+      assert.strictEqual(check(rect(5, 6), 5, 5).level, 'warn', '1.20 is worth mentioning');
+      assert.strictEqual(check(rect(4, 6), 4, 4.5).level, 'strong', '1.33 is not');
+    });
+
+    test('swapped width and height are caught by orientation, not by ratio', () => {
+      // orderedQuad() re-picks which edges are "width" to fit the declared ratio, so the
+      // ratio agrees perfectly here — the giveaway is the quarter turn it introduces.
+      const chk = check(rect(6, 5), 5, 6);
+      assert.ok(chk, 'a swap must not pass silently just because the ratio was made to fit');
+      assert.strictEqual(chk.level, 'strong');
+      assert.match(chk.short, /swapped/);
+    });
+
+    test('an oblique photo is not flagged for the distortion this mode corrects', () => {
+      // Upright but leaning away from the camera, so the top edge is foreshortened to 60%
+      // of the bottom. The raw edge ratio reads 1.49 where 2 was declared — a 1.35 miss,
+      // past the 1.10 floor. It must stay quiet, because the quad's own convergence says
+      // that much foreshortening is on the table.
+      const leaning = [{ x: 0.34, y: 0.30 }, { x: 0.46, y: 0.30 },
+                       { x: 0.50, y: 0.40 }, { x: 0.30, y: 0.40 }];
+      assert.strictEqual(check(leaning, 4, 2), null);
+      // Without that widening the same quad would be flagged, which is the whole point.
+      const flat = [{ x: 0.30, y: 0.30 }, { x: 0.46, y: 0.30 },
+                    { x: 0.46, y: 0.40 }, { x: 0.30, y: 0.40 }];
+      assert.ok(check(flat, 4, 2), 'square-on, the same 1.6:1 shape is a real mismatch');
+    });
+
+    test('a square reference is exempt from the orientation test', () => {
+      // 4 x 4 cannot have its dimensions swapped, so a rotated photo of one is not evidence
+      // of anything — and orderedQuad picks that orientation off rounding noise anyway.
+      assert.strictEqual(check(square.map(warp), 4, 4), null);
+      assert.strictEqual(check(rect(5, 5.01), 5, 5.01), null, 'near-square counts as square');
+    });
+
+    test('a sideways reference is flagged whichever way it got that way', () => {
+      // A 6-wide card declared 5 x 6, and a 5 x 6 card photographed on its side, mark
+      // identically — the geometry cannot separate them, so the message names both.
+      const chk = check(rect(6, 5), 5, 6);
+      assert.match(chk.text, /photo is sideways/);
+      assert.match(chk.text, /wrong way round/);
+    });
+
+    test('nothing to check means no flag rather than a guess', () => {
+      assert.strictEqual(win.groupScaleCheck(null), null);
+      assert.strictEqual(win.groupScaleCheck(linear), null, '2 points declare one length — no ratio exists');
+      assert.strictEqual(check(rect(3, 5).slice(0, 3), 3, 4), null, 'three corners is not a rectangle');
+      assert.strictEqual(check(rect(3, 5), 3, 0), null, 'no height entered yet');
+      assert.strictEqual(check(rect(3, 5), 0, 4), null, 'no width entered yet');
+    });
+
+    test('the check is derived, so correcting the dimensions clears it', () => {
+      const pts = rect(3, 5);
+      assert.ok(check(pts, 3, 4), 'wrong to begin with');
+      assert.strictEqual(check(pts, 3, 5), null, 'and clean once the height is fixed');
+    });
+
+    // Being right is no use if it never reaches the screen. Old entries are the harder
+    // half: a reference mistyped months ago only surfaces if the list itself says so.
+    // `data` is a top-level `let`, so it isn't a window property and can't be assigned from
+    // out here. Seeding localStorage ahead of app.js is how the rest of the suite does it.
+    const withGroups = groups => loadApp(js => `localStorage.setItem('rangeLogData', ${
+      JSON.stringify(JSON.stringify({
+        schemaVersion: 15, locations: [], sellers: [], sessions: [], ammo: [],
+        firearms: [{ id: 'g1', name: 'Test Rifle', type: 'rifle', calibers: ['9mm'],
+                     cleanThreshold: 500, totalRounds: 0, notes: '',
+                     cleanings: [], zeros: [], dope: [], groups }],
+      }))});\n${js}`);
+
+    test('a doubtful group is marked in the list, a sound one is not', async () => {
+      const base = {
+        date: '2026-05-01', distance: 50, distanceUnit: 'yd', calMode: 'perspective',
+        poa: { x: 0.36, y: 0.36 }, impacts: [{ x: 0.35, y: 0.35 }, { x: 0.37, y: 0.37 }],
+      };
+      const win = await ready(withGroups([
+        { ...base, id: 'sound', calPts: rect(3, 5), calInches: 3, calInchesH: 5 },
+        { ...base, id: 'doubtful', calPts: rect(3, 5), calInches: 3, calInchesH: 4 },
+      ]));
+      win.renderGunHistory('g1');
+
+      const rows = win.document.getElementById('history-groups-list').querySelectorAll('.group-row');
+      assert.strictEqual(rows.length, 2);
+      const flagged = [...rows].filter(r => r.querySelector('.scale-flag'));
+      assert.strictEqual(flagged.length, 1, 'exactly the mistyped one carries a mark');
+      assert.match(flagged[0].querySelector('.scale-flag').getAttribute('title'), /3 × 5″/,
+        'the tooltip has to say what is doubtful, not merely that something is');
+    });
+
+    test('opening a doubtful group warns under the fields the warning is about', async () => {
+      const base = {
+        date: '2026-05-01', distance: 50, distanceUnit: 'yd', calMode: 'perspective',
+        poa: { x: 0.36, y: 0.36 }, impacts: [{ x: 0.35, y: 0.35 }, { x: 0.37, y: 0.37 }],
+      };
+      const win = await ready(withGroups([
+        { ...base, id: 'sound', calPts: rect(3, 5), calInches: 3, calInchesH: 5 },
+        { ...base, id: 'doubtful', calPts: rect(3, 5), calInches: 3, calInchesH: 4 },
+      ]));
+      const box = win.document.getElementById('group-cal-warn');
+
+      await win.openLogGroup('g1', 'sound');
+      assert.strictEqual(box.innerHTML, '', 'a sound reference says nothing');
+
+      await win.openLogGroup('g1', 'doubtful');
+      assert.ok(box.querySelector('.cal-warn.strong'), 'a 3 x 5 shape declared 3 x 4 must warn');
+      assert.match(flat(box), /shaped more like 3 × 5″/,
+        'the banner has to name the shape, not just object');
+
+      // Editing the height is how you'd fix it, and the warning has to answer to that
+      // immediately — it is recomputed from the fields, never stored on the record.
+      win.document.getElementById('group-cal-h').value = '5';
+      win.gRefresh();
+      assert.strictEqual(box.innerHTML, '', 'correcting the height clears the warning');
+    });
+  });
+
   test('bullet diameter resolves from caliber and falls back rather than guessing', () => {
     assert.strictEqual(win.caliberDiameter('.223 Rem'), 0.224);
     assert.strictEqual(win.caliberDiameter('9MM'), 0.355, 'lookup is case-insensitive');

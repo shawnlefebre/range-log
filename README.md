@@ -117,6 +117,7 @@ diameter as you mark, so it sits over the hole like a lid. For which figure to t
 [Reading the numbers](#reading-the-numbers).
 
 - **Photos taken at an angle** are handled — switch the scale method to *4 corners*, mark the corners of a known rectangle in any order, and the distortion is corrected mathematically
+- **A mistyped reference is caught.** Nothing else could: the correction will happily rectify any four corners onto whatever rectangle you name, so a 5-inch side entered as 6 gives measurements that look perfectly reasonable and are quietly wrong. The marked corners are checked against the dimensions entered, and a mismatch is called out under the fields while you're marking and beside the group in its list afterwards, so a reference mistyped months ago still surfaces. It compares the *shape*, so it can't see an error that's proportional on both sides — 6 × 7.2 entered for a 5 × 6 card — and 2-point scale has a single number with nothing to check it against
 - **The date** defaults to when the photo was taken, not when you logged it
 - **Bullet diameter** comes from the ammo you select
 - **Several groups on one target.** Mark the scale once, then point of aim and impacts for each group. Each saves separately but they share one stored photo, and groups you've already marked stay visible on it, dimmed

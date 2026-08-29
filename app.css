@@ -305,6 +305,27 @@
     margin-top: 6px;
   }
   .group-hint b { color: var(--accent); font-weight: 500; }
+  /* Scale-reference doubt, sat under the dimension inputs it's about. Genuinely a status —
+     the measurements may be wrong — so --warn is the right color rather than a neutral one.
+     Two levels: a ratio that's merely off enough to mention, and one far enough out (or a
+     quarter turn) that the numbers above shouldn't be trusted as they stand. */
+  .cal-warn {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    line-height: 1.55;
+    color: var(--text-dim);
+    background: rgba(230, 126, 34, 0.08);
+    border-left: 3px solid var(--warn);
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin-top: 8px;
+  }
+  .cal-warn.strong { background: rgba(230, 126, 34, 0.16); color: var(--text); }
+  .cal-warn b { color: var(--warn); font-weight: 500; }
+  .cal-warn-mark { color: var(--warn); flex-shrink: 0; }
   .btn-photo {
     display: block;
     width: 100%;
@@ -2152,7 +2173,9 @@
 
   .trip-guns i { color: var(--text-dim); font-style: normal; font-size: 0.64rem; }
   /* Marks a trip priced from a fallback rather than from purchases that existed at the time. */
-  .est-flag { color: var(--warn); font-style: normal; cursor: help; }
+  /* Two different caveats, one appearance: a warn-colored inline mark whose tooltip says
+     what's doubtful about the row it sits on. */
+  .est-flag, .scale-flag { color: var(--warn); font-style: normal; cursor: help; }
 
   /* A destructive action offered inline in the prompt rather than as a button in the row.
      The primary stays Set point: on a tight group the crosshair sits near an existing hole
