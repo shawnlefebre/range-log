@@ -2258,7 +2258,10 @@
   .trend-scroll svg { pointer-events: none; display: block; }
 
   .trend-ctrl { display: flex; gap: 5px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
-  .trend-ctrl button {
+  /* The metric toggle is the same kind of choice as the trend zoom, so it is the same chip.
+     It sits above what it relabels rather than below, hence the flipped margin. */
+  .metric-ctrl { display: flex; gap: 5px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .trend-ctrl button, .metric-ctrl button {
     background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: 5px;
@@ -2268,8 +2271,10 @@
     padding: 6px 10px;
     cursor: pointer;
   }
-  .trend-ctrl button.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
-  .trend-ctrl button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .trend-ctrl button.on,
+  .metric-ctrl button.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  .trend-ctrl button:focus-visible,
+  .metric-ctrl button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .trend-readout {
     margin-left: auto;
     font-family: var(--font-mono);

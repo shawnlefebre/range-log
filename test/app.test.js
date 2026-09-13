@@ -1030,6 +1030,148 @@ describe('groups scope narrows the pane', () => {
   });
 });
 
+// ── GROUP SIZE METRIC ───────────────────────────────────────────────
+// Every list row in the app leads with extreme spread while every chart in Stats plotted mean
+// radius, so the two screens quoted different figures for the same group with nothing saying
+// so. The toggle lets Stats speak either dialect. What it must never do is leave a label, a
+// title or a note describing the metric you are not looking at — which is most of what is
+// tested here, alongside the caveat that makes extreme spread safe to offer at all.
+
+describe('switching the group size metric', () => {
+  // Impacts evenly spaced on a ring, so mean radius is the ring radius and extreme spread is a
+  // chord across it: the two figures differ by a known factor rather than by luck. The linear
+  // calibration is 0.01 normalized = 1 inch, so r = 0.002 is a 0.2" mean radius.
+  function ring(id, date, n, ammo = '77gr TMK', r = 0.002) {
+    const c = { x: 0.5, y: 0.5 };
+    return {
+      id, date, ammo, tags: [], distance: 50, distanceUnit: 'yd',
+      calMode: 'linear', calInches: 1,
+      calPts: [{ x: 0.40, y: 0.50 }, { x: 0.41, y: 0.50 }],
+      poa: { x: 0.5, y: 0.5 },
+      impacts: Array.from({ length: n }, (_, i) => {
+        const a = (2 * Math.PI * i) / n;
+        return { x: c.x + r * Math.cos(a), y: c.y + r * Math.sin(a) };
+      }),
+    };
+  }
+
+  const EVEN = [ring('a', '2026-05-01', 3), ring('b', '2026-05-03', 3), ring('c', '2026-05-05', 3)];
+  const MIXED = [ring('a', '2026-05-01', 3), ring('b', '2026-05-03', 5), ring('c', '2026-05-05', 5)];
+
+  async function app(groups) {
+    const win = await ready(loadApp());
+    win.eval(`data = {
+      schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      firearms: [
+        { id: 'g1', name: 'Rifle One', type: 'rifle', calibers: ['.223 Rem'], opticUnit: 'moa',
+          cleanThreshold: 500, totalRounds: 0, notes: '', cleanings: [], zeros: [], dope: [],
+          groups: ${JSON.stringify(groups)} }
+      ],
+      locations: [], sellers: [], sessions: [], ammo: [] };`);
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-range').value = 'all';
+    win.document.getElementById('stats-firearm').value = 'g1';
+    win.renderStats();
+    return win;
+  }
+
+  const pane = win => flat(win.document.getElementById('stats-groups-body'));
+  // Everything in the pane except the toggle itself, which names both metrics by design and
+  // would otherwise make "the screen no longer mentions the other figure" impossible to assert.
+  const paneBelowToggle = win => {
+    const c = win.document.getElementById('stats-groups-body').cloneNode(true);
+    c.querySelectorAll('.metric-ctrl').forEach(el => el.remove());
+    return flat(c);
+  };
+  const median = win => parseFloat(
+    win.document.querySelector('#stats-groups-stats .stats-stat-num').textContent);
+  const note = win => flat(win.document.querySelector('#stats-groups-stats .stats-note'));
+  const scopeRow = (win, label) =>
+    [...win.document.getElementById('stats-groups-scope').querySelectorAll('.scope-row')]
+      .find(r => flat(r.querySelector('.filter-label')) === label);
+
+  test('the toggle offers both figures and starts on mean radius', async () => {
+    const win = await app(EVEN);
+    const btns = [...win.document.querySelectorAll('#stats-groups-stats .metric-ctrl button')];
+    assert.deepStrictEqual(btns.map(b => flat(b)), ['Mean radius', 'Extreme spread']);
+    assert.ok(btns[0].classList.contains('on'),
+      'mean radius is the figure that survives a mix of shot counts, so it leads');
+  });
+
+  test('every label, title and note follows the chosen metric', async () => {
+    const win = await app(EVEN);
+    assert.match(pane(win), /Median mean radius/);
+    assert.match(pane(win), /Mean radius over time/);
+
+    win.setGroupMetric('es');
+    assert.match(pane(win), /Median extreme spread/);
+    assert.match(pane(win), /Best extreme spread/);
+    assert.match(pane(win), /Extreme spread over time/);
+    // The whole point of the toggle is that the screen stops quoting the other figure. The
+    // toggle's own buttons are excluded — naming both is what a toggle is for.
+    assert.doesNotMatch(paneBelowToggle(win), /mean radius/i);
+  });
+
+  test('the figures actually change, not just the words', async () => {
+    const win = await app(EVEN);
+    const mr = median(win);
+    win.setGroupMetric('es');
+    const es = median(win);
+    // Three impacts on a ring: extreme spread is the equilateral chord, r·√3.
+    assert.ok(es > mr * 1.6 && es < mr * 1.8,
+      `extreme spread should be about 1.73x mean radius here, got ${es} vs ${mr}`);
+  });
+
+  test('an unknown metric key is ignored rather than blanking the pane', async () => {
+    const win = await app(EVEN);
+    win.setGroupMetric('nonsense');
+    assert.match(pane(win), /Median mean radius/);
+  });
+
+  test('a mix of shot counts is called out, but only under extreme spread', async () => {
+    const win = await app(MIXED);
+    assert.doesNotMatch(note(win), /shots/,
+      'mean radius is comparable across shot counts, so there is nothing to warn about');
+    win.setGroupMetric('es');
+    assert.match(note(win), /These run 3 to 5 shots/);
+  });
+
+  test('one shot count means no caveat, whichever metric is showing', async () => {
+    const win = await app(EVEN);
+    win.setGroupMetric('es');
+    assert.doesNotMatch(note(win), /grows with shot count/,
+      'a caveat about a mix that is not there is noise');
+  });
+
+  test('a Shots row appears only when the shot count actually varies', async () => {
+    assert.ok(!scopeRow(await app(EVEN), 'Shots'), 'one count is not a choice');
+    assert.ok(scopeRow(await app(MIXED), 'Shots'), 'a mix is exactly what needs narrowing');
+  });
+
+  test('narrowing to one shot count clears the caveat it pointed you at', async () => {
+    const win = await app(MIXED);
+    win.setGroupMetric('es');
+    assert.match(note(win), /These run 3 to 5 shots/);
+    const chip = [...scopeRow(win, 'Shots').querySelectorAll('.scope-chip')]
+      .find(c => flat(c).startsWith('5-shot'));
+    assert.ok(chip, 'the chips name a shot count rather than showing a bare number');
+    win.eval(chip.getAttribute('onclick'));
+    assert.doesNotMatch(note(win), /These run/);
+    assert.match(pane(win), /2 of 3 groups/, 'and the pane really did narrow');
+  });
+
+  test('the compare chart names the metric it is plotting', async () => {
+    const win = await app([ring('a', '2026-05-01', 3, '77gr TMK'),
+      ring('b', '2026-05-03', 3, '55gr FMJ'), ring('c', '2026-05-05', 3, '55gr FMJ')]);
+    assert.match(flat(win.document.getElementById('stats-groups-compare')),
+      /Median mean radius in MOA/);
+    win.setGroupMetric('es');
+    assert.match(flat(win.document.getElementById('stats-groups-compare')),
+      /Median extreme spread in MOA/);
+  });
+});
+
 describe('point of impact warns when distances are mixed', () => {
   const caveat = win => win.document.getElementById('stats-groups-poi')
     .querySelector('.poi-caveat');

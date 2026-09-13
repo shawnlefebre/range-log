@@ -147,6 +147,13 @@ about now, so Time Range is inert on Upkeep.
 Scoped to one firearm at a time, since a rifle at 50 yd and a pistol at 25 ft aren't on the same
 scale. Three charts, all driven by the chips above them.
 
+**Mean radius or extreme spread.** A toggle above the figures switches every chart in the pane
+between the two, so Stats can quote the same number the group list does when that's what you
+want. It starts on **mean radius**, the one that survives a mix of shot counts. Switch to
+extreme spread and, if the groups in scope weren't all the same shot count, the note under the
+figures says which counts are in play and points you at the **Shots** chips — see
+[Reading the numbers](#reading-the-numbers) for why that matters.
+
 **Group size over time.** Every group is plotted faintly; the bold line joins each range day's
 **median**. The faint vertical bar is that day's best-to-worst spread — a trend is real when the
 medians move further than those bars are tall. One afternoon with the same rifle and load can
@@ -178,10 +185,14 @@ Pin the distance first: a handgun at 25 ft and a rifle at 50 yd differ by discip
 they differ as firearms. With more than one distance in scope, the view says so and offers chips
 to narrow it.
 
-**Narrowing what's in play.** Three rows of chips — **ammo**, **distance**, **tag** — drive all
-three charts. Several within a row mean *or*; across rows means *and*, so *55gr FMJ* plus *50 yd*
-is "that load at that distance," which is where a zero actually lives. A row appears only when it
-has more than one value to offer.
+**Narrowing what's in play.** Four rows of chips — **ammo**, **distance**, **tag**, **shots** —
+drive all three charts. Several within a row mean *or*; across rows means *and*, so *55gr FMJ*
+plus *50 yd* is "that load at that distance," which is where a zero actually lives. A row appears
+only when it has more than one value to offer.
+
+**Shots** is there because extreme spread grows with round count: a trend across a mix of 3- and
+5-shot groups can be showing the mix rather than the firearm. Narrowing to one count answers
+that, which no amount of squinting at the plot can.
 
 Each chip carries the number of groups you'd get **if you clicked it**, not how many exist — pick
 100 yd and the ammo counts redraw to what's available there. Empty combinations are dimmed rather
@@ -293,11 +304,13 @@ whichever had fewer shots.
 and doesn't drift with sample size, which makes it the fair way to compare groups.
 
 **Which one you're looking at is always named.** A group listed on its own leads with **extreme
-spread**, because that's the figure people quote. Every chart under Stats → Groups plots **mean
-radius**, because ranking loads by extreme spread would favor whichever you happened to shoot in
-3-round strings. The two differ by roughly two to three and a half times and the ratio isn't
-fixed, so no figure is left as a bare "MOA" — a list row reads *2.45 MOA spread* with *0.70 MOA
-mean radius* beneath it.
+spread**, because that's the figure people quote. Stats → Groups defaults to **mean radius**,
+because ranking loads by extreme spread would favor whichever you happened to shoot in 3-round
+strings — and offers a toggle to the other, since the figure you'd quote is worth seeing a trend
+in too. Every label, chart title and note follows the toggle, so the screen never quotes one
+metric under the other's name. The two differ by roughly two to three and a half times and the
+ratio isn't fixed, so no figure is left as a bare "MOA" — a list row reads *2.45 MOA spread* with
+*0.70 MOA mean radius* beneath it.
 
 **Why MOA rather than inches.** A 1″ group at 50 yards and a 1″ group at 100 yards are not the
 same performance; the second is twice as good. MOA is angular, so it stays comparable across

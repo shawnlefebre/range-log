@@ -3697,6 +3697,8 @@ function groupsInScope() {
       offYMOA: m && distIn ? toMOA(m.cy, distIn) : null,
       distance: g.distance, distanceUnit: g.distanceUnit || 'yd',
     };
+  // Both size figures need the same two things — measurable points and a known distance — so
+  // one test gates both metrics, and switching between them can never change what is in scope.
   }).filter(g => g.mrMOA != null).sort((a, b) => a.date.localeCompare(b.date));
 
   return { gun, groups };
@@ -3715,9 +3717,14 @@ const GROUP_SCOPE_DIMS = {
   ammo:     { label: 'Ammo',     of: g => [g.ammo], short: v => shortLoadName(v) },
   distance: { label: 'Distance', of: g => [groupDistanceLabel(g.raw)], short: v => v },
   tag:      { label: 'Tag',      of: g => (g.tags.length ? g.tags : ['Untagged']), short: v => v },
+  // Extreme spread grows with shot count, so a trend across a mix of 3- and 5-shot groups can
+  // be showing the mix rather than the firearm. Narrowing to one count answers that, which the
+  // eye cannot do from the plot; like every dimension here the row hides itself when the
+  // firearm only ever shot one.
+  shots:    { label: 'Shots',    of: g => [String(g.shots)], short: v => `${v}-shot` },
 };
 
-let groupScope = { ammo: new Set(), distance: new Set(), tag: new Set() };
+let groupScope = { ammo: new Set(), distance: new Set(), tag: new Set(), shots: new Set() };
 let groupScopeGunId = null;
 
 // Selections belong to a firearm: 77gr at 50 yd means nothing once you switch to a different
@@ -3725,7 +3732,7 @@ let groupScopeGunId = null;
 function resetGroupScopeIfGunChanged(gunId) {
   if (groupScopeGunId === gunId) return;
   groupScopeGunId = gunId;
-  groupScope = { ammo: new Set(), distance: new Set(), tag: new Set() };
+  groupScope = { ammo: new Set(), distance: new Set(), tag: new Set(), shots: new Set() };
 }
 
 // True when the group satisfies every dimension except the one named — the basis for facet
@@ -4013,6 +4020,45 @@ function renderFirearmCompare(el) {
     </div>`;
 }
 
+// Which of the two size figures the charts speak in. Both are computed for every scoped group
+// in groupsInScope, so this is a display choice and not a different dataset — see
+// groupMeanRadiusMOA for why the app carries both. Mean radius stays the default because it is
+// the one that survives a mix of shot counts; extreme spread is here because it is the figure
+// every list row leads with and the one you would quote for a single group.
+const GROUP_METRICS = {
+  mr: {
+    key: 'mr', label: 'Mean radius', lower: 'mean radius', of: g => g.mrMOA,
+    note: `Mean radius, median across groups — comparable across different shot counts,
+      unlike extreme spread.`,
+  },
+  es: {
+    key: 'es', label: 'Extreme spread', lower: 'extreme spread', of: g => g.esMOA,
+    note: `Extreme spread, median across groups — center to center, the figure you would
+      quote for a single group.`,
+  },
+};
+
+let groupMetric = 'mr';
+
+function currentGroupMetric() { return GROUP_METRICS[groupMetric] || GROUP_METRICS.mr; }
+
+function setGroupMetric(key) {
+  if (!GROUP_METRICS[key]) return;
+  groupMetric = key;
+  renderStats();
+}
+
+// Extreme spread over a mix of shot counts is partly measuring the mix. Said only where it
+// applies, and only when the mix is actually present — in which case the Shots chips exist,
+// since they appear under exactly this condition.
+function groupMixedShotsNote(groups) {
+  if (groupMetric !== 'es') return '';
+  const counts = [...new Set(groups.map(g => g.shots))].sort((a, b) => a - b);
+  if (counts.length < 2) return '';
+  return ` These run ${counts[0]} to ${counts[counts.length - 1]} shots, and extreme spread
+    grows with shot count — the Shots chips above narrow it to one.`;
+}
+
 function renderGroupsStats() {
   const promptEl = document.getElementById('stats-groups-prompt');
   const bodyEl = document.getElementById('stats-groups-body');
@@ -4061,22 +4107,27 @@ function renderGroupsStats() {
     return;
   }
 
-  const sizes = groups.map(g => g.mrMOA);
+  const M = currentGroupMetric();
+  const sizes = groups.map(M.of);
   const days = [...new Set(groups.map(g => g.date))];
   document.getElementById('stats-groups-stats').innerHTML = `
+    <div class="metric-ctrl" role="group" aria-label="Group size metric">
+      ${Object.values(GROUP_METRICS).map(o => `<button type="button"
+        class="${o.key === M.key ? 'on' : ''}" aria-pressed="${o.key === M.key}"
+        onclick="setGroupMetric('${o.key}')">${o.label}</button>`).join('')}
+    </div>
     <div class="stats-stat-grid">
       <div class="stats-stat-box">
         <div class="stats-stat-num">${gFmt(statsMedian(sizes))}<span class="unit"> MOA</span></div>
-        <div class="stats-stat-label">Median mean radius</div></div>
+        <div class="stats-stat-label">Median ${M.lower}</div></div>
       <div class="stats-stat-box">
         <div class="stats-stat-num">${gFmt(Math.min(...sizes))}<span class="unit"> MOA</span></div>
-        <div class="stats-stat-label">Best mean radius</div></div>
+        <div class="stats-stat-label">Best ${M.lower}</div></div>
       <div class="stats-stat-box">
         <div class="stats-stat-num">${groups.length}</div>
         <div class="stats-stat-label">Groups · ${days.length} day${days.length === 1 ? '' : 's'}</div></div>
     </div>
-    <div class="stats-note">Mean radius, median across groups — comparable across different
-      shot counts, unlike extreme spread.</div>`;
+    <div class="stats-note">${M.note}${groupMixedShotsNote(groups)}</div>`;
 
   renderGroupTrend(gun, groups);
   updateCompareCounts(groups);
@@ -4150,12 +4201,13 @@ function setTrendZoom(key) {
 
 function renderGroupTrend(gun, groups) {
   const el = document.getElementById('stats-groups-trend');
+  const M = currentGroupMetric();
   const byDate = {};
   groups.forEach(g => (byDate[g.date] = byDate[g.date] || []).push(g));
   const dates = Object.keys(byDate).sort();
 
   const days = dates.map(d => {
-    const v = byDate[d].map(g => g.mrMOA);
+    const v = byDate[d].map(M.of);
     return {
       date: d, t: dateMs(d), n: v.length, med: statsMedian(v),
       lo: Math.min(...v), hi: Math.max(...v),
@@ -4189,7 +4241,7 @@ function renderGroupTrend(gun, groups) {
     if (half * 2 + 2 >= W) return W / 2;       // narrower than its own label; centering is all there is
     return Math.min(Math.max(at, half + 1), W - half - 1);
   };
-  const vals = groups.map(g => g.mrMOA);
+  const vals = groups.map(M.of);
   const ymax = Math.max(...vals) * 1.2 || 1;
   const y = v => H - PB - (v / ymax) * (H - PT - PB);
 
@@ -4271,7 +4323,7 @@ function renderGroupTrend(gun, groups) {
     svg += `<line x1="${x(d.t)}" y1="${y(d.lo)}" x2="${x(d.t)}" y2="${y(d.hi)}"
                   stroke="${ACCENT}" stroke-width="1" opacity="0.28"/>`;
     byDate[d.date].forEach(g => {
-      svg += `<circle cx="${x(d.t)}" cy="${y(g.mrMOA)}" r="2.8" fill="${ACCENT}" opacity="0.5"/>`;
+      svg += `<circle cx="${x(d.t)}" cy="${y(M.of(g))}" r="2.8" fill="${ACCENT}" opacity="0.5"/>`;
     });
   });
   svg += `<polyline fill="none" stroke="${ACCENT}" stroke-width="2.2" stroke-linejoin="round"
@@ -4298,13 +4350,13 @@ function renderGroupTrend(gun, groups) {
   const tappable = days.length > 0;
   el.innerHTML = `
     <div class="stats-chart-card">
-      <div class="stats-chart-title">Mean radius over time</div>
+      <div class="stats-chart-title">${M.label} over time</div>
       <div class="trend-chart">
         <svg class="trend-axis" viewBox="0 0 ${AXIS_W} ${H}" width="${AXIS_W}" height="${H}"
              aria-hidden="true">${axisSvg}</svg>
         <div class="trend-scroll" data-pxperday="${pxPerDay}" data-pad="${PAD}" data-t0="${T0}">
           <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
-               aria-label="Median group size per range day">${svg}</svg>
+               aria-label="Median ${M.lower} per range day">${svg}</svg>
         </div>
       </div>
       <div class="trend-ctrl">
@@ -4597,10 +4649,11 @@ const GROUP_ACCENT = '#c8a84b';
 // draw it. Whether to color at all is also decided here, so the two can never disagree about
 // that either.
 function groupSeriesFor(groups, dim) {
+  const M = currentGroupMetric();
   const buckets = {};
   groups.forEach(g => dim.of(g).forEach(k => (buckets[k] = buckets[k] || []).push(g)));
   const order = Object.entries(buckets)
-    .map(([k, gs]) => ({ k, med: statsMedian(gs.map(x => x.mrMOA)) }))
+    .map(([k, gs]) => ({ k, med: statsMedian(gs.map(M.of)) }))
     .sort((a, b) => a.med - b.med)
     .map(x => x.k);
 
@@ -4626,6 +4679,7 @@ const GROUP_COMPARE_DIMS = {
 function renderGroupCompare(groups) {
   const el = document.getElementById('stats-groups-compare');
   if (!el) return;
+  const M = currentGroupMetric();
   const key = document.getElementById('stats-groups-compare-by').value;
   const dim = GROUP_COMPARE_DIMS[key] || GROUP_COMPARE_DIMS.ammo;
 
@@ -4635,9 +4689,9 @@ function renderGroupCompare(groups) {
     key: k,
     label: key === 'day' ? fmtDate(k) : key === 'ammo' ? shortLoadName(k) : k,
     gs,
-    med: statsMedian(gs.map(x => x.mrMOA)),
-    lo: Math.min(...gs.map(x => x.mrMOA)),
-    hi: Math.max(...gs.map(x => x.mrMOA)),
+    med: statsMedian(gs.map(M.of)),
+    lo: Math.min(...gs.map(M.of)),
+    hi: Math.max(...gs.map(M.of)),
     days: new Set(gs.map(x => x.date)).size,
   })).sort((a, b) => a.med - b.med);
 
@@ -4660,7 +4714,7 @@ function renderGroupCompare(groups) {
   // phone the labels came out smaller than body text; here they are real type at real sizes,
   // and they wrap and stay selectable.
   const series = groupSeriesFor(groups, dim);
-  const all = groups.map(g => g.mrMOA);
+  const all = groups.map(M.of);
   const xmax = Math.max(...all) * 1.08 || 1;
   const pct = v => (v / xmax) * 100;
 
@@ -4669,7 +4723,7 @@ function renderGroupCompare(groups) {
     // on the point-of-impact map beneath it.
     const c = series.colorOf(r.key);
     const dots = r.gs.map(g =>
-      `<span class="cmp-dot" style="left:${pct(g.mrMOA)}%;background:${c}"></span>`).join('');
+      `<span class="cmp-dot" style="left:${pct(M.of(g))}%;background:${c}"></span>`).join('');
     return `
       <div class="cmp-row">
         <div class="cmp-name" title="${esc(r.key)}">
@@ -4704,7 +4758,7 @@ function renderGroupCompare(groups) {
 
   el.innerHTML = `
     <div class="cmp-chart">${rowsHtml}${axis}</div>
-    <div class="stats-note">Median mean-radius MOA, lower is better. One dot per group, the
+    <div class="stats-note">Median ${M.lower} in MOA, lower is better. One dot per group, the
       bar is its spread.${notes.length ? ' ' + notes.join(' ') : ''}</div>`;
 }
 
@@ -7262,7 +7316,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.8.2';
+const APP_VERSION = '7.8.3';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
