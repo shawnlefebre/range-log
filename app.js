@@ -3856,18 +3856,20 @@ function tCrit(df) { return df < 1 ? NaN : (df < T95.length ? T95[df] : 1.96); }
 // carry no interval and take no part in any claim that two differ.
 const MIN_GROUPS_FOR_INTERVAL = 3;
 
-// Accuracy per firearm over whatever the shared filters and the distance chips leave in
-// scope. The estimate averages each group's mean radius; the uncertainty is the spread
-// *between* groups, because the question is how the firearm shoots in general, not how one
-// particular target came out.
-function firearmAccuracy(distances) {
+// Accuracy per firearm over whatever the shared filters and the scope chips leave in play.
+// The estimate averages each group's size in the metric currently selected; the uncertainty is
+// the spread *between* groups, because the question is how the firearm shoots in general, not
+// how one particular target came out.
+function firearmAccuracy(distances, shotCounts) {
+  const M = currentGroupMetric();
   const { start, end } = getStatsRangeBounds();
   const locId = document.getElementById('stats-location').value;
 
   return (data.firearms || []).map(gun => {
-    const mrs = [];
+    const vals = [];
     let shots = 0;
     const seen = new Set();
+    const counts = new Set();
     (gun.groups || []).forEach(g => {
       if (start && g.date < start) return;
       if (end && g.date > end) return;
@@ -3880,22 +3882,27 @@ function firearmAccuracy(distances) {
       const dIn = groupDistanceInches(g);
       const m = groupMetrics(groupToInches(g));
       if (!m || !dIn) return;
+      // Shot count is only known once the group has been measured, so this filter sits below
+      // the others rather than beside them.
+      if (shotCounts && shotCounts.size && !shotCounts.has(String(m.n))) return;
       seen.add(label);
-      mrs.push(toMOA(m.meanRadius, dIn));
+      counts.add(m.n);
+      vals.push(M.of(groupFigures(m, dIn)));
       shots += m.n;
     });
-    if (!mrs.length) return null;
+    if (!vals.length) return null;
 
-    const n = mrs.length;
-    const mean = mrs.reduce((a, b) => a + b, 0) / n;
+    const n = vals.length;
+    const mean = vals.reduce((a, b) => a + b, 0) / n;
     const sd = n > 1
-      ? Math.sqrt(mrs.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1)) : 0;
+      ? Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1)) : 0;
     const half = n >= MIN_GROUPS_FOR_INTERVAL ? tCrit(n - 1) * (sd / Math.sqrt(n)) : null;
     return {
       gun, n, shots, mean,
       lo: half == null ? null : Math.max(0, mean - half),
       hi: half == null ? null : mean + half,
       distances: [...seen].sort(),
+      counts: [...counts].sort((a, b) => a - b),
     };
   }).filter(Boolean).sort((a, b) => a.mean - b.mean);
 }
@@ -3906,6 +3913,27 @@ function firearmAccuracy(distances) {
 function accuracySeparated(a, b) {
   if (a.lo == null || b.lo == null) return false;
   return a.hi < b.lo || b.hi < a.lo;
+}
+
+// The all-firearms view rolls its own chips rather than reusing renderGroupScope, because its
+// counts are firearms that qualify, not groups. One builder so its two rows cannot drift apart
+// in markup or behavior, and so both hide themselves on a single value the way that pane does.
+function firearmScopeRow(dim, label, values, countOf, short = v => v) {
+  if (values.length < 2) return '';
+  const sel = groupScope[dim];
+  return `
+    <div class="scope-row">
+      <label class="filter-label">${label}</label>
+      <div class="scope-chips">
+        <button class="scope-chip scope-all${sel.size ? '' : ' on'}"
+                aria-pressed="${!sel.size}"
+                onclick="toggleGroupScope('${dim}', null)">All</button>
+        ${values.map(v => `<button class="scope-chip${sel.has(v) ? ' on' : ''}"
+            aria-pressed="${sel.has(v)}"
+            onclick="toggleGroupScope('${dim}', ${JSON.stringify(v).replace(/"/g, '&quot;')})"
+            ><span class="scope-chip-t">${esc(short(v))}</span><b>${countOf(v)}</b></button>`).join('')}
+      </div>
+    </div>`;
 }
 
 function renderFirearmCompare(el) {
@@ -3925,28 +3953,24 @@ function renderFirearmCompare(el) {
   // "type your own" in the dropdowns. Scope state starts null anyway, so the all-firearms
   // view and a fresh app agree without a special value.
   resetGroupScopeIfGunChanged(null);
-  const everything = firearmAccuracy(null);
+  const everything = firearmAccuracy(null, null);
   const allDistances = [...new Set(everything.flatMap(r => r.distances))]
     .sort((a, b) => parseFloat(a) - parseFloat(b));
+  // Shot counts compare across firearms in a way ammo does not — a 5-shot group is a 5-shot
+  // group whatever it was fired from — so unlike ammo this one earns a row here.
+  const allShots = [...new Set(everything.flatMap(r => r.counts))]
+    .sort((a, b) => a - b).map(String);
   [...groupScope.distance].forEach(d => { if (!allDistances.includes(d)) groupScope.distance.delete(d); });
+  [...groupScope.shots].forEach(v => { if (!allShots.includes(v)) groupScope.shots.delete(v); });
 
-  const rows = firearmAccuracy(groupScope.distance);
+  const rows = firearmAccuracy(groupScope.distance, groupScope.shots);
   const inScope = [...new Set(rows.flatMap(r => r.distances))];
 
-  const chips = allDistances.length > 1 ? `
-    <div class="scope-row">
-      <label class="filter-label">Distance</label>
-      <div class="scope-chips">
-        <button class="scope-chip scope-all${groupScope.distance.size ? '' : ' on'}"
-                onclick="toggleGroupScope('distance', null)">All</button>
-        ${allDistances.map(d => {
-          const n = everything.filter(r => r.distances.includes(d)).length;
-          return `<button class="scope-chip${groupScope.distance.has(d) ? ' on' : ''}"
-                    onclick="toggleGroupScope('distance', ${JSON.stringify(d).replace(/"/g, '&quot;')})"
-                    ><span class="scope-chip-t">${esc(d)}</span><b>${n}</b></button>`;
-        }).join('')}
-      </div>
-    </div>` : '';
+  const chips =
+    firearmScopeRow('distance', 'Distance', allDistances,
+      d => everything.filter(r => r.distances.includes(d)).length) +
+    firearmScopeRow('shots', 'Shots', allShots,
+      v => everything.filter(r => r.counts.includes(Number(v))).length, v => `${v}-shot`);
 
   // The gap between a bench rifle at 50 yd and a handgun at 25 ft dwarfs any difference
   // between the firearms themselves, so an unfiltered list mostly ranks shooting positions.
@@ -3956,8 +3980,21 @@ function renderFirearmCompare(el) {
       different disciplines before they are different firearms — <b>pick one distance</b> for
       this to be about the firearms.</span></div>` : '';
 
+  // Extreme spread grows with round count, so ranking firearms by it across a mix of shot
+  // counts partly ranks the strings they happened to be shot in. Only said under the metric it
+  // applies to, and only when the mix is really there — in which case the Shots row is showing,
+  // since it appears under exactly this condition.
+  const countsInScope = [...new Set(rows.flatMap(r => r.counts))].sort((a, b) => a - b);
+  const mixedShots = groupMetric === 'es' && countsInScope.length > 1 ? `
+    <div class="poi-caveat"><span class="i">⚠</span><span>These groups run
+      ${countsInScope[0]} to ${countsInScope[countsInScope.length - 1]} shots, and extreme
+      spread grows with shot count — whichever firearm was shot in shorter strings is flattered
+      here. <b>Pick one shot count</b> above, or read this on mean radius, which does not
+      drift with it.</span></div>` : '';
+
   if (!rows.length) {
-    el.innerHTML = `<div class="stats-chart-card">${chips}
+    el.innerHTML = `<div class="stats-chart-card">
+      ${groupMetricToggle()}${chips}
       <div class="stats-empty">No measurable groups in this range.</div></div>`;
     return;
   }
@@ -4008,15 +4045,17 @@ function renderFirearmCompare(el) {
   el.innerHTML = `
     <div class="stats-chart-card">
       <div class="stats-chart-title">Accuracy by firearm</div>
+      ${groupMetricToggle()}
       ${chips}
       ${rowsHtml}
       <div class="fa-axis"><span>0</span><span>${gFmt(max / 2)}</span><span>${gFmt(max)} MOA</span></div>
-      <div class="stats-note">Mean radius in MOA, averaged across groups — lower is better.
+      <div class="stats-note">${currentGroupMetric().label} in MOA, averaged across groups — lower is better.
         The bar is the 95% range for where that firearm's true figure sits, from how much its
         groups vary. Fewer than ${MIN_GROUPS_FOR_INTERVAL} groups gets no bar, because a
         spread cannot be estimated from that.</div>
       ${verdict}
       ${mixed}
+      ${mixedShots}
     </div>`;
 }
 
@@ -4041,6 +4080,25 @@ const GROUP_METRICS = {
 let groupMetric = 'mr';
 
 function currentGroupMetric() { return GROUP_METRICS[groupMetric] || GROUP_METRICS.mr; }
+
+// The shape both accessors read, built from raw geometry. Every view that wants "the figure"
+// goes through this and GROUP_METRICS.of rather than converting one of them itself, so the
+// toggle can never reach one chart and miss another.
+function groupFigures(m, dIn) {
+  return { mrMOA: toMOA(m.meanRadius, dIn), esMOA: toMOA(m.es, dIn) };
+}
+
+// The toggle itself. Rendered in both places that plot group size — the per-firearm pane and
+// the all-firearms comparison — off the same state, since which figure you are reading is one
+// preference and not one per screen.
+function groupMetricToggle() {
+  const cur = currentGroupMetric();
+  return `<div class="metric-ctrl" role="group" aria-label="Group size metric">
+    ${Object.values(GROUP_METRICS).map(o => `<button type="button"
+      class="${o.key === cur.key ? 'on' : ''}" aria-pressed="${o.key === cur.key}"
+      onclick="setGroupMetric('${o.key}')">${o.label}</button>`).join('')}
+  </div>`;
+}
 
 function setGroupMetric(key) {
   if (!GROUP_METRICS[key]) return;
@@ -4111,11 +4169,7 @@ function renderGroupsStats() {
   const sizes = groups.map(M.of);
   const days = [...new Set(groups.map(g => g.date))];
   document.getElementById('stats-groups-stats').innerHTML = `
-    <div class="metric-ctrl" role="group" aria-label="Group size metric">
-      ${Object.values(GROUP_METRICS).map(o => `<button type="button"
-        class="${o.key === M.key ? 'on' : ''}" aria-pressed="${o.key === M.key}"
-        onclick="setGroupMetric('${o.key}')">${o.label}</button>`).join('')}
-    </div>
+    ${groupMetricToggle()}
     <div class="stats-stat-grid">
       <div class="stats-stat-box">
         <div class="stats-stat-num">${gFmt(statsMedian(sizes))}<span class="unit"> MOA</span></div>
@@ -7316,7 +7370,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.8.3';
+const APP_VERSION = '7.8.4';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

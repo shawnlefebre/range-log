@@ -172,9 +172,11 @@ and after a zero aren't the same measurement. The time range picker offers your 
 it.
 
 **Comparing firearms.** Leave the firearm filter on **All Firearms** and the pane compares them
-instead. Each sits at its mean radius in MOA, averaged across its groups, with a bar showing the
+instead. Each sits at its group size in MOA, averaged across its groups, with a bar showing the
 95% range for its true figure — derived from how much its own groups vary, not from how many
-shots you fired.
+shots you fired. The same **mean radius / extreme spread** toggle sits at the top, and the list
+re-sorts on whichever you pick — which figure you're reading is one preference, not one per
+pane, so it follows you when you switch to a single firearm and back.
 
 It won't rank a firearm with **fewer than three groups** — two can agree by luck, and no spread
 can be estimated from them — so those show a figure, no bar, and take no part in the comparison.
@@ -184,6 +186,14 @@ doesn't support. More groups narrow the bars.
 Pin the distance first: a handgun at 25 ft and a rifle at 50 yd differ by discipline long before
 they differ as firearms. With more than one distance in scope, the view says so and offers chips
 to narrow it.
+
+**Shots** chips are here too, and matter more than they do on a single firearm: this is a
+ranking, and on extreme spread a firearm shot in 3-round strings would place above an identical
+one shot in 5s purely from the round count. So when the counts differ the view names them and
+says which way the bias runs, with chips to pin one — or you can read the ranking on mean
+radius, which doesn't drift with it. A shot count is comparable across firearms in a way ammo
+isn't, which is why *ammo* still gets no row here: a load means a different thing in a different
+caliber, so filtering on it would compare things that were never alternatives.
 
 **Narrowing what's in play.** Four rows of chips — **ammo**, **distance**, **tag**, **shots** —
 drive all three charts. Several within a row mean *or*; across rows means *and*, so *55gr FMJ*
@@ -304,7 +314,8 @@ whichever had fewer shots.
 and doesn't drift with sample size, which makes it the fair way to compare groups.
 
 **Which one you're looking at is always named.** A group listed on its own leads with **extreme
-spread**, because that's the figure people quote. Stats → Groups defaults to **mean radius**,
+spread**, because that's the figure people quote. Every chart under Stats → Groups — the
+single-firearm pane and the all-firearms ranking alike — defaults to **mean radius**,
 because ranking loads by extreme spread would favor whichever you happened to shoot in 3-round
 strings — and offers a toggle to the other, since the figure you'd quote is worth seeing a trend
 in too. Every label, chart title and note follows the toggle, so the screen never quotes one

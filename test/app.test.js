@@ -1436,6 +1436,107 @@ describe('accuracy by firearm', () => {
     assert.strictEqual(countFor(win, 'A', true), 3, 'narrowing to one distance drops the rest');
   });
 
+  // ── THE METRIC, IN THE ALL-FIREARMS VIEW ──────────────────────────
+  // This pane ranks firearms against each other, which is exactly where extreme spread is
+  // most misleading: it grows with round count, so a firearm shot in 3-round strings would
+  // place above an identical one shot in 5s. It is offered anyway, because it is the figure
+  // people quote — with the mix named when there is one, and chips to remove it.
+
+  const promptText = win => flat(win.document.getElementById('stats-groups-prompt'));
+  const metricBtn = (win, label) =>
+    [...win.document.querySelectorAll('#stats-groups-prompt .metric-ctrl button')]
+      .find(b => flat(b) === label);
+  const scopeRowFor = (win, label) =>
+    [...win.document.querySelectorAll('#stats-groups-prompt .scope-row')]
+      .find(r => flat(r.querySelector('.filter-label')) === label);
+
+  test('the comparison offers both figures, and starts on mean radius', async () => {
+    const win = await app([{ name: 'Loose', groups: LOOSE }, { name: 'Tight', groups: TIGHT }]);
+    const btns = [...win.document.querySelectorAll('#stats-groups-prompt .metric-ctrl button')];
+    assert.deepStrictEqual(btns.map(b => flat(b)), ['Mean radius', 'Extreme spread']);
+    assert.ok(metricBtn(win, 'Mean radius').classList.contains('on'));
+    assert.match(promptText(win), /Mean radius in MOA, averaged across groups/);
+  });
+
+  test('switching moves every figure, not just the caption', async () => {
+    const win = await app([{ name: 'Loose', groups: LOOSE }, { name: 'Tight', groups: TIGHT }]);
+    const mr = rows(win).find(r => r.name === 'Tight').val;
+    win.setGroupMetric('es');
+    const es = rows(win).find(r => r.name === 'Tight').val;
+    // Five shots on a ring: extreme spread is the longest chord, 2r·sin72° = 1.902r.
+    assert.ok(Math.abs(parseFloat(es) / parseFloat(mr) - 1.902) < 0.02,
+      `expected about 1.9x, got ${es} against ${mr}`);
+    assert.match(promptText(win), /Extreme spread in MOA, averaged across groups/);
+    assert.doesNotMatch(promptText(win), /Mean radius in MOA/,
+      'the caption must not keep describing the figure you switched away from');
+  });
+
+  test('the ordering still holds when the metric changes', async () => {
+    const win = await app([{ name: 'Loose', groups: LOOSE }, { name: 'Tight', groups: TIGHT }]);
+    win.setGroupMetric('es');
+    assert.strictEqual(rows(win)[0].name, 'Tight',
+      'a ranked list must re-sort on the figure it is showing');
+  });
+
+  test('the choice carries over to a single firearm rather than resetting', async () => {
+    const win = await app([{ name: 'Loose', groups: LOOSE }, { name: 'Tight', groups: TIGHT }]);
+    win.setGroupMetric('es');
+    win.document.getElementById('stats-firearm').value = 'g2';
+    win.renderStats();
+    assert.match(flat(win.document.getElementById('stats-groups-stats')),
+      /Median extreme spread/, 'which figure you are reading is one preference, not one per pane');
+  });
+
+  test('a mix of shot counts is called out, but only under extreme spread', async () => {
+    const threes = [1, 2, 3].map((d, i) => ringGroup(`a${i}`, `2026-05-0${d}`, 0.5, 3));
+    const fives = [1, 2, 3].map((d, i) => ringGroup(`b${i}`, `2026-05-0${d}`, 0.5, 5));
+    const win = await app([{ name: 'Short strings', groups: threes },
+                           { name: 'Long strings', groups: fives }]);
+    assert.doesNotMatch(promptText(win), /grows with shot count/,
+      'mean radius does not drift with round count, so there is nothing to warn about');
+    win.setGroupMetric('es');
+    assert.match(promptText(win), /These groups run 3 to 5 shots/);
+    assert.match(promptText(win), /shorter strings is flattered/);
+  });
+
+  test('a Shots row is offered only when the count actually varies', async () => {
+    const even = await app([{ name: 'A', groups: TIGHT }, { name: 'B', groups: LOOSE }]);
+    assert.ok(!scopeRowFor(even, 'Shots'), 'one count across every firearm is not a choice');
+
+    const threes = [1, 2, 3].map((d, i) => ringGroup(`a${i}`, `2026-05-0${d}`, 0.5, 3));
+    const win = await app([{ name: 'A', groups: [...threes, ...TIGHT] },
+                           { name: 'B', groups: LOOSE }]);
+    assert.ok(scopeRowFor(win, 'Shots'), 'a mix is exactly what needs narrowing');
+  });
+
+  test('picking one shot count narrows the comparison and clears the caveat', async () => {
+    const threes = [1, 2, 3].map((d, i) => ringGroup(`a${i}`, `2026-05-0${d}`, 0.5, 3));
+    const win = await app([{ name: 'A', groups: [...threes, ...TIGHT] },
+                           { name: 'B', groups: LOOSE }]);
+    win.setGroupMetric('es');
+    assert.match(promptText(win), /These groups run 3 to 5 shots/);
+    const n = name => win.eval(
+      `firearmAccuracy(groupScope.distance, groupScope.shots)
+         .find(r => r.gun.name === ${JSON.stringify(name)}).n`);
+    assert.strictEqual(n('A'), 7, 'three 3-shot groups plus four 5-shot ones');
+    win.toggleGroupScope('shots', '5');
+    assert.strictEqual(n('A'), 4, 'narrowing to 5-shot drops the short strings');
+    assert.doesNotMatch(promptText(win), /These groups run/,
+      'one count in scope is one measurement, so there is no mix left to warn about');
+  });
+
+  test('a shot count that leaves the range is dropped, not left stuck', async () => {
+    const threes = [1, 2, 3].map((d, i) => ringGroup(`a${i}`, `2026-05-0${d}`, 0.5, 3));
+    const win = await app([{ name: 'A', groups: [...threes, ...TIGHT] },
+                           { name: 'B', groups: LOOSE }]);
+    win.toggleGroupScope('shots', '3');
+    assert.strictEqual(win.eval('groupScope.shots.size'), 1);
+    win.eval("data.firearms[0].groups = data.firearms[0].groups.filter(g => g.impacts.length === 5);");
+    win.renderStats();
+    assert.strictEqual(win.eval('groupScope.shots.size'), 0,
+      'a selection you cannot see or clear would silently empty the pane');
+  });
+
   test('mixed distances are called out as mixed disciplines', async () => {
     const near = [1, 2, 3].map((d, i) => ringGroup(`n${i}`, `2026-05-0${d}`, 0.5, 5, 25));
     const far = [1, 2, 3].map((d, i) => ringGroup(`f${i}`, `2026-05-0${d}`, 0.5, 5, 100));
