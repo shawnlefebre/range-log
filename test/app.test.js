@@ -55,6 +55,17 @@ function flat(el) {
   return (typeof el === 'string' ? el : el.textContent).replace(/\s+/g, ' ').trim();
 }
 
+// Manufacturer is a select-plus-custom pair, like caliber: which branch applies depends on
+// whether this name is already in the purchase history, so tests go through here rather than
+// each one guessing which state the form is in.
+function setAmmoManufacturer(win, name) {
+  const sel = win.document.getElementById('ammo-manufacturer-select');
+  if ([...sel.options].some(o => o.value === name)) { sel.value = name; return; }
+  sel.value = '__custom__';
+  win.handleAmmoManufacturerChange();
+  win.document.getElementById('ammo-manufacturer-custom').value = name;
+}
+
 function ready(dom) {
   return new Promise(resolve => {
     dom.window.onload = () => resolve(dom.window);
@@ -3655,7 +3666,7 @@ describe('picking an individual caliber on Money', () => {
       win.handleCaliberSelectChange();
       win.document.getElementById('ammo-caliber-custom').value = caliber;
     }
-    win.document.getElementById('ammo-manufacturer').value = 'Test';
+    setAmmoManufacturer(win, 'Test');
     win.document.getElementById('ammo-model').value = caliber + ' load';
     win.document.getElementById('ammo-quantity').value = String(quantity);
     win.document.getElementById('ammo-price').value = String(totalPrice);
@@ -3738,7 +3749,7 @@ describe('non-range ammo', () => {
     win.document.getElementById('ammo-caliber-select').value = '__custom__';
     win.handleCaliberSelectChange();
     win.document.getElementById('ammo-caliber-custom').value = '9mm';
-    win.document.getElementById('ammo-manufacturer').value = 'Test';
+    setAmmoManufacturer(win, 'Test');
     win.document.getElementById('ammo-model').value = 'Carry JHP';
     win.document.getElementById('ammo-quantity').value = '20';
     win.document.getElementById('ammo-price').value = '30';
@@ -3917,6 +3928,155 @@ describe('non-range ammo', () => {
 // Reading a purchase and changing one are different intentions, the same argument that put
 // zeros, groups and dope tables behind a read-only view.
 
+// ── MANUFACTURER PICKER ─────────────────────────────────────────────
+// Typing the maker by hand on every purchase is both a chore and the source of near-duplicate
+// names, which fragment a load's history for no reason. The list is built from what you have
+// bought rather than shipped with the app, so it can never offer a brand you do not buy — and
+// on a fresh app it has nothing to say, which the form has to handle rather than present an
+// empty dropdown.
+
+describe('picking an ammo manufacturer', () => {
+  const sel = win => win.document.getElementById('ammo-manufacturer-select');
+  const custom = win => win.document.getElementById('ammo-manufacturer-custom');
+  const options = win => [...sel(win).options].map(o => o.textContent);
+
+  async function withAmmo(entries) {
+    const win = await ready(loadApp());
+    win.eval(`data = { schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      firearms: [], locations: [], sellers: [], sessions: [],
+      ammo: ${JSON.stringify(entries.map((e, i) => ({
+        id: `a${i}`, date: e.date, caliber: '9mm', manufacturer: e.manufacturer,
+        model: 'load', quantity: 50, totalPrice: 20, sellerId: null,
+        status: 'instock', rangeAmmo: true, usedUpDate: null, notes: '',
+      })))} };`);
+    return win;
+  }
+
+  test('the list is what you have bought, and nothing else', async () => {
+    const win = await withAmmo([
+      { date: '2026-01-01', manufacturer: 'Hornady' },
+      { date: '2026-02-01', manufacturer: 'CCI' },
+    ]);
+    win.openAddAmmo();
+    assert.deepStrictEqual(options(win),
+      ['— Select manufacturer —', 'CCI', 'Hornady', '+ New manufacturer...'],
+      'alphabetical, with no built-in brands mixed in');
+  });
+
+  test('a near-duplicate spelling is folded in, keeping the most recent one', async () => {
+    const win = await withAmmo([
+      { date: '2026-01-01', manufacturer: 'federal' },
+      { date: '2026-06-01', manufacturer: 'Federal' },
+    ]);
+    win.openAddAmmo();
+    assert.deepStrictEqual(options(win),
+      ['— Select manufacturer —', 'Federal', '+ New manufacturer...'],
+      'two spellings of one maker are one entry, not two');
+  });
+
+  test('nothing bought yet opens straight into the text field', async () => {
+    const win = await withAmmo([]);
+    win.openAddAmmo();
+    assert.strictEqual(sel(win).value, '__custom__');
+    assert.strictEqual(custom(win).style.display, 'block',
+      'a dropdown you must open to discover is empty is worse than the field it replaced');
+  });
+
+  test('picking one from the list is what gets saved', async () => {
+    const win = await withAmmo([{ date: '2026-01-01', manufacturer: 'Hornady' }]);
+    win.openAddAmmo();
+    win.document.getElementById('ammo-date').value = '2026-07-01';
+    sel(win).value = 'Hornady';
+    win.handleAmmoManufacturerChange();
+    win.document.getElementById('ammo-caliber-select').value = '__custom__';
+    win.handleCaliberSelectChange();
+    win.document.getElementById('ammo-caliber-custom').value = '9mm';
+    win.document.getElementById('ammo-model').value = '124gr XTP';
+    win.document.getElementById('ammo-quantity').value = '50';
+    win.document.getElementById('ammo-price').value = '40';
+    win.saveAmmo();
+    const saved = win.eval("data.ammo.find(a => a.model === '124gr XTP').manufacturer");
+    assert.strictEqual(saved, 'Hornady');
+  });
+
+  test('a new name typed in is saved, and is on the list next time', async () => {
+    const win = await withAmmo([{ date: '2026-01-01', manufacturer: 'Hornady' }]);
+    win.openAddAmmo();
+    win.document.getElementById('ammo-date').value = '2026-07-01';
+    sel(win).value = '__custom__';
+    win.handleAmmoManufacturerChange();
+    custom(win).value = '  Lapua  ';
+    win.document.getElementById('ammo-caliber-select').value = '__custom__';
+    win.handleCaliberSelectChange();
+    win.document.getElementById('ammo-caliber-custom').value = '.308 Win';
+    win.document.getElementById('ammo-model').value = 'Scenar';
+    win.document.getElementById('ammo-quantity').value = '20';
+    win.document.getElementById('ammo-price').value = '60';
+    win.saveAmmo();
+    assert.strictEqual(win.eval("data.ammo.find(a => a.model === 'Scenar').manufacturer"),
+      'Lapua', 'trimmed, the way the plain field used to trim');
+    win.openAddAmmo();
+    assert.ok(options(win).includes('Lapua'), 'what you type once you pick next time');
+  });
+
+  test('switching back to the list clears what was typed', async () => {
+    const win = await withAmmo([{ date: '2026-01-01', manufacturer: 'Hornady' }]);
+    win.openAddAmmo();
+    sel(win).value = '__custom__';
+    win.handleAmmoManufacturerChange();
+    custom(win).value = 'Typo';
+    sel(win).value = 'Hornady';
+    win.handleAmmoManufacturerChange();
+    assert.strictEqual(custom(win).style.display, 'none');
+    assert.strictEqual(win.getSelectedManufacturer(), 'Hornady',
+      'an abandoned draft must not outrank the thing you picked');
+  });
+
+  test('editing a purchase selects its maker rather than asking again', async () => {
+    const win = await withAmmo([
+      { date: '2026-01-01', manufacturer: 'Hornady' },
+      { date: '2026-02-01', manufacturer: 'CCI' },
+    ]);
+    win.openEditAmmo('a0');
+    assert.strictEqual(sel(win).value, 'Hornady');
+    assert.strictEqual(custom(win).style.display, 'none');
+  });
+
+  test('editing the older of two spellings lands on the one the list kept', async () => {
+    // This is what folding the duplicates buys: open the old record and it is already sitting
+    // on the canonical spelling, so saving converges it instead of resurrecting the variant.
+    const win = await withAmmo([
+      { date: '2026-01-01', manufacturer: 'federal' },
+      { date: '2026-06-01', manufacturer: 'Federal' },
+    ]);
+    win.openEditAmmo('a0');
+    assert.strictEqual(sel(win).value, 'Federal');
+    assert.strictEqual(custom(win).style.display, 'none');
+    assert.strictEqual(win.getSelectedManufacturer(), 'Federal');
+  });
+
+  test('a maker absent from the history still shows, as typed', async () => {
+    // Unreachable through the form, since the list is built from the same records it edits --
+    // but an import or a hand-edited backup can carry one. Blanking the field would lose the
+    // value on the next save, so the guard is tested directly rather than left to inspection.
+    const win = await withAmmo([{ date: '2026-01-01', manufacturer: 'Hornady' }]);
+    win.openAddAmmo();
+    win.populateAmmoManufacturerDropdown('Obscure Co');
+    assert.strictEqual(sel(win).value, '__custom__');
+    assert.strictEqual(custom(win).value, 'Obscure Co');
+    assert.strictEqual(custom(win).style.display, 'block');
+    assert.strictEqual(win.getSelectedManufacturer(), 'Obscure Co');
+  });
+
+  test('viewing a purchase with no maker recorded does not prompt for one', async () => {
+    const win = await withAmmo([{ date: '2026-01-01', manufacturer: '' }]);
+    win.openViewAmmo('a0');
+    assert.strictEqual(sel(win).value, '',
+      'an inert form should not be offering to add anything');
+    assert.strictEqual(custom(win).style.display, 'none');
+  });
+});
+
 describe('viewing an ammo purchase', () => {
   const firstAmmoId = win => win.buildDefaultData().ammo[0].id;
 
@@ -3925,7 +4085,7 @@ describe('viewing an ammo purchase', () => {
     win.openViewAmmo(firstAmmoId(win));
 
     assert.ok(win.document.getElementById('modal-ammo').classList.contains('viewing'));
-    ['ammo-date', 'ammo-caliber-select', 'ammo-manufacturer', 'ammo-model', 'ammo-quantity',
+    ['ammo-date', 'ammo-caliber-select', 'ammo-manufacturer-select', 'ammo-model', 'ammo-quantity',
      'ammo-price', 'ammo-seller', 'ammo-status', 'ammo-not-range', 'ammo-notes'].forEach(id =>
       assert.strictEqual(win.document.getElementById(id).disabled, true, `${id} should be inert`));
 
@@ -4239,7 +4399,7 @@ describe('as-of ammo pricing', () => {
       win.handleCaliberSelectChange();
       win.document.getElementById('ammo-caliber-custom').value = caliber;
     }
-    win.document.getElementById('ammo-manufacturer').value = 'Test';
+    setAmmoManufacturer(win, 'Test');
     win.document.getElementById('ammo-model').value = 'Lot ' + date;
     win.document.getElementById('ammo-quantity').value = String(quantity);
     win.document.getElementById('ammo-price').value = String(totalPrice);

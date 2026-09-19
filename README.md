@@ -99,6 +99,13 @@ rounds-since-clean count. Zeros record distance, ammo, optic and notes.
 place. Each list shows its most recent few with the rest behind a **Show all** count, and
 expanding one scrolls inside its own panel rather than stretching the modal.
 
+**Ammo purchases** record date, caliber, manufacturer, model, quantity, price and seller.
+Caliber and manufacturer are both pickers built from what you've already entered, each with a
+**+ New...** entry for anything not on the list yet — so the second purchase from a maker is a
+tap rather than retyping the name, and *Federal* doesn't end up sitting in your history beside
+*federal*. Neither list ships with brands built in; on a fresh app the manufacturer field opens
+straight into the text box, since there's nothing to pick from yet.
+
 Tapping a zero, dope table, group or ammo purchase opens it **read-only** — the fields are
 inert, so a stray tap can't alter what a rifle is actually zeroed at. The pencil opens it for
 editing.

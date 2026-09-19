@@ -23,7 +23,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.8.4</span>
+    <span id="app-version">v7.8.5</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -468,7 +468,10 @@
     </div>
     <div class="form-group">
       <label>Manufacturer</label>
-      <input type="text" id="ammo-manufacturer" placeholder="e.g. Federal, CCI">
+      <select id="ammo-manufacturer-select" onchange="handleAmmoManufacturerChange()">
+        <option value="">— Select manufacturer —</option>
+      </select>
+      <input type="text" id="ammo-manufacturer-custom" placeholder="e.g. Federal, CCI" style="margin-top:6px;display:none;">
     </div>
     <div class="form-group">
       <label>Model</label>

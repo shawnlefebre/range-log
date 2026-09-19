@@ -2576,6 +2576,68 @@ function populateAmmoCaliberDropdown(selectedCaliber) {
   }
 }
 
+// Manufacturers you have actually bought — the whole list, with no built-in one, the same
+// way allKnownCalibers works. Deduped case-insensitively so a stray "federal" does not sit in
+// the list beside "Federal"; the spelling kept is the one from the most recent purchase, since
+// that is the one you last chose to type.
+function allKnownManufacturers() {
+  const byKey = new Map();
+  [...(data.ammo || [])]
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+    .forEach(a => {
+      const v = String(a.manufacturer || '').trim();
+      if (v) byKey.set(v.toLowerCase(), v);
+    });
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+function populateAmmoManufacturerDropdown(selectedManufacturer) {
+  const sel = document.getElementById('ammo-manufacturer-select');
+  const custom = document.getElementById('ammo-manufacturer-custom');
+  const known = allKnownManufacturers();
+  const want = String(selectedManufacturer || '').trim();
+  const isKnown = want && known.some(m => m.toLowerCase() === want.toLowerCase());
+
+  sel.innerHTML =
+    '<option value="">— Select manufacturer —</option>' +
+    known.map(m => `<option value="${esc(m)}"${
+      m.toLowerCase() === want.toLowerCase() ? ' selected' : ''}>${esc(m)}</option>`).join('') +
+    `<option value="${CUSTOM_OPTION}">+ New manufacturer...</option>`;
+
+  // Two ways to land in the text box. Nothing bought yet means the dropdown has nothing to
+  // offer, and making you open it to find that out is worse than the plain field this
+  // replaced — except while viewing, where the form is inert and the prompt would be noise.
+  // The other is editing a purchase whose manufacturer is no longer anywhere in the history.
+  if ((!known.length && !ammoReadOnly) || (want && !isKnown)) {
+    sel.value = CUSTOM_OPTION;
+    custom.value = want;
+    custom.style.display = 'block';
+  } else {
+    custom.value = '';
+    custom.style.display = 'none';
+  }
+}
+
+function handleAmmoManufacturerChange() {
+  const sel = document.getElementById('ammo-manufacturer-select');
+  const custom = document.getElementById('ammo-manufacturer-custom');
+  if (sel.value === CUSTOM_OPTION) {
+    custom.style.display = 'block';
+    custom.focus();
+  } else {
+    custom.style.display = 'none';
+    custom.value = '';
+  }
+}
+
+function getSelectedManufacturer() {
+  const sel = document.getElementById('ammo-manufacturer-select');
+  if (sel.value === CUSTOM_OPTION) {
+    return document.getElementById('ammo-manufacturer-custom').value.trim();
+  }
+  return sel.value.trim();
+}
+
 function handleCaliberSelectChange() {
   const sel = document.getElementById('ammo-caliber-select');
   const custom = document.getElementById('ammo-caliber-custom');
@@ -2604,7 +2666,8 @@ function ammoApplyMode() {
   applyModalMode({
     modal: 'modal-ammo', buttons: 'ammo-buttons', readOnly: ammoReadOnly,
     enterEdit: 'ammoEnterEdit', save: 'saveAmmo',
-    fields: ['ammo-date', 'ammo-caliber-select', 'ammo-caliber-custom', 'ammo-manufacturer',
+    fields: ['ammo-date', 'ammo-caliber-select', 'ammo-caliber-custom',
+             'ammo-manufacturer-select', 'ammo-manufacturer-custom',
              'ammo-model', 'ammo-quantity', 'ammo-price', 'ammo-seller', 'ammo-status',
              'ammo-not-range', 'ammo-usedup-date', 'ammo-notes'],
   });
@@ -2625,7 +2688,6 @@ function openAddAmmo() {
   document.getElementById('ammo-modal-title').textContent = 'Log Ammo Purchase';
   document.getElementById('ammo-edit-id').value = '';
   document.getElementById('ammo-date').value = today();
-  document.getElementById('ammo-manufacturer').value = '';
   document.getElementById('ammo-model').value = '';
   document.getElementById('ammo-quantity').value = '';
   document.getElementById('ammo-price').value = '';
@@ -2635,6 +2697,7 @@ function openAddAmmo() {
   document.getElementById('ammo-notes').value = '';
   populateAmmoSellerDropdown('');
   populateAmmoCaliberDropdown('');
+  populateAmmoManufacturerDropdown('');
   handleAmmoStatusChange();
   ammoApplyMode();
   openModal('modal-ammo');
@@ -2648,7 +2711,6 @@ function openEditAmmo(id, readOnly) {
     ammoReadOnly ? 'Ammo Purchase' : 'Edit Ammo Purchase';
   document.getElementById('ammo-edit-id').value = id;
   document.getElementById('ammo-date').value = a.date || '';
-  document.getElementById('ammo-manufacturer').value = a.manufacturer || '';
   document.getElementById('ammo-model').value = a.model || '';
   document.getElementById('ammo-quantity').value = a.quantity || '';
   document.getElementById('ammo-price').value = a.totalPrice || '';
@@ -2658,6 +2720,7 @@ function openEditAmmo(id, readOnly) {
   document.getElementById('ammo-notes').value = a.notes || '';
   populateAmmoSellerDropdown(a.sellerId || '');
   populateAmmoCaliberDropdown(a.caliber || '');
+  populateAmmoManufacturerDropdown(a.manufacturer || '');
   handleAmmoStatusChange();
   ammoApplyMode();
   openModal('modal-ammo');
@@ -2667,7 +2730,7 @@ function saveAmmo() {
   const id = document.getElementById('ammo-edit-id').value;
   const date = document.getElementById('ammo-date').value;
   const caliber = getSelectedCaliber();
-  const manufacturer = document.getElementById('ammo-manufacturer').value.trim();
+  const manufacturer = getSelectedManufacturer();
   const model = document.getElementById('ammo-model').value.trim();
   const quantity = parseInt(document.getElementById('ammo-quantity').value, 10);
   const totalPrice = parseFloat(document.getElementById('ammo-price').value);
@@ -7370,7 +7433,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.8.4';
+const APP_VERSION = '7.8.5';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
