@@ -960,8 +960,11 @@
     display: flex;
     gap: 10px;
     margin: 14px 0 12px;
+    flex-wrap: wrap;
   }
-  .ammo-filter-group { flex: 1; }
+  .ammo-filter-group { flex: 1; min-width: 8rem; }
+  /* Time range leads and gets its own row, the way it leads the Stats filter bar. */
+  .ammo-filter-group.wide { flex-basis: 100%; }
   .filter-label {
     display: block;
     font-family: var(--font-mono);
@@ -1109,7 +1112,10 @@
     font-size: 0.7rem;
     color: var(--text-muted);
   }
-  .stats-custom-range input[type="date"] { flex: 1; }
+  /* min-width:0 or flex:1 cannot actually shrink these: a date input's intrinsic width is
+     its widest rendered value plus the picker icon, and two of those plus the "to" overflow
+     the row on a phone — the second one's icon was clipped by the viewport edge. */
+  .stats-custom-range input[type="date"] { flex: 1; min-width: 0; }
   .stats-stat-grid {
     display: grid;
     /* auto-fit rather than a fixed count: a 1fr column still has a min-content floor, so at

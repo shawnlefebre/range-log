@@ -2794,6 +2794,40 @@ function handleAmmoStatusChange() {
 }
 
 // ── AMMO RENDER ───────────────────────────────────────────────────
+// The Ammo tab's own range, deliberately not the Stats one. This is a list of what you own
+// and what it cost, where the usual question is "everything", so it defaults to All Time —
+// Stats leads with the last twelve months because a trend needs a window. Zero anchors are
+// left out: a re-zero is a boundary for point of impact, not for a purchase.
+function getAmmoRangeBounds() {
+  const key = document.getElementById('ammo-filter-range').value;
+  const end = today();
+  switch (key) {
+    case 'month': return { start: firstOfMonthISO(0), end };
+    case '3months': return { start: firstOfMonthISO(2), end };
+    case '12months': return { start: firstOfMonthISO(11), end };
+    case 'year': return { start: firstOfYearISO(), end };
+    case 'custom': return {
+      start: document.getElementById('ammo-start').value || null,
+      end: document.getElementById('ammo-end').value || null,
+    };
+    default: return { start: null, end: null };      // All Time, and the fallback
+  }
+}
+
+function handleAmmoRangeChange() {
+  const isCustom = document.getElementById('ammo-filter-range').value === 'custom';
+  document.getElementById('ammo-custom-range').style.display = isCustom ? 'flex' : 'none';
+  if (isCustom) {
+    // Seeded rather than left blank, so picking Custom shows a range instead of everything
+    // until you have filled in both ends.
+    const s = document.getElementById('ammo-start');
+    const e = document.getElementById('ammo-end');
+    if (!s.value) s.value = firstOfMonthISO(11);
+    if (!e.value) e.value = today();
+  }
+  renderAmmo();
+}
+
 function renderAmmo() {
   const ammo = data.ammo || [];
 
@@ -2806,9 +2840,15 @@ function renderAmmo() {
 
   const filterCal = calSel.value;
   const filterStock = document.getElementById('ammo-filter-stock').value;
+  const { start, end } = getAmmoRangeBounds();
 
-  // Apply filters
+  // Apply filters. The caliber list above is built from every purchase rather than from the
+  // range, so narrowing the dates can leave a selection with nothing in it — that lands on
+  // the "no purchases match" state, which says so and is one tap to undo. Pruning the list
+  // instead would silently drop the selection you made.
   let filtered = ammo;
+  if (start) filtered = filtered.filter(a => (a.date || '') >= start);
+  if (end) filtered = filtered.filter(a => (a.date || '') <= end);
   if (filterCal) filtered = filtered.filter(a => a.caliber === filterCal);
   if (filterStock === 'instock') filtered = filtered.filter(a => (a.status || 'instock') === 'instock');
   if (filterStock === 'usedup') filtered = filtered.filter(a => (a.status || 'instock') === 'usedup');
@@ -7433,7 +7473,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.8.5';
+const APP_VERSION = '7.8.6';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

@@ -25,12 +25,32 @@ const TABS = ['dashboard', 'log', 'sessions', 'ammo', 'stats', 'settings'];
     const problems = [];
     for (const tab of TABS) {
       await page.evaluate(t => showTab(t), tab);
+      // Both custom ranges stay hidden until picked, so a scan that never picks one cannot see
+      // the row it reveals — and that row is where two date inputs and a separator have to fit
+      // side by side. They used to overflow it: flex:1 cannot shrink a date input below its
+      // intrinsic width without min-width:0, so the second one's picker icon sat off-screen.
+      if (tab === 'ammo') {
+        await page.evaluate(() => {
+          document.getElementById('ammo-filter-range').value = 'custom';
+          handleAmmoRangeChange();
+        });
+      }
       if (tab === 'stats') {
+        await page.evaluate(() => {
+          document.getElementById('stats-range').value = 'custom';
+          handleStatsRangeChange();
+        });
         for (const sec of ['groups', 'practice', 'money', 'upkeep']) {
           await page.evaluate(s => showStatsSection(s), sec);
           await page.waitForTimeout(120);
           problems.push(...await scan(page, `${tab}/${sec}`));
         }
+        // Back to the default window, so the bar-chart measurements below read the same state
+        // they always have rather than whatever this scan left behind.
+        await page.evaluate(() => {
+          document.getElementById('stats-range').value = '12months';
+          handleStatsRangeChange();
+        });
       } else {
         await page.waitForTimeout(120);
         problems.push(...await scan(page, tab));

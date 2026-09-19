@@ -23,7 +23,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.8.5</span>
+    <span id="app-version">v7.8.6</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -86,6 +86,19 @@
     </div>
     <div id="ammo-stats"></div>
     <div class="ammo-filters">
+      <!-- Time range takes the row to itself. Two selects already fill the bar at phone
+           width, and a third alongside them truncates every option all three hold. -->
+      <div class="ammo-filter-group wide">
+        <label class="filter-label">Time range</label>
+        <select id="ammo-filter-range" onchange="handleAmmoRangeChange()">
+          <option value="month">This Month</option>
+          <option value="3months">Last 3 Months</option>
+          <option value="12months">Last 12 Months</option>
+          <option value="year">This Year</option>
+          <option value="all" selected>All Time</option>
+          <option value="custom">Custom...</option>
+        </select>
+      </div>
       <div class="ammo-filter-group">
         <label class="filter-label">Caliber</label>
         <select id="ammo-filter-caliber" onchange="renderAmmo()">
@@ -100,6 +113,11 @@
           <option value="all">All (incl. used up)</option>
         </select>
       </div>
+    </div>
+    <div id="ammo-custom-range" class="stats-custom-range" style="display:none;">
+      <input type="date" id="ammo-start" onchange="renderAmmo()">
+      <span class="range-sep">to</span>
+      <input type="date" id="ammo-end" onchange="renderAmmo()">
     </div>
     <div id="ammo-list"></div>
   </section>

@@ -4383,6 +4383,123 @@ describe('used-up date', () => {
   });
 });
 
+// ── AMMO TIME RANGE ─────────────────────────────────────────────────
+// The Ammo tab narrows by caliber and stock; this adds the third axis. It defaults to All
+// Time rather than the twelve months Stats leads with, because this list is what you own and
+// what it cost — the usual question there is "everything", not "lately". The four tiles above
+// the list follow it for the same reason they already follow the other two filters: they have
+// never described anything but the set on screen.
+
+describe('narrowing ammo purchases by date', () => {
+  // Dates relative to the real today, since the presets are anchored to it — a fixed calendar
+  // date would drift out of "This Year" and take the test with it.
+  const iso = offsetDays => localToday(offsetDays);
+
+  async function app(dates) {
+    const win = await ready(loadApp());
+    win.eval(`data = { schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      firearms: [], locations: [], sellers: [], sessions: [],
+      ammo: ${JSON.stringify(dates.map((d, i) => ({
+        id: `a${i}`, date: d, caliber: i % 2 ? '9mm' : '.223 Rem',
+        manufacturer: 'Maker', model: `lot ${i}`, quantity: 100, totalPrice: 50,
+        sellerId: null, status: 'instock', rangeAmmo: true, usedUpDate: null, notes: '',
+      })))} };`);
+    win.showTab('ammo');
+    return win;
+  }
+
+  const cards = win => win.document.querySelectorAll('.ammo-card').length;
+  const tile = (win, label) => {
+    const box = [...win.document.querySelectorAll('.ammo-stat-box')]
+      .find(b => flat(b.querySelector('.ammo-stat-label')) === label);
+    return box ? flat(box.querySelector('.ammo-stat-num')) : null;
+  };
+  const setRange = (win, key) => {
+    win.document.getElementById('ammo-filter-range').value = key;
+    win.handleAmmoRangeChange();
+  };
+
+  test('it opens on All Time, showing everything', async () => {
+    const win = await app([iso(-1000), iso(-200), iso(-5)]);
+    assert.strictEqual(win.document.getElementById('ammo-filter-range').value, 'all');
+    assert.strictEqual(cards(win), 3, 'a list of what you own should start by listing it all');
+  });
+
+  test('picking a range drops what falls outside it', async () => {
+    const win = await app([iso(-1000), iso(-200), iso(-5)]);
+    setRange(win, '3months');
+    assert.strictEqual(cards(win), 1, 'only the recent purchase is inside three months');
+    setRange(win, 'all');
+    assert.strictEqual(cards(win), 3, 'and widening brings the rest back');
+  });
+
+  test('the tiles describe the window, not the whole history', async () => {
+    const win = await app([iso(-1000), iso(-200), iso(-5)]);
+    assert.strictEqual(tile(win, 'Rounds'), '300');
+    assert.strictEqual(tile(win, 'Spend'), '$150.00');
+    setRange(win, '3months');
+    assert.strictEqual(tile(win, 'Rounds'), '100',
+      'tiles that ignored one of three filters would be quietly wrong');
+    assert.strictEqual(tile(win, 'Spend'), '$50.00');
+  });
+
+  test('a purchase on the first day of the range counts as inside it', async () => {
+    // Off-by-one at the boundary is the classic way a range filter goes subtly wrong, and a
+    // purchase made on the 1st belongs to that month by any reading.
+    const win = await app([iso(0)]);
+    setRange(win, 'month');
+    assert.strictEqual(cards(win), 1);
+    win.eval(`data.ammo[0].date = firstOfMonthISO(0);`);
+    win.renderAmmo();
+    assert.strictEqual(cards(win), 1, 'the first of the month is in this month');
+  });
+
+  test('Custom reveals two dates, already filled in', async () => {
+    const win = await app([iso(-400), iso(-10)]);
+    assert.strictEqual(win.document.getElementById('ammo-custom-range').style.display, 'none');
+    setRange(win, 'custom');
+    assert.strictEqual(win.document.getElementById('ammo-custom-range').style.display, 'flex');
+    assert.ok(win.document.getElementById('ammo-start').value, 'seeded, not blank');
+    assert.strictEqual(win.document.getElementById('ammo-end').value, win.today());
+  });
+
+  test('custom dates bound the list at both ends', async () => {
+    const win = await app([iso(-400), iso(-100), iso(-2)]);
+    setRange(win, 'custom');
+    win.document.getElementById('ammo-start').value = iso(-200);
+    win.document.getElementById('ammo-end').value = iso(-50);
+    win.renderAmmo();
+    assert.strictEqual(cards(win), 1, 'one purchase sits between those dates');
+  });
+
+  test('switching away from Custom hides the dates again', async () => {
+    const win = await app([iso(-10)]);
+    setRange(win, 'custom');
+    setRange(win, 'all');
+    assert.strictEqual(win.document.getElementById('ammo-custom-range').style.display, 'none');
+  });
+
+  test('a combination with nothing in it says so rather than going blank', async () => {
+    const win = await app([iso(-1000), iso(-900)]);
+    win.document.getElementById('ammo-filter-caliber').value = '9mm';
+    setRange(win, 'month');
+    assert.strictEqual(cards(win), 0);
+    assert.match(flat(win.document.getElementById('ammo-list')), /No purchases match/i,
+      'an empty list has to name why, or the filter that caused it is invisible');
+  });
+
+  test('the caliber list keeps the choice you made outside the range', async () => {
+    // Pruning it to the range would drop the selection silently, leaving a list that had
+    // narrowed for a reason you could no longer see.
+    const win = await app([iso(-1000), iso(-900)]);
+    win.document.getElementById('ammo-filter-caliber').value = '9mm';
+    setRange(win, 'month');
+    assert.strictEqual(win.document.getElementById('ammo-filter-caliber').value, '9mm');
+    setRange(win, 'all');
+    assert.strictEqual(cards(win), 1, 'and it still means what it meant');
+  });
+});
+
 // ── AS-OF PRICING ───────────────────────────────────────────────────
 // A trip is priced from the ammo that had been bought by that date. Without this, buying
 // expensive ammo today would raise what last March cost — a figure that changes after the

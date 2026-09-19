@@ -99,6 +99,12 @@ rounds-since-clean count. Zeros record distance, ammo, optic and notes.
 place. Each list shows its most recent few with the rest behind a **Show all** count, and
 expanding one scrolls inside its own panel rather than stretching the modal.
 
+The Ammo log filters by **time range**, **caliber** and **stock**. Time range offers the same
+choices Stats does — this month, last 3, last 12, this year, all time, or a custom pair of
+dates — but starts on **All Time**, since a list of what you own usually wants to be complete.
+The four figures above the list (rounds, spend, average cost per round, and its range) describe
+whatever the filters leave showing, so picking a quarter answers what that quarter cost.
+
 **Ammo purchases** record date, caliber, manufacturer, model, quantity, price and seller.
 Caliber and manufacturer are both pickers built from what you've already entered, each with a
 **+ New...** entry for anything not on the list yet — so the second purchase from a maker is a
