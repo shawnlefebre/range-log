@@ -2295,6 +2295,14 @@
      has nothing to pan through. It still sits beside the pinned axis, so it borrows the
      trend-chart row and only needs to claim the remaining width. */
   .cleantrend-plot { flex: 1; min-width: 0; overflow: hidden; }
+  .cleantrend-hit { cursor: pointer; }
+  .cleantrend-readout {
+    margin-top: 8px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+  }
+  .cleantrend-readout b { color: var(--accent); font-weight: 600; }
   .trend-readout {
     margin-left: auto;
     font-family: var(--font-mono);

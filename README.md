@@ -194,6 +194,10 @@ Pick one and it plots the **rounds fired between one deep clean and the next**, 
 above it. Leave the firearm on All and it compares them all, each average shown against its own
 threshold so guns on different thresholds sit on the same scale.
 
+**Tap a point** and the line beneath the chart names it — the rounds, and the two cleaning
+dates it sat between. Tap it again to clear it. The chart fits the width it's given rather than
+scrolling: with a handful of cleanings a year there's nothing to pan to.
+
 **The threshold is a reference, not a verdict.** The dashed line is drawn and named so you can
 read a run against it, but nothing is colored red for crossing it and no count of how often you
 did appears anywhere. How far a rifle goes between cleans describes how it gets used; it isn't a

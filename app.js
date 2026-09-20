@@ -5293,6 +5293,19 @@ function renderCleaningHistory() {
   // distinction, so the firearm filter means the same thing in both places.
   const only = guns.length === 1 && gunId ? guns[0] : null;
   el.innerHTML = only ? cleaningTrendCard(only) : cleaningComparisonCard(guns);
+  wireCleaningTrend();
+}
+
+function wireCleaningTrend() {
+  const plot = document.querySelector('#stats-upkeep-history .cleantrend-plot');
+  if (plot) {
+    // Delegated, because the SVG is replaced wholesale on every redraw.
+    plot.addEventListener('click', e => {
+      const hit = e.target.closest('.cleantrend-hit');
+      if (hit) pickCleaningPoint(Number(hit.dataset.i));
+    });
+  }
+  watchCleaningTrendWidth();
 }
 
 // Intervals whose cleaning falls inside the shared time range. Scoped on the closing date,
@@ -5365,6 +5378,38 @@ function cleaningComparisonCard(guns) {
 // One firearm's intervals over time. Deliberately a plain fitted SVG rather than the group
 // trend's scrollable, zoomable one: cleanings are a handful of points a year, so there is
 // nothing to zoom into, and a control that does nothing is worse than no control.
+// The plot is drawn at its container's real pixel width, which on a first visit is not known:
+// a pane that has never been laid out measures zero, the fallback is wider than the plot area
+// on any phone, and overflow:hidden then clips the right edge — which is where the threshold
+// label sits. One observer, re-pointed after each render, redraws as soon as the real width
+// arrives, and again after a rotation or a text-size change.
+let cleanTrendResize = null;
+
+function watchCleaningTrendWidth() {
+  if (typeof ResizeObserver === 'undefined') return;
+  const plot = document.querySelector('#stats-upkeep-history .cleantrend-plot');
+  if (cleanTrendResize) cleanTrendResize.disconnect();
+  if (!plot) { cleanTrendResize = null; return; }
+  cleanTrendResize = new ResizeObserver(() => {
+    const el = document.querySelector('#stats-upkeep-history .cleantrend-plot');
+    if (!el) return;
+    // Only when the difference is real. Reacting to the redraw we just caused would loop.
+    if (el.clientWidth > 60 && Math.abs(el.clientWidth - Number(el.dataset.width || 0)) > 1) {
+      renderCleaningHistory();
+    }
+  });
+  cleanTrendResize.observe(plot);
+}
+
+// Which interval the reader tapped, so the chart can name it. Held across the redraws the
+// observer triggers, and cleared when it no longer points at anything.
+let cleanTrendPick = null;
+
+function pickCleaningPoint(i) {
+  cleanTrendPick = cleanTrendPick === i ? null : i;
+  renderCleaningHistory();
+}
+
 function cleaningTrendCard(gun) {
   const { kept: ivs, skipped } = measurableCleaningIntervals(gun);
   const thr = gun.cleanThreshold || 0;
@@ -5445,7 +5490,7 @@ function cleaningTrendCard(gun) {
   if (thr && thr <= ymax) {
     svg += `<line x1="0" y1="${y(thr)}" x2="${W}" y2="${y(thr)}" stroke="${REF}"
                   stroke-width="1" stroke-dasharray="4 3"/>
-            <text x="${W - 3}" y="${y(thr) - 4}" fill="${REF}" font-family="IBM Plex Mono"
+            <text x="${W - 3}" y="${y(thr) - 7}" fill="${REF}" font-family="IBM Plex Mono"
                   font-size="9" text-anchor="end">threshold ${thr}</text>`;
   }
 
@@ -5455,11 +5500,17 @@ function cleaningTrendCard(gun) {
   // One color for every point. The threshold is drawn as a reference to read the run against,
   // not a line to be caught on the wrong side of — coloring the ones above it red turned a
   // description of how the firearm gets used into a mark against the person using it.
-  ivs.forEach(i => {
-    svg += `<circle cx="${x(dateMs(i.date))}" cy="${y(i.rounds)}" r="4"
-                    fill="${ACCENT}" stroke="var(--surface)" stroke-width="1.5">
-              <title>${esc(fmtDate(i.date))} — ${i.rounds} rds since ${esc(fmtDate(i.from))}</title>
-            </circle>`;
+  //
+  // Each point carries an invisible disc behind it: a 4px target is a miss on a finger, and
+  // the <title> that used to hold these figures only ever appeared on hover, which a phone
+  // does not have.
+  ivs.forEach((i, idx) => {
+    const cx = x(dateMs(i.date)), cy = y(i.rounds);
+    const on = cleanTrendPick === idx;
+    svg += `<circle class="cleantrend-hit" data-i="${idx}" cx="${cx}" cy="${cy}" r="14"
+                    fill="transparent"/>
+            <circle cx="${cx}" cy="${cy}" r="${on ? 6 : 4}" fill="${ACCENT}"
+                    stroke="var(--surface)" stroke-width="1.5" pointer-events="none"/>`;
   });
 
   // Ends only. Cleanings cluster, and a label per point overlaps at any realistic count.
@@ -5474,6 +5525,14 @@ function cleaningTrendCard(gun) {
   if (ivs.length > 1 && x(T1) - x(T0) > 60) {
     svg += endLabel(T1, trendDayLabel(ivs[ivs.length - 1].date));
   }
+
+  // Cleared rather than left pointing at whatever now sits at that index, which would put a
+  // confident wrong figure under the chart after a filter change.
+  if (cleanTrendPick != null && cleanTrendPick >= ivs.length) cleanTrendPick = null;
+  const picked = cleanTrendPick != null ? ivs[cleanTrendPick] : null;
+  const readout = picked
+    ? `<b>${picked.rounds} rds</b> — ${esc(fmtDate(picked.from))} to ${esc(fmtDate(picked.date))}`
+    : `Tap a point for its rounds and dates.`;
 
   const thin = ivs.length < 3
     ? ` Too few intervals to read a trend from yet.` : '';
@@ -5494,11 +5553,12 @@ function cleaningTrendCard(gun) {
       <div class="trend-chart">
         <svg class="trend-axis" viewBox="0 0 ${AXIS_W} ${H}" width="${AXIS_W}" height="${H}"
              aria-hidden="true">${axisSvg}</svg>
-        <div class="cleantrend-plot">
+        <div class="cleantrend-plot" data-width="${W}">
           <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"
                role="img" aria-label="Rounds fired between each deep clean">${svg}</svg>
         </div>
       </div>
+      <div class="cleantrend-readout">${readout}</div>
       <div class="stats-note">Each point is the rounds fired since the previous deep clean.
         ${thr ? `The dashed line marks the ${thr}-round threshold set for this firearm, to read
                  them against.`
@@ -7944,7 +8004,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.9.5';
+const APP_VERSION = '7.9.6';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

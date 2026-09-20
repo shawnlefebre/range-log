@@ -262,6 +262,77 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   }
   ck('no text anywhere in Stats renders below its floor', tiny.length === 0);
   if (tiny.length) console.log('     too small: ' + tiny.slice(0, 8).join(' | '));
+  // The cleaning plot is drawn at its container's measured pixel width, so a first visit --
+  // when the pane has never been laid out and the measurement comes back zero -- used to fall
+  // back to a width wider than any phone's plot area and get clipped by overflow:hidden. The
+  // threshold label sits at that right edge, so it was the first thing to disappear.
+  const plotFit = await (async () => {
+    // Reloaded, and the whole journey run inside a single evaluate: reaching the pane and
+    // drawing it happen in one task when you tap, so the browser has not recalculated layout
+    // in between and the container still measures zero. Splitting it across awaits lets
+    // layout settle first and hides the very thing being tested.
+    // At a narrow width, because that is where the old fallback actually bit: a 300px plot in
+    // a 322px container is merely undersized, while in a 212px one the right edge -- and the
+    // threshold label on it -- is cut clean off.
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto(URL);
+    await page.waitForSelector('#app-version');
+    await page.waitForTimeout(250);
+    const picked = await page.evaluate(() => {
+      const g = (data.firearms || []).find(f => cleaningIntervals(f).length);
+      if (!g) return false;
+      showTab('stats');
+      showStatsSection('upkeep');
+      document.getElementById('stats-range').value = 'all';
+      document.getElementById('stats-firearm').value = g.id;
+      renderStats();
+      return true;
+    });
+    if (!picked) return { skip: true };
+    await page.waitForTimeout(300);        // let the resize observer land
+    return page.evaluate(() => {
+      const plot = document.querySelector('#stats-upkeep-history .cleantrend-plot');
+      if (!plot) return { err: 'no plot' };
+      const svg = plot.querySelector('svg');
+      const label = [...svg.querySelectorAll('text')].find(t => /threshold/.test(t.textContent));
+      return {
+        drawn: Number(svg.getAttribute('width')), container: plot.clientWidth,
+        labelOverflow: label
+          ? Math.round(label.getBoundingClientRect().right - plot.getBoundingClientRect().right)
+          : null,
+      };
+    });
+  })();
+  if (plotFit.skip) {
+    ck('demo data has a firearm with cleaning intervals to plot', false);
+  } else {
+    ck('the cleaning plot is drawn at its container width on the first render',
+      Math.abs(plotFit.drawn - plotFit.container) <= 1);
+    ck('the threshold label is inside the plot, not clipped off the right edge',
+      plotFit.labelOverflow === null || plotFit.labelOverflow <= 0);
+    if (Math.abs(plotFit.drawn - plotFit.container) > 1) {
+      console.log(`     drawn ${plotFit.drawn} vs container ${plotFit.container}`);
+    }
+  }
+
+  // Tapping a point names it. The figures used to live in an SVG <title>, which only ever
+  // appeared on hover — nothing a phone can do.
+  const tapped = await page.evaluate(() => {
+    const before = document.querySelector('#stats-upkeep-history .cleantrend-readout').textContent;
+    const hit = document.querySelector('#stats-upkeep-history .cleantrend-hit');
+    if (!hit) return { err: 'no tap target' };
+    hit.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const after = document.querySelector('#stats-upkeep-history .cleantrend-readout').textContent;
+    return { before, after };
+  });
+  ck('a point has a finger-sized target that reports its figures',
+    !tapped.err && /rds/.test(tapped.after) && tapped.after !== tapped.before);
+  if (tapped.err) console.log('     ' + tapped.err);
+
+  // Back to the width the rest of this suite and its screenshots expect.
+  await page.setViewportSize({ width: 430, height: 900 });
+  await page.waitForTimeout(150);
+
   // The loop above leaves the last pane selected; put Groups back for what follows.
   await page.click('#statstab-groups');
   await page.waitForTimeout(250);

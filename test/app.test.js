@@ -1342,8 +1342,10 @@ describe('rounds between cleans', () => {
   const ivs = win => JSON.parse(
     win.eval('JSON.stringify(cleaningIntervals(data.firearms[0]).map(i => i.rounds))'));
   const history = win => flat(win.document.getElementById('stats-upkeep-history'));
+  // The plotted dots only. Each carries an invisible, finger-sized .cleantrend-hit disc
+  // behind it, so counting every circle counts each interval twice.
   const points = win => win.document
-    .querySelectorAll('#stats-upkeep-history .cleantrend-plot circle').length;
+    .querySelectorAll('#stats-upkeep-history .cleantrend-hit').length;
 
   test('an interval is the rounds between one deep clean and the next', async () => {
     const win = await app(
@@ -1424,7 +1426,7 @@ describe('rounds between cleans', () => {
     assert.doesNotMatch(history(win), /past threshold/i);
     assert.doesNotMatch(history(win), /ran past/i);
     const fills = [...win.document
-      .querySelectorAll('#stats-upkeep-history .cleantrend-plot circle')]
+      .querySelectorAll('#stats-upkeep-history .cleantrend-plot circle:not(.cleantrend-hit)')]
       .map(c => c.getAttribute('fill'));
     assert.strictEqual(new Set(fills).size, 1,
       'one color for every point, whichever side of the line it fell on');
@@ -1507,6 +1509,56 @@ describe('rounds between cleans', () => {
     assert.match(history(win), /average of 1 interval\b/,
       'counting the empty one would advertise evidence that is not there');
     assert.match(history(win), /\b60\b/);
+  });
+
+  test('tapping a point names its rounds and the dates it sat between', async () => {
+    // These figures used to live in an SVG <title>, which appears on hover — which a phone
+    // does not have, so on the device this chart is read on they were unreachable.
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 175 }]);
+    const readout = () => flat(win.document.querySelector('.cleantrend-readout'));
+    assert.match(readout(), /Tap a point/);
+    win.pickCleaningPoint(0);
+    assert.match(readout(), /175 rds/);
+    assert.match(readout(), /Jan 1, 2026/);
+    assert.match(readout(), /Mar 1, 2026/);
+  });
+
+  test('tapping the same point again puts it back', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 175 }]);
+    win.pickCleaningPoint(0);
+    win.pickCleaningPoint(0);
+    assert.match(flat(win.document.querySelector('.cleantrend-readout')), /Tap a point/);
+  });
+
+  test('the point has a target bigger than the dot drawn on it', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 175 }]);
+    const hit = win.document.querySelector('#stats-upkeep-history .cleantrend-hit');
+    assert.ok(hit, 'a 4px dot is a miss on a finger');
+    assert.ok(Number(hit.getAttribute('r')) >= 10);
+  });
+
+  test('a selection that no longer points at anything is dropped', async () => {
+    // Narrowing the range can leave the index past the end. Left alone it would put a
+    // confident wrong figure under the chart.
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' },
+       { date: '2026-06-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 100 }, { date: '2026-04-01', rounds: 200 }]);
+    win.pickCleaningPoint(1);
+    assert.match(flat(win.document.querySelector('.cleantrend-readout')), /200 rds/);
+    win.document.getElementById('stats-range').value = 'custom';
+    win.handleStatsRangeChange();
+    win.document.getElementById('stats-start').value = '2026-01-01';
+    win.document.getElementById('stats-end').value = '2026-03-15';
+    win.renderStats();
+    assert.match(flat(win.document.querySelector('.cleantrend-readout')), /Tap a point/);
+    assert.strictEqual(win.eval('cleanTrendPick'), null);
   });
 
   test('the time range narrows the history by the date the clean was done', async () => {
