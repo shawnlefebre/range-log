@@ -1401,16 +1401,33 @@ describe('rounds between cleans', () => {
        { date: '2026-06-01', rounds: 200 }]);
     const nums = [...win.document.querySelectorAll('#stats-upkeep-history .stats-stat-num')]
       .map(n => flat(n));
-    assert.deepStrictEqual(nums, ['200 rds', '600 rds', '1/3'],
-      'median, longest, and how many ran past the threshold');
+    assert.deepStrictEqual(nums, ['300 rds', '100 – 600', '3'],
+      'average, spread, and how many intervals it rests on — a description, not a grade');
   });
 
-  test('a firearm with no threshold gets no line and no pass-fail count', async () => {
+  test('a firearm with no threshold gets no line, and says why', async () => {
     const win = await app(
       [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' }],
       [{ date: '2026-02-01', rounds: 100 }], 0);
-    assert.match(history(win), /No threshold set/);
     assert.match(history(win), /no line to read them against/);
+  });
+
+  test('the chart describes, it does not mark you against the threshold', async () => {
+    // The dashed line stays as a reference; what went is the verdict. A long stretch is a
+    // description of how the firearm gets used, not a fault to be colored red.
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-02-01', type: 'deep' },
+       { date: '2026-05-01', type: 'deep' }],
+      [{ date: '2026-01-15', rounds: 900 }, { date: '2026-04-01', rounds: 100 }], 300);
+    assert.match(history(win), /dashed line marks the 300-round threshold/,
+      'the reference is still named');
+    assert.doesNotMatch(history(win), /past threshold/i);
+    assert.doesNotMatch(history(win), /ran past/i);
+    const fills = [...win.document
+      .querySelectorAll('#stats-upkeep-history .cleantrend-plot circle')]
+      .map(c => c.getAttribute('fill'));
+    assert.strictEqual(new Set(fills).size, 1,
+      'one color for every point, whichever side of the line it fell on');
   });
 
   test('the two ways of having no intervals read differently', async () => {
@@ -1422,6 +1439,74 @@ describe('rounds between cleans', () => {
       [{ date: '2026-02-01', rounds: 50 }]);
     assert.match(history(one), /One deep clean logged/);
     assert.doesNotMatch(history(one), /No deep cleans/);
+  });
+
+  test('a stretch with no range day in it is not a measurement', async () => {
+    // Two cleans with nothing fired between them says nothing about how long you go before
+    // cleaning. Plotted at zero it would sit below every real interval and pull the median
+    // with it — on a firearm with one real interval it halves the figure.
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-02-01', type: 'deep' },
+       { date: '2026-05-01', type: 'deep' }],
+      [{ date: '2026-04-01', rounds: 60 }]);
+    assert.deepStrictEqual(ivs(win), [0, 60], 'the raw interval is still computed');
+    assert.strictEqual(points(win), 1, 'but only the real one is plotted');
+    const nums = [...win.document.querySelectorAll('#stats-upkeep-history .stats-stat-num')]
+      .map(n => flat(n));
+    assert.strictEqual(nums[0], '60 rds', 'median is 60, not 30');
+  });
+
+  test('the average is a whole number of rounds', async () => {
+    // An average rarely lands on a whole number, which is how a pair of 192 and 165 rounds
+    // came out reading "178.5 rds".
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-02-01', type: 'deep' },
+       { date: '2026-03-01', type: 'deep' }],
+      [{ date: '2026-01-15', rounds: 165 }, { date: '2026-02-15', rounds: 192 }]);
+    const nums = [...win.document.querySelectorAll('#stats-upkeep-history .stats-stat-num')]
+      .map(n => flat(n));
+    assert.strictEqual(nums[0], '179 rds');
+  });
+
+  test('leaving one out is said, not done quietly', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-02-01', type: 'deep' },
+       { date: '2026-05-01', type: 'deep' }],
+      [{ date: '2026-04-01', rounds: 60 }]);
+    assert.match(history(win), /1 stretch with no range day in it is left out/);
+  });
+
+  test('the same clean entered twice is named as the likely cause', async () => {
+    // Exactly the shape a double-tap leaves behind: two deep cleans on one date and no range
+    // day between them. Saying "no intervals" would send you looking for a bug in the chart.
+    const win = await app(
+      [{ date: '2026-03-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 80 }]);
+    assert.strictEqual(points(win), 0);
+    assert.match(history(win), /logged twice/i);
+    assert.match(history(win), /View Details/);
+  });
+
+  test('a firearm whose every interval is empty does not claim a median', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-02-01', type: 'deep' }],
+      [{ date: '2025-11-01', rounds: 50 }]);
+    assert.strictEqual(points(win), 0);
+    assert.strictEqual(
+      win.document.querySelectorAll('#stats-upkeep-history .stats-stat-num').length, 0,
+      'no figures at all rather than a median of nothing');
+  });
+
+  test('the comparison ignores empty stretches too', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-02-01', type: 'deep' },
+       { date: '2026-05-01', type: 'deep' }],
+      [{ date: '2026-04-01', rounds: 60 }]);
+    win.document.getElementById('stats-firearm').value = '';
+    win.renderStats();
+    assert.match(history(win), /average of 1 interval\b/,
+      'counting the empty one would advertise evidence that is not there');
+    assert.match(history(win), /\b60\b/);
   });
 
   test('the time range narrows the history by the date the clean was done', async () => {
@@ -1463,8 +1548,8 @@ describe('rounds between cleans', () => {
     win.document.getElementById('stats-firearm').value = '';
     win.renderStats();
     assert.strictEqual(points(win), 0, 'no chart without a firearm picked');
-    assert.match(history(win), /Median Rounds Between Cleans/i);
-    assert.match(history(win), /median of 1 interval\b/);
+    assert.match(history(win), /Average Rounds Between Cleans/i);
+    assert.match(history(win), /average of 1 interval\b/);
   });
 
   test('demo data can actually populate the chart', async () => {

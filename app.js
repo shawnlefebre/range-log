@@ -3912,6 +3912,13 @@ function shortLoadName(name) {
     .trim() || String(name || '');
 }
 
+// Mean rather than median for cleaning intervals: at one or two of them the median is the
+// mean anyway, and beyond that the median rests on the middle values while discarding the
+// longest and shortest stretch — which, for a rate, are as much a part of it as the rest.
+function statsMean(a) {
+  return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+}
+
 function statsMedian(a) {
   if (!a.length) return null;
   const s = [...a].sort((x, y) => x - y);
@@ -5296,48 +5303,62 @@ function scopedCleaningIntervals(gun) {
     (!start || iv.date >= start) && (!end || iv.date <= end));
 }
 
+// An interval with nothing fired in it is two cleans with no range day between them. That is
+// a true fact about the log and a false one about the habit — nobody went 0 rounds before
+// deciding to clean. Left in it plots at zero and drags the median below every real interval:
+// one duplicate entry on a firearm with two real intervals halves the figure. Counted rather
+// than silently dropped, because a run of them usually means exactly that duplicate.
+function measurableCleaningIntervals(gun) {
+  const all = scopedCleaningIntervals(gun);
+  const kept = all.filter(iv => iv.rounds > 0);
+  return { kept, skipped: all.length - kept.length };
+}
+
 function cleaningComparisonCard(guns) {
   const rows = guns.map(gun => {
-    const ivs = scopedCleaningIntervals(gun);
-    return { gun, n: ivs.length, med: ivs.length ? statsMedian(ivs.map(i => i.rounds)) : null,
-             thr: gun.cleanThreshold || 0,
-             over: ivs.filter(i => gun.cleanThreshold && i.rounds > gun.cleanThreshold).length };
+    const ivs = measurableCleaningIntervals(gun).kept;
+    const v = ivs.map(i => i.rounds);
+    return { gun, n: ivs.length,
+             med: v.length ? Math.round(statsMean(v)) : null,
+             lo: v.length ? Math.min(...v) : null, hi: v.length ? Math.max(...v) : null,
+             thr: gun.cleanThreshold || 0 };
   }).filter(r => r.n).sort((a, b) =>
     (b.thr ? b.med / b.thr : 0) - (a.thr ? a.med / a.thr : 0));
 
   if (!rows.length) {
     return `<div class="stats-chart-card">
-      <div class="stats-chart-title">Median Rounds Between Cleans</div>
+      <div class="stats-chart-title">Average Rounds Between Cleans</div>
       <div class="stats-empty">No completed cleaning intervals in this range. An interval needs
         two deep cleans to sit between.</div></div>`;
   }
 
   const rowsHtml = rows.map(r => {
+    // The bar is the average as a share of this firearm's own threshold, which is what makes
+    // nine firearms on different thresholds comparable at all. In the accent rather than the
+    // status colors: how long a rifle goes between cleans is a description of how it gets
+    // used, not a state anything is wrong with, and green-amber-red would read as a grade.
     const pct = r.thr ? r.med / r.thr : 0;
-    // A state, not a series: how this firearm's habit sits against the rule you set for it.
-    // Always printed alongside the figures, so it never rests on color alone.
-    const state = pct > 1 ? 'danger' : pct > 0.8 ? 'warn' : 'ok';
     return `
       <div class="breakdown-row">
         <div class="breakdown-top">
           <span class="breakdown-name">${esc(r.gun.name)}</span>
-          <span class="breakdown-val"${r.thr ? ` style="color:var(--${state})"` : ''
-            }>${r.med}${r.thr ? ` / ${r.thr}` : ''} rds</span>
+          <span class="breakdown-val">${r.med}${r.thr ? ` / ${r.thr}` : ''} rds</span>
         </div>
         ${r.thr ? `<div class="breakdown-bar-track">
-          <div class="breakdown-bar-fill" style="width:${Math.min(100, pct * 100)}%;background:var(--${state});"></div>
+          <div class="breakdown-bar-fill" style="width:${Math.min(100, pct * 100)}%;background:var(--accent);"></div>
         </div>` : ''}
-        <div class="breakdown-pct">median of ${r.n} interval${r.n === 1 ? '' : 's'}${
-          r.thr ? ` · past ${r.thr} on ${r.over} of ${r.n}` : ' · no threshold set'}</div>
+        <div class="breakdown-pct">average of ${r.n} interval${r.n === 1 ? '' : 's'}${
+          r.n > 1 ? `, ${r.lo}–${r.hi}` : ''}${r.thr ? '' : ' · no threshold set'}</div>
       </div>`;
   }).join('');
 
   return `
     <div class="stats-chart-card">
-      <div class="stats-chart-title">Median Rounds Between Cleans</div>
+      <div class="stats-chart-title">Average Rounds Between Cleans</div>
       ${rowsHtml}
-      <div class="stats-note">Median rounds between deep cleans, against the threshold you set
-        for each. Pick one firearm above to see its intervals over time.</div>
+      <div class="stats-note">Average rounds between deep cleans, shown against the threshold
+        you set for each so firearms on different thresholds sit on the same scale. Pick one
+        firearm above to see its intervals over time.</div>
     </div>`;
 }
 
@@ -5345,40 +5366,51 @@ function cleaningComparisonCard(guns) {
 // trend's scrollable, zoomable one: cleanings are a handful of points a year, so there is
 // nothing to zoom into, and a control that does nothing is worse than no control.
 function cleaningTrendCard(gun) {
-  const ivs = scopedCleaningIntervals(gun);
+  const { kept: ivs, skipped } = measurableCleaningIntervals(gun);
   const thr = gun.cleanThreshold || 0;
   const allResets = (gun.cleanings || [])
     .filter(c => (CLEANING_TYPES[c.type] || {}).resetsDeep).length;
 
   if (!ivs.length) {
-    // The two ways to have no intervals read very differently, so they are not one message.
+    // These read very differently from each other, so they are not one message. The last is
+    // the one worth naming precisely: it usually means the same clean was entered twice.
     const why = allResets === 0
       ? `No deep cleans logged for ${esc(gun.name)} yet. Quick cleans do not reset the counter,
          so they do not bound an interval.`
       : allResets === 1
         ? `One deep clean logged. An interval is the stretch between two, so there is nothing
            to measure until the next one.`
-        : `No cleaning intervals inside this time range. Widen it above.`;
+        : skipped
+          ? `Every stretch between these deep cleans has no range day in it, so there is
+             nothing to measure. ${skipped === 1 ? 'That usually means one clean' : 'That usually means a clean'}
+             was logged twice — check the dates under View Details.`
+          : `No cleaning intervals inside this time range. Widen it above.`;
     return `<div class="stats-chart-card">
       <div class="stats-chart-title">Rounds Between Cleans</div>
       <div class="stats-empty">${why}</div></div>`;
   }
 
   const vals = ivs.map(i => i.rounds);
-  const med = statsMedian(vals);
-  const over = thr ? vals.filter(v => v > thr).length : 0;
+  // Rounds are whole things, and an average rarely lands on one.
+  const avg = Math.round(statsMean(vals));
+  // Average, spread, and how many it rests on — a description of the habit rather than a mark
+  // out of ten. A single interval has no spread to report, so it says so instead of printing
+  // the same number twice in two boxes.
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const spread = ivs.length > 1 ? `${lo}<span class="unit"> – </span>${hi}` : '—';
 
   const stats = `
     <div class="stats-stat-grid">
       <div class="stats-stat-box">
-        <div class="stats-stat-num">${med}<span class="unit"> rds</span></div>
-        <div class="stats-stat-label">Median between cleans</div></div>
+        <div class="stats-stat-num">${avg}<span class="unit"> rds</span></div>
+        <div class="stats-stat-label">Average between cleans</div></div>
       <div class="stats-stat-box">
-        <div class="stats-stat-num">${Math.max(...vals)}<span class="unit"> rds</span></div>
-        <div class="stats-stat-label">Longest run</div></div>
+        <div class="stats-stat-num">${spread}</div>
+        <div class="stats-stat-label">${
+          ivs.length > 1 ? 'Shortest to longest' : 'Only one to go on'}</div></div>
       <div class="stats-stat-box">
-        <div class="stats-stat-num">${thr ? `${over}/${ivs.length}` : '—'}</div>
-        <div class="stats-stat-label">${thr ? 'Past threshold' : 'No threshold set'}</div></div>
+        <div class="stats-stat-num">${ivs.length}</div>
+        <div class="stats-stat-label">Interval${ivs.length === 1 ? '' : 's'} measured</div></div>
     </div>`;
 
   // Drawn at the container's real pixel width rather than scaled to fit, because text inside
@@ -5420,12 +5452,12 @@ function cleaningTrendCard(gun) {
   svg += `<polyline fill="none" stroke="${ACCENT}" stroke-width="2" stroke-linejoin="round"
             points="${ivs.map(i => `${x(dateMs(i.date))},${y(i.rounds)}`).join(' ')}"/>`;
 
-  // Past your own threshold is a state, so it takes the status color — and the point sits
-  // above a labeled line saying so, which is the reading that does not depend on color.
+  // One color for every point. The threshold is drawn as a reference to read the run against,
+  // not a line to be caught on the wrong side of — coloring the ones above it red turned a
+  // description of how the firearm gets used into a mark against the person using it.
   ivs.forEach(i => {
-    const late = thr && i.rounds > thr;
     svg += `<circle cx="${x(dateMs(i.date))}" cy="${y(i.rounds)}" r="4"
-                    fill="${late ? '#c0392b' : ACCENT}" stroke="var(--surface)" stroke-width="1.5">
+                    fill="${ACCENT}" stroke="var(--surface)" stroke-width="1.5">
               <title>${esc(fmtDate(i.date))} — ${i.rounds} rds since ${esc(fmtDate(i.from))}</title>
             </circle>`;
   });
@@ -5445,7 +5477,12 @@ function cleaningTrendCard(gun) {
 
   const thin = ivs.length < 3
     ? ` Too few intervals to read a trend from yet.` : '';
-  const dropped = allResets > ivs.length
+  const empty = skipped
+    ? ` ${skipped} stretch${skipped === 1 ? '' : 'es'} with no range day in ${
+        skipped === 1 ? 'it is' : 'them are'} left out — cleaning twice without shooting
+        measures nothing, and plotting it at zero would pull the median under every real
+        interval.` : '';
+  const dropped = allResets > ivs.length + skipped
     ? ` ${allResets} deep cleans give ${allResets - 1} intervals: the first closes none, since
         the rounds before it are counted from the start of your log rather than from a
         previous clean.` : '';
@@ -5463,8 +5500,9 @@ function cleaningTrendCard(gun) {
         </div>
       </div>
       <div class="stats-note">Each point is the rounds fired since the previous deep clean.
-        ${thr ? 'Points above the dashed line ran past the threshold set for this firearm.'
-              : 'No cleaning threshold is set for this firearm, so there is no line to read them against.'}${thin}${dropped}</div>
+        ${thr ? `The dashed line marks the ${thr}-round threshold set for this firearm, to read
+                 them against.`
+              : 'No cleaning threshold is set for this firearm, so there is no line to read them against.'}${thin}${dropped}${empty}</div>
     </div>`;
 }
 
@@ -7906,7 +7944,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.9.4';
+const APP_VERSION = '7.9.5';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

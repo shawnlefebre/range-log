@@ -188,11 +188,18 @@ it so the state never depends on color alone. This one describes *now*, so the t
 touch it — and the card says so, since a filter that visibly moves one figure and not another is
 worse than one that's simply off.
 
-**Cleaning History** answers the other question: do you clean when you said you would. Pick a
-firearm and it plots the **rounds fired between one deep clean and the next**, with a dashed line
-at that firearm's threshold — points above it are times you ran past your own rule. Median,
-longest run, and how many of the intervals went over sit above the chart. Leave the firearm on
-All and it ranks every firearm by its median interval against its own threshold instead.
+**Cleaning History** is the descriptive half: how far a firearm actually goes between cleans.
+Pick one and it plots the **rounds fired between one deep clean and the next**, with the
+**average**, the **shortest-to-longest spread**, and **how many intervals** the figures rest on
+above it. Leave the firearm on All and it compares them all, each average shown against its own
+threshold so guns on different thresholds sit on the same scale.
+
+**The threshold is a reference, not a verdict.** The dashed line is drawn and named so you can
+read a run against it, but nothing is colored red for crossing it and no count of how often you
+did appears anywhere. How far a rifle goes between cleans describes how it gets used; it isn't a
+grade. The **average** rather than the median, because that's the plainer reading of a rate and
+it uses every interval — at one or two intervals the two are the same number anyway, and beyond
+that the median rests on the middle values and discards your longest and shortest stretch.
 
 Only **deep** and **detail-strip** cleans bound an interval, because those are what the threshold
 governs — a quick clean in the middle doesn't split one interval into two. The earliest deep
@@ -203,6 +210,12 @@ chart says so rather than leaving you to work it out.
 
 A range day you cleaned on counts toward the interval *ending* there, not the one starting from
 it — the app assumes you clean after shooting, the same rule "rounds since clean" already follows.
+
+**A stretch with no range day in it is left out**, and the note says how many. Two cleans with
+nothing fired between them is a true fact about your log and a false one about your habit —
+nobody went 0 rounds before deciding to clean — and plotted at zero it would sit below every
+real interval and drag the average with it. When *every* stretch is empty, the chart says so and
+names the usual cause: the same cleaning logged twice.
 
 ### Groups
 
