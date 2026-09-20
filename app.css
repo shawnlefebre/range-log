@@ -1335,6 +1335,16 @@
   }
   .demo-banner-actions { display: flex; gap: 8px; }
 
+  /* Backup variant. Same skeleton again, warn accent: not yet backed up is a state that
+     wants attending to, which is what amber means everywhere else in this app — it is not
+     an error, and red would overstate it. */
+  .demo-banner.backup {
+    background: linear-gradient(135deg, #2a2010, #1a1a1a);
+    border-color: var(--warn);
+  }
+  .demo-banner.backup .demo-banner-title { color: var(--warn); }
+  .demo-banner.backup .btn-demo-keep { border-color: var(--warn); color: #e8a76a; }
+
   /* Recovery variant of the banner. Same skeleton, danger accent — unlike most color
      choices in the app this one genuinely is a status, so --danger is the right well. */
   .demo-banner.recovery {

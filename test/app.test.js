@@ -5691,20 +5691,31 @@ describe('spelling', () => {
 // tells you which version wrote it before you decide whether to trust what is inside.
 
 describe('naming an exported file', () => {
-  test('every export carries the app version and the day it left', async () => {
+  test('every export carries the app version and when it left', async () => {
     const win = await ready(loadApp());
     const v = win.eval('APP_VERSION');   // a top-level const is script-scoped, not on window
     const d = win.today();
-    assert.strictEqual(win.exportFileName('backup', 'json'), `range-log-backup-${d}-v${v}.json`);
-    assert.strictEqual(win.exportFileName('photos', 'json'), `range-log-photos-${d}-v${v}.json`);
+    const t = win.nowHHMM();
+    assert.strictEqual(win.exportFileName('backup', 'json'),
+      `range-log-backup-${d}-${t}-v${v}.json`);
+    assert.strictEqual(win.exportFileName('photos', 'json'),
+      `range-log-photos-${d}-${t}-v${v}.json`);
     assert.strictEqual(win.exportFileName('unreadable', 'json'),
-      `range-log-unreadable-${d}-v${v}.json`);
+      `range-log-unreadable-${d}-${t}-v${v}.json`);
   });
 
   test('a kindless export skips the empty segment rather than doubling the dash', async () => {
     const win = await ready(loadApp());
     assert.strictEqual(win.exportFileName('', 'csv'),
-      `range-log-${win.today()}-v${win.eval('APP_VERSION')}.csv`);
+      `range-log-${win.today()}-${win.nowHHMM()}-v${win.eval('APP_VERSION')}.csv`);
+  });
+
+  test('the time is four digits, so two backups in one day do not collide', async () => {
+    // Without it the second arrives as "... 2", which sorts worse than no name at all.
+    const win = await ready(loadApp());
+    assert.match(win.nowHHMM(), /^\d{4}$/);
+    assert.match(win.exportFileName('backup', 'json'),
+      new RegExp(`-${win.today()}-\\d{4}-v`), 'time sits between the date and the version');
   });
 
   test('the date comes before the version, so a folder still sorts by date', async () => {
@@ -5730,6 +5741,141 @@ describe('naming an exported file', () => {
 // facts go inside the file, where they survive one — and have to come back out on import, or
 // a restored backup would leave its own provenance sitting in storage describing the wrong
 // thing entirely.
+
+// ── BACKUP NOTICE ───────────────────────────────────────────────────
+// Records and photos are backed up by separate buttons into separate files, so they go stale
+// separately. Photos are the dangerous half: they live in IndexedDB and are never inside the
+// JSON, so a backup restored without its bundle loses them without saying anything.
+
+describe('knowing what is not backed up yet', () => {
+  const notice = win => flat(win.document.getElementById('backup-banner-container'));
+  const showing = win =>
+    !!win.document.querySelector('#backup-banner-container .demo-banner');
+  const refresh = win => { win.renderBackupNotice(); };
+
+  async function app() {
+    const win = await ready(loadApp());
+    win.eval('data = migrateData(JSON.parse(JSON.stringify(buildDefaultData())));');
+    win.showTab('dashboard');
+    return win;
+  }
+
+  test('nothing to say about data that has never changed', async () => {
+    const win = await app();
+    refresh(win);
+    assert.strictEqual(showing(win), false,
+      'a fresh app greeting you with a backup warning would be noise');
+  });
+
+  test('saving raises it, backing up clears it', async () => {
+    const win = await app();
+    win.eval('save(data)');
+    refresh(win);
+    assert.ok(showing(win));
+    assert.match(notice(win), /records have changed since the last backup/i);
+    win.eval('markBackedUp()');
+    assert.strictEqual(showing(win), false, 'the whole point is that it goes away');
+  });
+
+  test('a change after a backup raises it again', async () => {
+    const win = await app();
+    win.eval('save(data); markBackedUp();');
+    refresh(win);
+    assert.strictEqual(showing(win), false);
+    win.eval("data.lastChangeAt = '2099-01-01T00:00:00.000Z'");
+    refresh(win);
+    assert.ok(showing(win), 'each new change is unbacked-up data again');
+  });
+
+  test('photos are tracked apart from the records', async () => {
+    // The failure this guards: backing up the JSON and believing the photos went with it.
+    const win = await app();
+    win.eval("data.lastPhotoChangeAt = nowISO();");
+    refresh(win);
+    assert.ok(showing(win));
+    assert.match(notice(win), /photos/i);
+    assert.doesNotMatch(notice(win), /records have changed/i,
+      'the records are current, and saying otherwise would send you to the wrong button');
+    assert.match(notice(win), /never inside the JSON backup/i);
+
+    win.eval('markBackedUp()');
+    assert.ok(showing(win), 'a JSON backup does not cover photos');
+    win.eval('markPhotosBackedUp()');
+    assert.strictEqual(showing(win), false);
+  });
+
+  test('each stale half offers its own button, and only its own', async () => {
+    const win = await app();
+    const buttons = () => [...win.document
+      .querySelectorAll('#backup-banner-container .demo-banner-actions button')]
+      .map(b => flat(b));
+
+    win.eval('save(data)');
+    refresh(win);
+    assert.deepStrictEqual(buttons(), ['Back Up Now', 'Later']);
+
+    win.eval('markBackedUp(); data.lastPhotoChangeAt = nowISO();');
+    refresh(win);
+    assert.deepStrictEqual(buttons(), ['Export Photos', 'Later']);
+
+    win.eval('save(data)');
+    refresh(win);
+    assert.deepStrictEqual(buttons(), ['Back Up Now', 'Export Photos', 'Later']);
+  });
+
+  test('Later silences what you saw, not what happens next', async () => {
+    // A stored flag would let one "later" disable the notice forever, which is the failure
+    // this feature exists to prevent rather than cause.
+    const win = await app();
+    win.eval('save(data)');
+    refresh(win);
+    assert.ok(showing(win));
+    win.dismissBackupNotice();
+    assert.strictEqual(showing(win), false);
+    refresh(win);
+    assert.strictEqual(showing(win), false, 'it stays down across a re-render');
+
+    win.eval("data.lastChangeAt = '2099-01-01T00:00:00.000Z'");
+    refresh(win);
+    assert.ok(showing(win), 'something newer than the dismissal brings it back');
+  });
+
+  test('the dismissal is not written to storage', async () => {
+    const win = await app();
+    win.eval('save(data)');
+    win.dismissBackupNotice();
+    const stored = JSON.parse(win.localStorage.getItem('rangeLogData'));
+    assert.ok(!('backupNoticeSnoozedAt' in stored),
+      'surviving a reload would make one tap permanent');
+  });
+
+  test('a backup records the moment the data last changed, not the moment it was written',
+    async () => {
+      // Taking "now" would leave a sliver in which a change made while the file was being
+      // written looked as though it had been included in it.
+      const win = await app();
+      win.eval('save(data)');
+      const changed = win.eval('data.lastChangeAt');
+      win.eval('markBackedUp()');
+      assert.strictEqual(win.eval('data.lastBackupAt'), changed);
+    });
+
+  test('marking a backup is not itself a change needing one', async () => {
+    const win = await app();
+    win.eval('save(data); markBackedUp();');
+    refresh(win);
+    assert.strictEqual(showing(win), false,
+      'persist, not save — otherwise backing up would immediately ask you to back up');
+  });
+
+  test('how long ago is said in days, with the date to match the file by', async () => {
+    const win = await app();
+    assert.strictEqual(win.backupAgeLabel(null), 'never');
+    assert.strictEqual(win.backupAgeLabel(win.today() + 'T09:00:00.000Z'), 'today');
+    const old = win.eval("addDaysISO(today(), -9)");
+    assert.match(win.backupAgeLabel(old + 'T09:00:00.000Z'), /^9 days ago, /);
+  });
+});
 
 describe('what an exported backup says about itself', () => {
   const payload = win => JSON.parse(win.eval('JSON.stringify(exportPayload())'));

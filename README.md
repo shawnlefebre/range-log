@@ -59,14 +59,27 @@ a new version is ready. Tap it to reload. No banner means you're up to date.
 **Your data lives on the device:**
 
 - It does **not** sync between devices — your phone and your Mac keep separate records
-- **Setup → Data → Export JSON (backup)** is your backup. Do it periodically
+- **Setup → Data → Export JSON (backup)** is your backup. The Dashboard tells you when you owe one
 - **Setup → Data → Import JSON backup** restores one, or moves your data to another device
 - **Setup → Danger Zone → Delete All Data** wipes everything, and asks you to type DELETE first because there's no undo
 
-Every exported file is named for what it is, the day it left, and the release that wrote it —
-`range-log-backup-2026-09-20-v7.9.3.json`. Date before version, so a folder of backups still
-sorts chronologically and the version is only the tie-breaker. It's there for the moment you're
-holding a file you don't recognize and want to know which version produced it before restoring
+**The Dashboard says when something isn't in a file yet.** A banner appears once anything has
+changed since your last backup and clears the moment you take one, with the button that takes it
+right there. It tracks **records and target photos separately**, because they're backed up by
+separate buttons into separate files — photos live outside the JSON, so a backup restored
+without its bundle loses them silently, and one notice covering both would let you believe
+they'd been saved. **Later** silences what you've seen; anything newer brings it back, and it
+isn't written to storage, so a single dismissal can't quietly disable the thing forever.
+
+If you keep backups in iCloud, set **Settings → Apps → Safari → Downloads** to iCloud Drive and
+the export lands there on its own — no share sheet, no moving files afterwards.
+
+Every exported file is named for what it is, when it left, and the release that wrote it —
+`range-log-backup-2026-09-20-1443-v7.9.4.json`. Date, then 24-hour time, then version: it sorts
+chronologically, two backups on the same day don't collide, and the version is only the
+tie-breaker. The time is always there rather than only when a name would clash, because at
+export time there's no knowing whether another will follow that day. It's all there for the
+moment you're holding a file you don't recognize and want to know what it is before restoring
 it.
 
 The same two facts lead the JSON inside the file, so a rename doesn't lose them. They describe

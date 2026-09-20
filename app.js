@@ -1,4 +1,4 @@
-// ── DATA SCHEMA v9 ──────────────────────────────────────────────
+// ── DATA SCHEMA ─────────────────────────────────────────────────
 // v1: lastCleaned (single date) per gun
 // v2: cleanings array per gun, each {id, date, type, notes}
 //     type: 'quick' | 'deep' | 'detail'
@@ -34,7 +34,13 @@
 //      {id, ammo, unit, zeroDistance, distanceUnit, conditions, entries[{distance, come}]}.
 //      The app never computes ballistics; numbers come from whatever solver the user
 //      trusts and are edited by hand.
-const SCHEMA_VERSION = 15;
+// v16: lastChangeAt / lastBackupAt / lastPhotoChangeAt / lastPhotoBackupAt added — ISO
+//      timestamps, null until something sets them. Records and photos are tracked apart
+//      because they are backed up apart: photos live in IndexedDB and are never in the JSON,
+//      so a restored backup without its bundle loses them silently. Timestamps rather than a
+//      counter of unsaved changes, which would be a stored number free to drift; these are
+//      records of when a thing happened, and the comparison between them is computed.
+const SCHEMA_VERSION = 16;
 
 // The sentinel value for the "type your own" entry in every picker that offers one —
 // calibers, ammo, optics, tags. These once used two different sentinels, so forms that look
@@ -436,7 +442,16 @@ function buildDefaultData() {
     sellers: demo.sellers,
     sessions: demo.sessions,
     ammo: demo.ammo,
+    ...freshBackupStamps(),
   };
+}
+
+// Nothing has changed and nothing has been backed up, which is the truth for data that has
+// just come into existence. Demo data included: it is a sample, not a record worth keeping,
+// and stamping it as changed would greet a first-time user with a backup notice.
+function freshBackupStamps() {
+  return { lastChangeAt: null, lastBackupAt: null,
+           lastPhotoChangeAt: null, lastPhotoBackupAt: null };
 }
 
 // ── TEXT SIZE ─────────────────────────────────────────────────────
@@ -569,6 +584,7 @@ function buildEmptyData() {
     sellers: [],
     sessions: [],
     ammo: [],
+    ...freshBackupStamps(),
   };
 }
 
@@ -702,6 +718,15 @@ function migrateData(d) {
     d.schemaVersion = 15;
   }
 
+  if (d.schemaVersion === 15) {
+    // Null rather than now: whether an existing user has a current backup is not knowable
+    // here, and guessing either way is worse than staying quiet until their next real change
+    // raises the notice honestly.
+    ['lastChangeAt', 'lastBackupAt', 'lastPhotoChangeAt', 'lastPhotoBackupAt']
+      .forEach(k => { if (d[k] === undefined) d[k] = null; });
+    d.schemaVersion = 16;
+  }
+
   // Defensive: ensure every gun has cleanings + zeros + calibers arrays, and ammo + sellers exist
   d.firearms.forEach(gun => {
     if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
@@ -728,7 +753,17 @@ function migrateData(d) {
 // in-memory `data` has already been mutated and the caller re-renders from it, so the app
 // shows the change and looks saved right up until the next reload drops it. Quota is the
 // usual cause; Safari with storage blocked throws here too.
+function nowISO() { return new Date().toISOString(); }
+
+// Writing the records and noting that they changed are the same event, so save() does both.
+// persist() is the half that only writes — for the handful of places where the thing being
+// recorded is the backup itself, which must not count as a change needing to be backed up.
 function save(d) {
+  d.lastChangeAt = nowISO();
+  return persist(d);
+}
+
+function persist(d) {
   try {
     localStorage.setItem('rangeLogData', JSON.stringify(d));
     return true;
@@ -781,22 +816,32 @@ function photoTx(mode, fn) {
 // It used to be refreshed by hand at six call sites, which is one forgotten line away from
 // the bug that behavior exists to prevent — a group advertising a photo the store no longer
 // has. The set only changes when these change it, so maintaining it here cannot drift.
+// The photo store changes on its own schedule and is backed up by its own button, so it
+// carries its own timestamp. persist rather than save: a photo landing in IndexedDB is not a
+// change to the JSON, and marking it as one would ask you to re-export records that are
+// already current.
+function stampPhotoChange() {
+  if (typeof data !== 'object' || !data) return;
+  data.lastPhotoChangeAt = nowISO();
+  persist(data);
+}
+
 function putPhoto(id, blob) {
   return photoTx('readwrite', s => s.put(blob, id))
-    .then(r => { availablePhotoIds.add(id); return r; })
+    .then(r => { availablePhotoIds.add(id); stampPhotoChange(); return r; })
     .catch(() => null);
 }
 function getPhoto(id) { return photoTx('readonly', s => s.get(id)).catch(() => null); }
 function deletePhoto(id) {
   return photoTx('readwrite', s => s.delete(id))
-    .then(r => { availablePhotoIds.delete(id); return r; })
+    .then(r => { availablePhotoIds.delete(id); stampPhotoChange(); return r; })
     .catch(() => null);
 }
 
 function allPhotoKeys() { return photoTx('readonly', s => s.getAllKeys()).then(k => k || []).catch(() => []); }
 function clearAllPhotos() {
   return photoTx('readwrite', s => s.clear())
-    .then(r => { availablePhotoIds = new Set(); return r; })
+    .then(r => { availablePhotoIds = new Set(); stampPhotoChange(); return r; })
     .catch(() => null);
 }
 
@@ -1221,8 +1266,77 @@ function confirmDeleteAll() {
   alert('All data deleted.');
 }
 
+// ── BACKUP NOTICE ─────────────────────────────────────────────────
+// The tapping was never the hard part of backing up; remembering is. This says what is not
+// in a file yet and offers the button that puts it there.
+//
+// Dismissal is in memory only and holds a timestamp rather than a flag: it silences what you
+// have already seen, and lifts itself the moment something newer changes. A stored flag would
+// mean one "later" quietly disabling the notice forever, which is the failure this exists to
+// prevent rather than cause.
+let backupNoticeSnoozedAt = null;
+
+function dismissBackupNotice() {
+  const st = backupStatus();
+  backupNoticeSnoozedAt = [data.lastChangeAt, data.lastPhotoChangeAt]
+    .filter(Boolean).sort().pop() || nowISO();
+  renderBackupNotice();
+}
+
+// "12 days ago" reads as the thing you want to know; a date makes you work it out. Both are
+// offered, since the date is what you match against the file sitting in iCloud.
+function backupAgeLabel(iso) {
+  if (!iso) return 'never';
+  const days = daysBetweenISO(iso.slice(0, 10), today());
+  const rel = days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+  return days <= 1 ? rel : `${rel}, ${fmtDate(iso.slice(0, 10))}`;
+}
+
+function renderBackupNotice() {
+  const el = document.getElementById('backup-banner-container');
+  if (!el) return;
+  const st = backupStatus();
+  const pending = [];
+  if (st.dataStale) pending.push('data');
+  if (st.photosStale) pending.push('photos');
+  if (!pending.length) { el.innerHTML = ''; return; }
+
+  // Snoozed only until something newer than the snooze happens.
+  const newest = [data.lastChangeAt, data.lastPhotoChangeAt].filter(Boolean).sort().pop();
+  if (backupNoticeSnoozedAt && newest && newest <= backupNoticeSnoozedAt) {
+    el.innerHTML = ''; return;
+  }
+
+  // Said separately because they are fixed separately — one button does not cover the other,
+  // and a single "back up" would leave you believing photos were safe when they are not.
+  const lines = [];
+  if (st.dataStale) {
+    lines.push(`Your records have changed since the last backup — ${
+      esc(backupAgeLabel(st.dataBackedUp))}.`);
+  }
+  if (st.photosStale) {
+    lines.push(`Target photos have changed since the last photo bundle — ${
+      esc(backupAgeLabel(st.photosBackedUp))}. Photos are never inside the JSON backup, so
+      they need their own file.`);
+  }
+
+  el.innerHTML = `
+    <div class="demo-banner backup">
+      <div class="demo-banner-title">⚠ Not backed up</div>
+      <div class="demo-banner-text">${lines.join(' ')}</div>
+      <div class="demo-banner-actions">
+        ${st.dataStale ? `<button class="btn-demo btn-demo-clear"
+          onclick="exportJSON()">Back Up Now</button>` : ''}
+        ${st.photosStale ? `<button class="btn-demo btn-demo-keep"
+          onclick="exportPhotos()">Export Photos</button>` : ''}
+        <button class="btn-demo btn-demo-keep" onclick="dismissBackupNotice()">Later</button>
+      </div>
+    </div>`;
+}
+
 function renderDashboard() {
   renderDemoBanner();
+  renderBackupNotice();
   const stats = document.getElementById('summary-stats');
   stats.innerHTML = `
     <div class="stat-box">
@@ -7386,15 +7500,56 @@ function showTab(name) {
   if (name === 'settings') renderSettings();
 }
 
+// ── BACKUP STATE ──────────────────────────────────────────────────
+// Records and photos are backed up by separate buttons into separate files, so they go stale
+// separately and are reported separately. Nothing here is stored: the two booleans are a
+// comparison between timestamps, worked out fresh every render, so they cannot drift out of
+// step with what is actually on disk.
+function backupStatus() {
+  const stale = (changed, backed) => !!changed && (!backed || changed > backed);
+  return {
+    dataStale: stale(data.lastChangeAt, data.lastBackupAt),
+    photosStale: stale(data.lastPhotoChangeAt, data.lastPhotoBackupAt),
+    dataBackedUp: data.lastBackupAt || null,
+    photosBackedUp: data.lastPhotoBackupAt || null,
+  };
+}
+
+// The file holds the records as they stood at their last change, so that is the moment it
+// represents. Taking "now" instead would leave a sliver of time in which a change made while
+// the file was being written looked as though it had been included.
+function markBackedUp() {
+  data.lastBackupAt = data.lastChangeAt || nowISO();
+  persist(data);
+  renderBackupNotice();
+}
+
+function markPhotosBackedUp() {
+  data.lastPhotoBackupAt = data.lastPhotoChangeAt || nowISO();
+  persist(data);
+  renderBackupNotice();
+}
+
 // ── EXPORT / IMPORT ───────────────────────────────────────────────
 // Every file this app hands you is named the same way: what it is, the day it left, then the
 // release that wrote it. Date before version so a folder of backups still sorts
 // chronologically — the version is the tie-breaker, not the sort key. One builder because
 // four call sites naming files by hand is four chances for them to disagree.
+// Local 24-hour HHMM. Colons are illegal in filenames on half the systems a backup might
+// end up on, and a bare four digits still sorts correctly after the date.
+function nowHHMM() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0');
+}
+
 function exportFileName(kind, ext) {
   const parts = ['range-log'];
   if (kind) parts.push(kind);
-  parts.push(today(), `v${APP_VERSION}`);
+  // Time always, not only when a name would otherwise collide: at export time there is no
+  // way to know whether another will follow today, and a filename whose shape depends on
+  // history is one you cannot predict. Without it, a second backup on the same day arrives
+  // as "... 2", which sorts worse than having no name at all.
+  parts.push(today(), nowHHMM(), `v${APP_VERSION}`);
   return `${parts.join('-')}.${ext}`;
 }
 
@@ -7427,6 +7582,7 @@ function exportJSON() {
   a.download = exportFileName('backup', 'json');
   a.click();
   URL.revokeObjectURL(url);
+  markBackedUp();
 }
 
 // One CSV field. Notes used to have their commas stripped, which silently rewrote what the
@@ -7693,6 +7849,7 @@ async function exportPhotos() {
   a.download = exportFileName('photos', 'json');
   a.click();
   URL.revokeObjectURL(url);
+  markPhotosBackedUp();
 }
 
 function importPhotos(input) {
@@ -7749,7 +7906,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.9.3';
+const APP_VERSION = '7.9.4';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
