@@ -22,7 +22,7 @@ exported and imported as JSON for backup or moving between devices.
 
 **Getting started** — [Screenshots](#screenshots) · [Installing as an app](#installing-as-an-app) · [First launch](#first-launch)
 
-**Using it** — [Firearms and sessions](#firearms-and-sessions) · [Group analysis](#group-analysis) · [Stats](#stats) ([Groups](#groups), [Money](#money)) · [Dope tables](#dope-tables) · [Text size](#text-size)
+**Using it** — [Firearms and sessions](#firearms-and-sessions) · [Group analysis](#group-analysis) · [Stats](#stats) ([Upkeep](#upkeep), [Groups](#groups), [Money](#money)) · [Dope tables](#dope-tables) · [Text size](#text-size)
 
 **Reference** — [Reading the numbers](#reading-the-numbers) · [Reading the bar charts](#reading-the-bar-charts) · [Photo storage](#photo-storage) · [If your saved data can't be read](#if-your-saved-data-cant-be-read)
 
@@ -148,12 +148,36 @@ Four sub-tabs, one shared filter bar:
 - **Groups** — per-firearm shooting analysis; three charts, [below](#groups)
 - **Practice** — rounds fired and range trips over time, by firearm, caliber and location
 - **Money** — ammo spend, cost per round, spend by store, what shooting costs, and how fast you burn each chambering
-- **Upkeep** — rounds since the last deep clean against each firearm's threshold, worst first. Amber past 80%, red past due, always with the number and the word beside it so the state never depends on color alone
+- **Upkeep** — what's due, and whether you actually clean when you said you would, [below](#upkeep)
 
 The filter bar — time range, location, firearm, caliber — drives all four panes. A filter that
 can't apply to the pane you're on is dimmed and disabled with a line saying why: purchases record
-a *seller* rather than a range, so Location is inert on Money; "rounds since clean" is a fact
-about now, so Time Range is inert on Upkeep.
+a *seller* rather than a range, so Location is inert on Money, and cleaning isn't tied to a range
+either, so Location is inert on Upkeep too.
+
+### Upkeep
+
+**Cleaning Due** ranks firearms by rounds since their last deep clean against each one's
+threshold, worst first. Amber past 80%, red past due, always with the number and the word beside
+it so the state never depends on color alone. This one describes *now*, so the time range doesn't
+touch it — and the card says so, since a filter that visibly moves one figure and not another is
+worse than one that's simply off.
+
+**Cleaning History** answers the other question: do you clean when you said you would. Pick a
+firearm and it plots the **rounds fired between one deep clean and the next**, with a dashed line
+at that firearm's threshold — points above it are times you ran past your own rule. Median,
+longest run, and how many of the intervals went over sit above the chart. Leave the firearm on
+All and it ranks every firearm by its median interval against its own threshold instead.
+
+Only **deep** and **detail-strip** cleans bound an interval, because those are what the threshold
+governs — a quick clean in the middle doesn't split one interval into two. The earliest deep
+clean on record closes nothing and isn't plotted: the rounds before it are counted from the start
+of your log rather than from a previous clean, so for a firearm you owned before you started
+logging it's a floor, not a measurement. That's why *n* deep cleans give *n−1* points, and the
+chart says so rather than leaving you to work it out.
+
+A range day you cleaned on counts toward the interval *ending* there, not the one starting from
+it — the app assumes you clean after shooting, the same rule "rounds since clean" already follows.
 
 ### Groups
 

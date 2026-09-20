@@ -227,15 +227,19 @@ function generateDemoData() {
     });
   }
 
-  // A handful of cleanings per firearm, roughly quarterly, mostly quick with an occasional deep
-  const cleaningMonthsBack = [10, 7, 4, 1];
+  // Cleanings every month or two, alternating deep and quick. The alternation is the point:
+  // only deep cleans bound an interval, so the old pattern — one deep per firearm in four
+  // cleanings — left Cleaning History with nothing to draw on a fresh load. Four deeps give
+  // three intervals, which is where that chart stops calling itself unreadable. All inside
+  // the year the sessions cover, so no interval spans a stretch with no range trips in it.
+  const cleaningMonthsBack = [11, 10, 8, 6, 5, 3, 2];
   firearms.forEach((gun, gi) => {
     cleaningMonthsBack.forEach((mb, ci) => {
       const d = new Date(now.getFullYear(), now.getMonth() - mb, 15);
       gun.cleanings.push({
         id: `dclean_${gi}_${ci}`,
         date: toISO(d.getFullYear(), d.getMonth(), d.getDate()),
-        type: (ci % 3 === 2) ? 'deep' : 'quick',
+        type: (ci % 2 === 0) ? 'deep' : 'quick',
         notes: '',
       });
     });
@@ -962,14 +966,47 @@ function lastAnyCleanDate(gun) {
   return all.reduce((latest, c) => c.date > latest ? c.date : latest, all[0].date);
 }
 
-// Shared: sum session rounds for this gun dated strictly after `sinceDate`.
-// Same-day sessions don't count (assumes you cleaned after shooting). null sinceDate = count all.
-function roundsSinceDate(gun, sinceDate) {
+// Shared: sum session rounds for this gun in (after, through]. Open at the bottom, closed at
+// the top — both ends follow the same rule, that you clean after shooting, so a session on a
+// cleaning date belongs to the interval ending at that clean rather than the one starting
+// from it. null at either end means unbounded there.
+function roundsBetween(gun, after, through) {
   return data.sessions.reduce((sum, s) => {
-    if (sinceDate && s.date <= sinceDate) return sum;
+    if (after && s.date <= after) return sum;
+    if (through && s.date > through) return sum;
     const r = s.rounds && typeof s.rounds === 'object' ? s.rounds[gun.id] || 0 : 0;
     return sum + r;
   }, 0);
+}
+
+// Sum session rounds for this gun dated strictly after `sinceDate`.
+// Same-day sessions don't count (assumes you cleaned after shooting). null sinceDate = count all.
+function roundsSinceDate(gun, sinceDate) {
+  return roundsBetween(gun, sinceDate, null);
+}
+
+// Every *completed* cleaning interval for a firearm: the rounds fired between one clean that
+// resets the deep counter and the next. Quick cleans are left out because the threshold does
+// not govern them — only deep and detail reset it, so only those bound an interval.
+//
+// The earliest such cleaning closes nothing. The rounds before it are counted from the start
+// of your records rather than from a previous clean, so for a firearm you owned before you
+// started logging it is a floor and not a measurement. It is dropped rather than plotted,
+// which is why n cleanings give n-1 points.
+function cleaningIntervals(gun) {
+  const resets = (gun.cleanings || [])
+    .filter(c => (CLEANING_TYPES[c.type] || {}).resetsDeep)
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  const out = [];
+  for (let i = 1; i < resets.length; i++) {
+    out.push({
+      date: resets[i].date,
+      from: resets[i - 1].date,
+      type: resets[i].type,
+      rounds: roundsBetween(gun, resets[i - 1].date, resets[i].date),
+    });
+  }
+  return out;
 }
 
 // Rounds since clean = sum of session rounds for this gun where session.date > lastDeepCleanDate
@@ -3047,13 +3084,12 @@ const STATS_FILTER_APPLIES = {
   groups:   { range: true,  location: true,  firearm: true, caliber: false },
   practice: { range: true,  location: true,  firearm: true, caliber: true },
   money:    { range: true,  location: false, firearm: true, caliber: true },
-  upkeep:   { range: false, location: false, firearm: true, caliber: true },
+  upkeep:   { range: true,  location: false, firearm: true, caliber: true },
 };
 const STATS_FILTER_WHY = {
   groups:   { caliber: 'caliber follows from the firearm you pick' },
   money:    { location: 'purchases record a seller, not a range' },
-  upkeep:   { range: 'rounds since clean is a state now, not a period',
-              location: 'cleaning is not tied to a range' },
+  upkeep:   { location: 'cleaning is not tied to a range' },
 };
 
 function applyStatsFilterAvailability() {
@@ -3267,6 +3303,7 @@ function renderStats() {
   renderRangeTripsStats();
   renderAmmoSpendStats();
   renderUpkeepStats();
+  renderCleaningHistory();
   renderGroupsStats();
   layoutStatsBarCharts();
 }
@@ -5108,6 +5145,212 @@ function renderUpkeepStats() {
     <div class="stats-chart-card">
       <div class="stats-chart-title">Rounds Since Deep Clean</div>
       ${rowsHtml}
+      <div class="stats-note">What is due is a state now, not a period, so the time range does
+        not apply here — it narrows the history below.</div>
+    </div>`;
+}
+
+// ── CLEANING HISTORY ──────────────────────────────────────────────
+// Cleaning Due answers "what needs doing"; this answers "do I actually do it when I say I
+// will". The figure plotted is the interval — rounds between one deep clean and the next —
+// because that is what cleanThreshold is denominated in, so the threshold can be drawn across
+// the chart and every point is then a pass or a fail rather than a bare number.
+function renderCleaningHistory() {
+  const el = document.getElementById('stats-upkeep-history');
+  if (!el) return;
+  const gunId = document.getElementById('stats-firearm').value;
+  const scoped = scopedGunIdsFromFilters();
+  const guns = (data.firearms || []).filter(g => !scoped || scoped.has(g.id));
+
+  if (!guns.length) {
+    el.innerHTML = `<div class="empty-state" style="padding:16px;">${
+      (data.firearms || []).length ? 'No firearms match the current filter.' : 'No firearms yet.'
+    }</div>`;
+    return;
+  }
+  // One firearm is a trend; several are a comparison. The Groups pane draws the same
+  // distinction, so the firearm filter means the same thing in both places.
+  const only = guns.length === 1 && gunId ? guns[0] : null;
+  el.innerHTML = only ? cleaningTrendCard(only) : cleaningComparisonCard(guns);
+}
+
+// Intervals whose cleaning falls inside the shared time range. Scoped on the closing date,
+// since that is the day the decision was made.
+function scopedCleaningIntervals(gun) {
+  const { start, end } = getStatsRangeBounds();
+  return cleaningIntervals(gun).filter(iv =>
+    (!start || iv.date >= start) && (!end || iv.date <= end));
+}
+
+function cleaningComparisonCard(guns) {
+  const rows = guns.map(gun => {
+    const ivs = scopedCleaningIntervals(gun);
+    return { gun, n: ivs.length, med: ivs.length ? statsMedian(ivs.map(i => i.rounds)) : null,
+             thr: gun.cleanThreshold || 0,
+             over: ivs.filter(i => gun.cleanThreshold && i.rounds > gun.cleanThreshold).length };
+  }).filter(r => r.n).sort((a, b) =>
+    (b.thr ? b.med / b.thr : 0) - (a.thr ? a.med / a.thr : 0));
+
+  if (!rows.length) {
+    return `<div class="stats-chart-card">
+      <div class="stats-chart-title">Median Rounds Between Cleans</div>
+      <div class="stats-empty">No completed cleaning intervals in this range. An interval needs
+        two deep cleans to sit between.</div></div>`;
+  }
+
+  const rowsHtml = rows.map(r => {
+    const pct = r.thr ? r.med / r.thr : 0;
+    // A state, not a series: how this firearm's habit sits against the rule you set for it.
+    // Always printed alongside the figures, so it never rests on color alone.
+    const state = pct > 1 ? 'danger' : pct > 0.8 ? 'warn' : 'ok';
+    return `
+      <div class="breakdown-row">
+        <div class="breakdown-top">
+          <span class="breakdown-name">${esc(r.gun.name)}</span>
+          <span class="breakdown-val"${r.thr ? ` style="color:var(--${state})"` : ''
+            }>${r.med}${r.thr ? ` / ${r.thr}` : ''} rds</span>
+        </div>
+        ${r.thr ? `<div class="breakdown-bar-track">
+          <div class="breakdown-bar-fill" style="width:${Math.min(100, pct * 100)}%;background:var(--${state});"></div>
+        </div>` : ''}
+        <div class="breakdown-pct">median of ${r.n} interval${r.n === 1 ? '' : 's'}${
+          r.thr ? ` · past ${r.thr} on ${r.over} of ${r.n}` : ' · no threshold set'}</div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="stats-chart-card">
+      <div class="stats-chart-title">Median Rounds Between Cleans</div>
+      ${rowsHtml}
+      <div class="stats-note">Median rounds between deep cleans, against the threshold you set
+        for each. Pick one firearm above to see its intervals over time.</div>
+    </div>`;
+}
+
+// One firearm's intervals over time. Deliberately a plain fitted SVG rather than the group
+// trend's scrollable, zoomable one: cleanings are a handful of points a year, so there is
+// nothing to zoom into, and a control that does nothing is worse than no control.
+function cleaningTrendCard(gun) {
+  const ivs = scopedCleaningIntervals(gun);
+  const thr = gun.cleanThreshold || 0;
+  const allResets = (gun.cleanings || [])
+    .filter(c => (CLEANING_TYPES[c.type] || {}).resetsDeep).length;
+
+  if (!ivs.length) {
+    // The two ways to have no intervals read very differently, so they are not one message.
+    const why = allResets === 0
+      ? `No deep cleans logged for ${esc(gun.name)} yet. Quick cleans do not reset the counter,
+         so they do not bound an interval.`
+      : allResets === 1
+        ? `One deep clean logged. An interval is the stretch between two, so there is nothing
+           to measure until the next one.`
+        : `No cleaning intervals inside this time range. Widen it above.`;
+    return `<div class="stats-chart-card">
+      <div class="stats-chart-title">Rounds Between Cleans</div>
+      <div class="stats-empty">${why}</div></div>`;
+  }
+
+  const vals = ivs.map(i => i.rounds);
+  const med = statsMedian(vals);
+  const over = thr ? vals.filter(v => v > thr).length : 0;
+
+  const stats = `
+    <div class="stats-stat-grid">
+      <div class="stats-stat-box">
+        <div class="stats-stat-num">${med}<span class="unit"> rds</span></div>
+        <div class="stats-stat-label">Median between cleans</div></div>
+      <div class="stats-stat-box">
+        <div class="stats-stat-num">${Math.max(...vals)}<span class="unit"> rds</span></div>
+        <div class="stats-stat-label">Longest run</div></div>
+      <div class="stats-stat-box">
+        <div class="stats-stat-num">${thr ? `${over}/${ivs.length}` : '—'}</div>
+        <div class="stats-stat-label">${thr ? 'Past threshold' : 'No threshold set'}</div></div>
+    </div>`;
+
+  // Drawn at the container's real pixel width rather than scaled to fit, because text inside
+  // a scaled SVG scales with it — that is how the compare chart ended up with labels smaller
+  // than body text. A plot that has never been laid out measures zero; fall back rather than
+  // divide by it, and the next render gets the real figure.
+  const H = 190, PT = 16, PB = 28, PAD = 14, AXIS_W = 38;
+  const existing = document.querySelector('#stats-upkeep-history .cleantrend-plot');
+  const measured = existing ? existing.clientWidth : 0;
+  const W = measured > 60 ? measured : 300;
+  const ts = ivs.map(i => dateMs(i.date));
+  const T0 = ts[0], T1 = ts[ts.length - 1];
+  // A single point, or several cleanings on one day, would divide by zero. Center instead.
+  const span = T1 - T0;
+  const x = t => span ? PAD + ((t - T0) / span) * (W - PAD * 2) : W / 2;
+  const ymax = Math.max(...vals, thr) * 1.15 || 1;
+  const y = v => H - PB - (v / ymax) * (H - PT - PB);
+
+  const ACCENT = '#c8a84b', REF = '#1f68bc', GRIDC = '#2e2e2e', DIM = '#8a8a8a';
+  const ticks = [0, ymax / 2, ymax];
+  const axisSvg = ticks.map(t =>
+    `<text x="${AXIS_W - 6}" y="${y(t) + 3}" fill="${DIM}" font-family="IBM Plex Mono"
+           font-size="9" text-anchor="end">${Math.round(t)}</text>`).join('') +
+    `<line x1="${AXIS_W - 3}" y1="${PT - 6}" x2="${AXIS_W - 3}" y2="${H - PB}" stroke="${GRIDC}"/>`;
+
+  let svg = ticks.map(t =>
+    `<line x1="0" y1="${y(t)}" x2="${W}" y2="${y(t)}" stroke="${GRIDC}"/>`).join('');
+
+  // The threshold is what makes the chart readable: without it these are bare round counts.
+  // Drawn in the same blue the group trend uses for re-zero marks, because it is the same
+  // kind of thing — a reference you read the data against, not a status.
+  if (thr && thr <= ymax) {
+    svg += `<line x1="0" y1="${y(thr)}" x2="${W}" y2="${y(thr)}" stroke="${REF}"
+                  stroke-width="1" stroke-dasharray="4 3"/>
+            <text x="${W - 3}" y="${y(thr) - 4}" fill="${REF}" font-family="IBM Plex Mono"
+                  font-size="9" text-anchor="end">threshold ${thr}</text>`;
+  }
+
+  svg += `<polyline fill="none" stroke="${ACCENT}" stroke-width="2" stroke-linejoin="round"
+            points="${ivs.map(i => `${x(dateMs(i.date))},${y(i.rounds)}`).join(' ')}"/>`;
+
+  // Past your own threshold is a state, so it takes the status color — and the point sits
+  // above a labeled line saying so, which is the reading that does not depend on color.
+  ivs.forEach(i => {
+    const late = thr && i.rounds > thr;
+    svg += `<circle cx="${x(dateMs(i.date))}" cy="${y(i.rounds)}" r="4"
+                    fill="${late ? '#c0392b' : ACCENT}" stroke="var(--surface)" stroke-width="1.5">
+              <title>${esc(fmtDate(i.date))} — ${i.rounds} rds since ${esc(fmtDate(i.from))}</title>
+            </circle>`;
+  });
+
+  // Ends only. Cleanings cluster, and a label per point overlaps at any realistic count.
+  const MONO_CH = 5.4;
+  const endLabel = (t, text, anchor) => {
+    const half = String(text).length * MONO_CH / 2;
+    const at = Math.min(Math.max(x(t), half + 1), W - half - 1);
+    return `<text x="${at}" y="${H - 10}" fill="${DIM}" font-family="IBM Plex Mono"
+                  font-size="9" text-anchor="middle">${text}</text>`;
+  };
+  svg += endLabel(T0, trendDayLabel(ivs[0].date));
+  if (ivs.length > 1 && x(T1) - x(T0) > 60) {
+    svg += endLabel(T1, trendDayLabel(ivs[ivs.length - 1].date));
+  }
+
+  const thin = ivs.length < 3
+    ? ` Too few intervals to read a trend from yet.` : '';
+  const dropped = allResets > ivs.length
+    ? ` ${allResets} deep cleans give ${allResets - 1} intervals: the first closes none, since
+        the rounds before it are counted from the start of your log rather than from a
+        previous clean.` : '';
+
+  return `
+    <div class="stats-chart-card">
+      <div class="stats-chart-title">Rounds Between Cleans</div>
+      ${stats}
+      <div class="trend-chart">
+        <svg class="trend-axis" viewBox="0 0 ${AXIS_W} ${H}" width="${AXIS_W}" height="${H}"
+             aria-hidden="true">${axisSvg}</svg>
+        <div class="cleantrend-plot">
+          <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"
+               role="img" aria-label="Rounds fired between each deep clean">${svg}</svg>
+        </div>
+      </div>
+      <div class="stats-note">Each point is the rounds fired since the previous deep clean.
+        ${thr ? 'Points above the dashed line ran past the threshold set for this firearm.'
+              : 'No cleaning threshold is set for this firearm, so there is no line to read them against.'}${thin}${dropped}</div>
     </div>`;
 }
 
@@ -7473,7 +7716,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.9';
+const APP_VERSION = '7.9.1';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

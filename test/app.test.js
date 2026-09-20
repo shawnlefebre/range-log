@@ -1309,6 +1309,175 @@ describe('notes describe the data in front of them', () => {
 // refusing to rank when the data cannot support it — which, on a real collection, is most of
 // the time.
 
+// ── CLEANING HISTORY ────────────────────────────────────────────────
+// Cleaning Due answers "what needs doing"; this answers "do I do it when I said I would".
+// The figure is the interval — rounds between one deep clean and the next — because that is
+// what cleanThreshold is denominated in, so the threshold can be drawn across the chart and
+// each point becomes a pass or a fail. The arithmetic is where this can go quietly wrong, so
+// most of what follows is about which sessions land on which side of a cleaning date.
+
+describe('rounds between cleans', () => {
+  function app(cleanings, sessions, threshold = 500) {
+    return ready(loadApp()).then(win => {
+      win.eval(`data = { schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+        locations: [], sellers: [], ammo: [],
+        firearms: [{ id: 'g1', name: 'Rifle', type: 'rifle', calibers: ['.223 Rem'],
+          opticUnit: 'moa', cleanThreshold: ${threshold}, totalRounds: 0, notes: '',
+          zeros: [], dope: [], groups: [],
+          cleanings: ${JSON.stringify(cleanings.map((c, i) => ({
+            id: `c${i}`, date: c.date, type: c.type, notes: '' })))} }],
+        sessions: ${JSON.stringify(sessions.map((s, i) => ({
+          id: `s${i}`, date: s.date, locationId: null, notes: '',
+          rounds: { g1: s.rounds } })))} };`);
+      win.showTab('stats');
+      win.showStatsSection('upkeep');
+      win.document.getElementById('stats-range').value = 'all';
+      win.document.getElementById('stats-firearm').value = 'g1';
+      win.renderStats();
+      return win;
+    });
+  }
+  // Back through JSON: an array built inside jsdom belongs to that realm, and
+  // deepStrictEqual compares prototypes, so it would reject values it agrees with.
+  const ivs = win => JSON.parse(
+    win.eval('JSON.stringify(cleaningIntervals(data.firearms[0]).map(i => i.rounds))'));
+  const history = win => flat(win.document.getElementById('stats-upkeep-history'));
+  const points = win => win.document
+    .querySelectorAll('#stats-upkeep-history .cleantrend-plot circle').length;
+
+  test('an interval is the rounds between one deep clean and the next', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' },
+       { date: '2026-05-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 120 }, { date: '2026-02-15', rounds: 80 },
+       { date: '2026-04-01', rounds: 300 }]);
+    assert.deepStrictEqual(ivs(win), [200, 300]);
+  });
+
+  test('the first deep clean closes nothing, so n cleans give n-1 points', async () => {
+    // Rounds before the first clean are counted from the start of the log, not from a
+    // previous clean — a floor for anyone who owned the firearm before they logged it.
+    const win = await app(
+      [{ date: '2026-03-01', type: 'deep' }, { date: '2026-05-01', type: 'deep' }],
+      [{ date: '2026-01-15', rounds: 999 }, { date: '2026-04-01', rounds: 250 }]);
+    assert.deepStrictEqual(ivs(win), [250], 'the 999 is not an interval and must not appear');
+    assert.strictEqual(points(win), 1);
+    assert.match(history(win), /2 deep cleans give 1 intervals?:/);
+  });
+
+  test('quick cleans do not bound an interval', async () => {
+    // Only deep and detail reset the counter, so only those are what the threshold governs.
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-02-01', type: 'quick' },
+       { date: '2026-05-01', type: 'deep' }],
+      [{ date: '2026-01-15', rounds: 100 }, { date: '2026-03-01', rounds: 150 }]);
+    assert.deepStrictEqual(ivs(win), [250],
+      'a quick clean in the middle must not split one interval into two');
+  });
+
+  test('a detail strip bounds one, the same as a deep clean', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'detail' }],
+      [{ date: '2026-02-01', rounds: 75 }]);
+    assert.deepStrictEqual(ivs(win), [75]);
+  });
+
+  test('a session on the cleaning date counts toward the interval it ends', async () => {
+    // The app assumes you clean after shooting — the same rule rounds-since-clean already
+    // follows, and the two would contradict each other if this went the other way.
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' },
+       { date: '2026-05-01', type: 'deep' }],
+      [{ date: '2026-03-01', rounds: 90 }]);
+    assert.deepStrictEqual(ivs(win), [90, 0],
+      'the range day you cleaned on belongs to the stretch ending there, not the one after');
+  });
+
+  test('the figures describe the intervals, not the whole history', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' },
+       { date: '2026-05-01', type: 'deep' }, { date: '2026-07-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 100 }, { date: '2026-04-01', rounds: 600 },
+       { date: '2026-06-01', rounds: 200 }]);
+    const nums = [...win.document.querySelectorAll('#stats-upkeep-history .stats-stat-num')]
+      .map(n => flat(n));
+    assert.deepStrictEqual(nums, ['200 rds', '600 rds', '1/3'],
+      'median, longest, and how many ran past the threshold');
+  });
+
+  test('a firearm with no threshold gets no line and no pass-fail count', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 100 }], 0);
+    assert.match(history(win), /No threshold set/);
+    assert.match(history(win), /no line to read them against/);
+  });
+
+  test('the two ways of having no intervals read differently', async () => {
+    const none = await app([{ date: '2026-01-01', type: 'quick' }],
+      [{ date: '2026-02-01', rounds: 50 }]);
+    assert.match(history(none), /No deep cleans logged/);
+
+    const one = await app([{ date: '2026-01-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 50 }]);
+    assert.match(history(one), /One deep clean logged/);
+    assert.doesNotMatch(history(one), /No deep cleans/);
+  });
+
+  test('the time range narrows the history by the date the clean was done', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' },
+       { date: '2026-05-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 100 }, { date: '2026-04-01', rounds: 200 }]);
+    assert.strictEqual(points(win), 2);
+    win.document.getElementById('stats-range').value = 'custom';
+    win.handleStatsRangeChange();
+    win.document.getElementById('stats-start').value = '2026-04-01';
+    win.document.getElementById('stats-end').value = '2026-06-01';
+    win.renderStats();
+    assert.strictEqual(points(win), 1, 'only the May clean closed inside that window');
+    assert.match(history(win), /200 rds/);
+  });
+
+  test('what is due still ignores the range, and says so', async () => {
+    // Two cards on one pane, one of them deliberately deaf to a filter the other uses. That
+    // is only acceptable because it is stated where you would otherwise be confused by it.
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 100 }, { date: '2026-04-01', rounds: 40 }]);
+    const due = () => flat(win.document.getElementById('stats-upkeep-cleaning'));
+    assert.match(due(), /40 \/ 500 rds/);
+    assert.match(due(), /state now, not a period/);
+    win.document.getElementById('stats-range').value = 'custom';
+    win.handleStatsRangeChange();
+    win.document.getElementById('stats-start').value = '2020-01-01';
+    win.document.getElementById('stats-end').value = '2020-12-31';
+    win.renderStats();
+    assert.match(due(), /40 \/ 500 rds/, 'what is due today does not depend on a window');
+  });
+
+  test('leaving the firearm on All compares them instead of charting one', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 100 }]);
+    win.document.getElementById('stats-firearm').value = '';
+    win.renderStats();
+    assert.strictEqual(points(win), 0, 'no chart without a firearm picked');
+    assert.match(history(win), /Median Rounds Between Cleans/i);
+    assert.match(history(win), /median of 1 interval\b/);
+  });
+
+  test('demo data can actually populate the chart', async () => {
+    // It could not: the generator logged one deep clean per firearm, so this whole card sat
+    // on its empty state for anyone who had just loaded the sample set.
+    const win = await ready(loadApp());
+    const worst = win.eval(`Math.min(...buildDefaultData().firearms
+      .map(g => cleaningIntervals(g).length))`);
+    assert.ok(worst >= 3,
+      `every demo firearm needs enough deep cleans to read a trend from, got ${worst}`);
+  });
+});
+
 describe('accuracy by firearm', () => {
   // Ring of shots at a fixed radius: mean radius comes out as exactly that radius, so the
   // expected MOA is computable by hand rather than read back off the implementation.
@@ -3621,9 +3790,17 @@ describe('shared stats filter bar', () => {
     assert.match(win.document.getElementById('stats-filter-note').textContent, /seller/);
 
     win.showStatsSection('upkeep');
-    assert.strictEqual(win.document.getElementById('stats-range').disabled, true,
-      'rounds since clean is a state now, not a period');
-    assert.match(win.document.getElementById('stats-filter-note').textContent, /state now/);
+    // The range used to be dead here, back when the pane only answered "what is due now".
+    // The cleaning history is a period, so it applies again.
+    assert.strictEqual(win.document.getElementById('stats-range').disabled, false,
+      'the history below is a period, whatever the card above it is');
+    assert.strictEqual(win.document.getElementById('stats-location').disabled, true,
+      'cleaning is not tied to a range');
+    assert.match(win.document.getElementById('stats-filter-note').textContent, /not tied to a range/);
+    // One card on the pane still ignores the range on purpose, and says so itself rather than
+    // leaving you to wonder why a figure did not move when you changed it.
+    assert.match(flat(win.document.getElementById('stats-upkeep-cleaning')),
+      /state now, not a period/);
   });
 
   test('the caliber filter uses merged groups everywhere, including Money', async () => {
@@ -5746,17 +5923,22 @@ describe('capped Details lists', () => {
 
   test('expansion resets when Details is reopened', async () => {
     const win = await ready(loadApp());
-    // The demo firearms carry 4 cleanings against a cap of 3, so this runs on real data
-    // through the real render path rather than synthetic rows.
-    const gunId = win.buildDefaultData().firearms[0].id;
+    // Runs on real demo data through the real render path rather than synthetic rows. The
+    // count is read from the data rather than written in: the demo generator's cleaning
+    // schedule is tuned for other views and has changed under this test before.
+    const gun = win.buildDefaultData().firearms[0];
+    const gunId = gun.id;
+    const total = gun.cleanings.length;
+    assert.ok(total > 3, `this test needs more cleanings than the cap of 3, found ${total}`);
     const list = () => win.document.querySelectorAll('#history-cleanings-list > div').length;
 
     win.openGunHistory(gunId);
     assert.strictEqual(list(), 3, 'lands capped');
-    assert.match(win.document.getElementById('show-all-cleanings').textContent, /Show all 4/);
+    assert.match(win.document.getElementById('show-all-cleanings').textContent,
+      new RegExp(`Show all ${total}`));
 
     win.toggleHistorySection('cleanings');
-    assert.strictEqual(list(), 4);
+    assert.strictEqual(list(), total);
 
     win.closeModal('modal-history');
     win.openGunHistory(gunId);

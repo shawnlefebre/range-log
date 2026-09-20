@@ -2281,6 +2281,10 @@
   .metric-ctrl button.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
   .trend-ctrl button:focus-visible,
   .metric-ctrl button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* The cleaning trend fits its container instead of scrolling: a handful of points a year
+     has nothing to pan through. It still sits beside the pinned axis, so it borrows the
+     trend-chart row and only needs to claim the remaining width. */
+  .cleantrend-plot { flex: 1; min-width: 0; overflow: hidden; }
   .trend-readout {
     margin-left: auto;
     font-family: var(--font-mono);
