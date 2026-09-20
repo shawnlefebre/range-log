@@ -64,10 +64,16 @@ a new version is ready. Tap it to reload. No banner means you're up to date.
 - **Setup → Danger Zone → Delete All Data** wipes everything, and asks you to type DELETE first because there's no undo
 
 Every exported file is named for what it is, the day it left, and the release that wrote it —
-`range-log-backup-2026-09-20-v7.9.1.json`. Date before version, so a folder of backups still
+`range-log-backup-2026-09-20-v7.9.3.json`. Date before version, so a folder of backups still
 sorts chronologically and the version is only the tie-breaker. It's there for the moment you're
 holding a file you don't recognize and want to know which version produced it before restoring
 it.
+
+The same two facts lead the JSON inside the file, so a rename doesn't lose them. They describe
+the *export*, not your records, so importing strips them back out — a restored backup that left
+`"appVersion": "7.1"` sitting in storage would be describing a file from months ago rather than
+the app you're running, and the next export would copy it forward as if it were true. Backups
+written before this existed import exactly as they always did.
 
 **Export CSV** sits beside the JSON button and does a different job: your sessions as a
 spreadsheet — date, location, firearm, caliber, rounds, notes, one row per firearm per session.

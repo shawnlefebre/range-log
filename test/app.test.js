@@ -5725,6 +5725,76 @@ describe('naming an exported file', () => {
   });
 });
 
+// ── EXPORT PROVENANCE ───────────────────────────────────────────────
+// The filename says which release wrote a backup, but a rename destroys that. The same two
+// facts go inside the file, where they survive one — and have to come back out on import, or
+// a restored backup would leave its own provenance sitting in storage describing the wrong
+// thing entirely.
+
+describe('what an exported backup says about itself', () => {
+  const payload = win => JSON.parse(win.eval('JSON.stringify(exportPayload())'));
+
+  test('the file names the release and the day it was written', async () => {
+    const win = await ready(loadApp());
+    const p = payload(win);
+    assert.strictEqual(p.appVersion, win.eval('APP_VERSION'));
+    assert.strictEqual(p.exported, win.today());
+  });
+
+  test('they lead the file, where someone opening it will look', async () => {
+    const win = await ready(loadApp());
+    assert.deepStrictEqual(Object.keys(payload(win)).slice(0, 2), ['appVersion', 'exported']);
+  });
+
+  test('the records themselves are untouched by the stamp', async () => {
+    const win = await ready(loadApp());
+    const p = payload(win);
+    const live = JSON.parse(win.eval('JSON.stringify(data)'));
+    Object.keys(live).forEach(k => assert.deepStrictEqual(p[k], live[k],
+      `${k} must survive the export unchanged`));
+    // And the stamp must not have been written onto the live object on the way past, or it
+    // would be in localStorage and the next save would persist it.
+    assert.strictEqual(win.eval('data.appVersion'), undefined);
+    assert.strictEqual(win.eval('data.exported'), undefined);
+  });
+
+  test('importing a backup does not store its provenance', async () => {
+    // Left in, "written by v7.1" would sit in storage describing a file from months ago
+    // rather than the app running now — and the next export would copy it forward as fact.
+    const win = await ready(loadApp());
+    const incoming = win.eval(`JSON.stringify(
+      Object.assign({ appVersion: '0.1', exported: '2020-01-01' },
+                    JSON.parse(JSON.stringify(buildDefaultData()))))`);
+    win.eval(`data = migrateData(stripExportMeta(JSON.parse(${JSON.stringify(incoming)})));
+              save(data);`);
+    assert.strictEqual(win.eval('data.appVersion'), undefined);
+    assert.strictEqual(win.eval('data.exported'), undefined);
+    const stored = JSON.parse(win.localStorage.getItem('rangeLogData'));
+    assert.ok(!('appVersion' in stored), 'a stale version in storage is worse than none');
+    assert.ok(!('exported' in stored));
+    // The records still arrived.
+    assert.ok(stored.firearms.length > 0);
+  });
+
+  test('a backup carrying no provenance still imports', async () => {
+    // Every backup written before this existed, which is all of them so far.
+    const win = await ready(loadApp());
+    const old = win.eval('JSON.stringify(buildDefaultData())');
+    win.eval(`data = migrateData(stripExportMeta(JSON.parse(${JSON.stringify(old)})));`);
+    assert.ok(win.eval('data.firearms.length') > 0);
+  });
+
+  test('the photo bundle names its release too, beside its own format version', async () => {
+    // Two different versions in one file: `version` is the bundle format, `appVersion` is the
+    // app. Conflating them would make a format check start failing on every release.
+    const src = fs.readFileSync(JS_PATH, 'utf8');
+    const m = src.match(/type: 'range-log-photos',[^;]*?photos\s*\}/);
+    assert.ok(m, 'photo bundle payload not found');
+    assert.match(m[0], /version: 1\b/, 'the format version stays pinned at 1');
+    assert.match(m[0], /appVersion: APP_VERSION/);
+  });
+});
+
 describe('app version', () => {
   const readAll = () => ({
     html: fs.readFileSync(APP_PATH, 'utf8'),

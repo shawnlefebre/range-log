@@ -7398,8 +7398,29 @@ function exportFileName(kind, ext) {
   return `${parts.join('-')}.${ext}`;
 }
 
+// Facts about the export, not about your records: which release wrote the file and when. They
+// go in the file because a filename does not survive a rename, and they are listed here so
+// import can take them back out again — see stripExportMeta for why that matters.
+const EXPORT_META = ['appVersion', 'exported'];
+
+// Built fresh rather than stamped onto `data`, which would put them straight into
+// localStorage. Leading the object so they are the first thing in the pretty-printed file,
+// where someone opening it in a text editor will actually look.
+function exportPayload() {
+  return { appVersion: APP_VERSION, exported: today(), ...data };
+}
+
+// A restored backup must not carry its own provenance into storage. Left in, "written by
+// v7.9.2" would sit in localStorage describing a file from months ago rather than the app
+// running now, and the next export would copy it forward as if it were true.
+function stripExportMeta(imported) {
+  const out = { ...imported };
+  EXPORT_META.forEach(k => delete out[k]);
+  return out;
+}
+
 function exportJSON() {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(exportPayload(), null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -7467,7 +7488,7 @@ function importJSON(input) {
         return;
       }
       if (!confirm('This will replace all current data with the imported backup. Continue?')) return;
-      data = migrateData(imported);
+      data = migrateData(stripExportMeta(imported));
       save(data);
       renderAll();
       // Photos aren't in the backup, so whatever the incoming records don't reference is
@@ -7663,7 +7684,8 @@ async function exportPhotos() {
     if (blob) photos[id] = await blobToDataURL(blob);
   }
 
-  const payload = { type: 'range-log-photos', version: 1, exported: today(), photos };
+  const payload = { type: 'range-log-photos', version: 1, appVersion: APP_VERSION,
+                    exported: today(), photos };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -7727,7 +7749,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.9.2';
+const APP_VERSION = '7.9.3';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
