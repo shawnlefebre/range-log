@@ -63,6 +63,12 @@ a new version is ready. Tap it to reload. No banner means you're up to date.
 - **Setup → Data → Import JSON backup** restores one, or moves your data to another device
 - **Setup → Danger Zone → Delete All Data** wipes everything, and asks you to type DELETE first because there's no undo
 
+Every exported file is named for what it is, the day it left, and the release that wrote it —
+`range-log-backup-2026-09-20-v7.9.1.json`. Date before version, so a folder of backups still
+sorts chronologically and the version is only the tie-breaker. It's there for the moment you're
+holding a file you don't recognize and want to know which version produced it before restoring
+it.
+
 **Export CSV** sits beside the JSON button and does a different job: your sessions as a
 spreadsheet — date, location, firearm, caliber, rounds, notes, one row per firearm per session.
 It's for reading elsewhere, not for backup. Nothing imports it back, and it covers only

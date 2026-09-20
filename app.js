@@ -1096,7 +1096,7 @@ function downloadUnreadableData() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `range-log-unreadable-${today()}.json`;
+  a.download = exportFileName('unreadable', 'json');
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -7387,12 +7387,23 @@ function showTab(name) {
 }
 
 // ── EXPORT / IMPORT ───────────────────────────────────────────────
+// Every file this app hands you is named the same way: what it is, the day it left, then the
+// release that wrote it. Date before version so a folder of backups still sorts
+// chronologically — the version is the tie-breaker, not the sort key. One builder because
+// four call sites naming files by hand is four chances for them to disagree.
+function exportFileName(kind, ext) {
+  const parts = ['range-log'];
+  if (kind) parts.push(kind);
+  parts.push(today(), `v${APP_VERSION}`);
+  return `${parts.join('-')}.${ext}`;
+}
+
 function exportJSON() {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `range-log-backup-${today()}.json`;
+  a.download = exportFileName('backup', 'json');
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -7431,7 +7442,7 @@ function exportCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `range-log-${today()}.csv`;
+  a.download = exportFileName('', 'csv');
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -7657,7 +7668,7 @@ async function exportPhotos() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `range-log-photos-${today()}.json`;
+  a.download = exportFileName('photos', 'json');
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -7716,7 +7727,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.9.1';
+const APP_VERSION = '7.9.2';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

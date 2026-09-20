@@ -5686,6 +5686,45 @@ describe('spelling', () => {
 // Bumping one without the others breaks the service worker's update detection — the banner
 // either never appears or appears forever. Nothing caught that before this test.
 
+// ── EXPORT FILE NAMES ───────────────────────────────────────────────
+// A backup that leaves the app carries its release in the name, so being handed one later
+// tells you which version wrote it before you decide whether to trust what is inside.
+
+describe('naming an exported file', () => {
+  test('every export carries the app version and the day it left', async () => {
+    const win = await ready(loadApp());
+    const v = win.eval('APP_VERSION');   // a top-level const is script-scoped, not on window
+    const d = win.today();
+    assert.strictEqual(win.exportFileName('backup', 'json'), `range-log-backup-${d}-v${v}.json`);
+    assert.strictEqual(win.exportFileName('photos', 'json'), `range-log-photos-${d}-v${v}.json`);
+    assert.strictEqual(win.exportFileName('unreadable', 'json'),
+      `range-log-unreadable-${d}-v${v}.json`);
+  });
+
+  test('a kindless export skips the empty segment rather than doubling the dash', async () => {
+    const win = await ready(loadApp());
+    assert.strictEqual(win.exportFileName('', 'csv'),
+      `range-log-${win.today()}-v${win.eval('APP_VERSION')}.csv`);
+  });
+
+  test('the date comes before the version, so a folder still sorts by date', async () => {
+    const win = await ready(loadApp());
+    const name = win.exportFileName('backup', 'json');
+    assert.ok(name.indexOf(win.today()) < name.indexOf(`v${win.eval('APP_VERSION')}`),
+      'version first would group releases together and scatter the dates');
+  });
+
+  test('no export names its own file', () => {
+    // Four call sites naming files by hand is four chances for them to disagree about the
+    // format, which is how three of them would end up without the version.
+    const src = fs.readFileSync(JS_PATH, 'utf8');
+    const assignments = src.match(/\.download\s*=\s*[^;]+;/g) || [];
+    assert.ok(assignments.length >= 4, `expected the exports, found ${assignments.length}`);
+    assignments.forEach(a => assert.match(a, /exportFileName\(/,
+      `a download filename bypasses the shared builder: ${a.trim()}`));
+  });
+});
+
 describe('app version', () => {
   const readAll = () => ({
     html: fs.readFileSync(APP_PATH, 'utf8'),
