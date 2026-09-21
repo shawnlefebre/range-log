@@ -11,6 +11,10 @@ changes. It's noted below wherever it did.
 
 ## Unreleased
 
+_Nothing yet._
+
+## 7.10 — how far you go between cleans, and when you last backed up (2026-09-20)
+
 - **Cleaning History** in Stats → Upkeep: rounds fired between one deep clean and the next,
   charted per firearm against its own threshold, with the average, the shortest-to-longest
   spread, and how many intervals the figures rest on. Tap a point for its rounds and dates.

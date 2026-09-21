@@ -8025,7 +8025,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.9.7';
+const APP_VERSION = '7.10';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
