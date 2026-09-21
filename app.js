@@ -5513,18 +5513,39 @@ function cleaningTrendCard(gun) {
                     stroke="var(--surface)" stroke-width="1.5" pointer-events="none"/>`;
   });
 
-  // Ends only. Cleanings cluster, and a label per point overlaps at any realistic count.
-  const MONO_CH = 5.4;
-  const endLabel = (t, text, anchor) => {
-    const half = String(text).length * MONO_CH / 2;
-    const at = Math.min(Math.max(x(t), half + 1), W - half - 1);
-    return `<text x="${at}" y="${H - 10}" fill="${DIM}" font-family="IBM Plex Mono"
-                  font-size="9" text-anchor="middle">${text}</text>`;
+  // As many dates as fit. IBM Plex Mono advances a fixed 0.6em, so each label's width is known
+  // without measuring it, and the ones that would collide are dropped rather than drawn on top
+  // of each other. Labels near either end are nudged inward: they are centered on their point,
+  // so one at the very edge would sit half outside the SVG and be clipped by it.
+  const MONO_CH = 5.4, LABEL_GAP = 7;
+  const box = i => {
+    const text = trendDayLabel(ivs[i].date);
+    const half = text.length * MONO_CH / 2;
+    const at = Math.min(Math.max(x(dateMs(ivs[i].date)), half + 1), W - half - 1);
+    return { at, half, text, left: at - half, right: at + half };
   };
-  svg += endLabel(T0, trendDayLabel(ivs[0].date));
-  if (ivs.length > 1 && x(T1) - x(T0) > 60) {
-    svg += endLabel(T1, trendDayLabel(ivs[ivs.length - 1].date));
+  const clears = (a, b) => a.left - b.right >= LABEL_GAP || b.left - a.right >= LABEL_GAP;
+
+  // The two ends are the dates you read first, so they are placed before anything else and
+  // everything between them yields. Without that, a greedy left-to-right pass can spend the
+  // last of the room just short of the end and leave the most recent cleaning unlabeled.
+  const shown = [];
+  if (ivs.length) shown.push(box(0));
+  if (ivs.length > 1) {
+    const last = box(ivs.length - 1);
+    if (clears(last, shown[0])) shown.push(last);
   }
+  for (let i = 1; i < ivs.length - 1; i++) {
+    const b = box(i);
+    if (shown.every(q => clears(b, q))) {
+      shown.push(b);
+      shown.sort((m, n) => m.at - n.at);
+    }
+  }
+  shown.forEach(b => {
+    svg += `<text x="${b.at}" y="${H - 10}" fill="${DIM}" font-family="IBM Plex Mono"
+                  font-size="9" text-anchor="middle">${b.text}</text>`;
+  });
 
   // Cleared rather than left pointing at whatever now sits at that index, which would put a
   // confident wrong figure under the chart after a filter change.
@@ -8004,7 +8025,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.9.6';
+const APP_VERSION = '7.9.7';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

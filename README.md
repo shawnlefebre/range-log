@@ -196,7 +196,8 @@ threshold so guns on different thresholds sit on the same scale.
 
 **Tap a point** and the line beneath the chart names it — the rounds, and the two cleaning
 dates it sat between. Tap it again to clear it. The chart fits the width it's given rather than
-scrolling: with a handful of cleanings a year there's nothing to pan to.
+scrolling: with a handful of cleanings a year there's nothing to pan to. The axis carries as
+many dates as fit without colliding, and the two ends are always among them.
 
 **The threshold is a reference, not a verdict.** The dashed line is drawn and named so you can
 read a run against it, but nothing is colored red for crossing it and no count of how often you

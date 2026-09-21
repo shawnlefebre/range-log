@@ -1511,6 +1511,52 @@ describe('rounds between cleans', () => {
     assert.match(history(win), /\b60\b/);
   });
 
+  const dateLabels = win => [...win.document
+    .querySelectorAll('#stats-upkeep-history .cleantrend-plot text')]
+    .map(t => flat(t)).filter(t => !/threshold/.test(t));
+
+  test('every date that fits gets a label, not just the two ends', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' },
+       { date: '2026-05-01', type: 'deep' }, { date: '2026-07-01', type: 'deep' },
+       { date: '2026-09-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 100 }, { date: '2026-04-01', rounds: 200 },
+       { date: '2026-06-01', rounds: 150 }, { date: '2026-08-01', rounds: 250 }]);
+    const labels = dateLabels(win);
+    assert.ok(labels.length > 2,
+      `four points two months apart should carry more than the ends, got ${labels.join(', ')}`);
+  });
+
+  test('both ends are always named, whatever fits between them', async () => {
+    // A greedy left-to-right pass can spend the last of the room just short of the end and
+    // leave the most recent cleaning — the one you are most likely looking for — unlabeled.
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep' },
+       { date: '2026-05-01', type: 'deep' }, { date: '2026-07-01', type: 'deep' },
+       { date: '2026-09-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 100 }, { date: '2026-04-01', rounds: 200 },
+       { date: '2026-06-01', rounds: 150 }, { date: '2026-08-01', rounds: 250 }]);
+    const labels = dateLabels(win);
+    assert.strictEqual(labels[0], 'Mar 1', 'the first interval closes on Mar 1');
+    assert.ok(labels.includes('Sep 1'), 'and the most recent on Sep 1');
+  });
+
+  test('labels that would collide are dropped rather than overdrawn', async () => {
+    // The axis scales to the span, so closely spaced dates still spread across the full width
+    // — what actually runs out of room is the number of them. Twelve cleanings cannot all be
+    // named at phone width, and every interval is still plotted whether it is named or not.
+    const months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+    const win = await app(
+      months.map(m => ({ date: `2026-${m}-05`, type: 'deep' })),
+      months.slice(1).map((m, i) => ({ date: `2026-${m}-01`, rounds: 100 + i * 10 })));
+    assert.strictEqual(points(win), 11, 'eleven intervals, all plotted');
+    const labels = dateLabels(win);
+    assert.ok(labels.length < 11, `all eleven cannot be labeled, got ${labels.length}`);
+    assert.ok(labels.length >= 3, `but several should fit, got ${labels.join(', ')}`);
+    assert.ok(labels.includes('Feb 5') && labels.includes('Dec 5'),
+      'the two ends survive the cull');
+  });
+
   test('tapping a point names its rounds and the dates it sat between', async () => {
     // These figures used to live in an SVG <title>, which appears on hover — which a phone
     // does not have, so on the device this chart is read on they were unreachable.

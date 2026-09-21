@@ -329,6 +329,32 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
     !tapped.err && /rds/.test(tapped.after) && tapped.after !== tapped.before);
   if (tapped.err) console.log('     ' + tapped.err);
 
+  // Label widths are estimated from the monospace advance rather than measured, so only a real
+  // browser can say whether the estimate holds. Checked at the narrow viewport, where the room
+  // runs out first.
+  const dateLabels = await page.evaluate(() => {
+    const plot = document.querySelector('#stats-upkeep-history .cleantrend-plot');
+    if (!plot) return { err: 'no plot' };
+    const boxes = [...plot.querySelectorAll('svg text')]
+      .filter(t => !/threshold/.test(t.textContent))
+      .map(t => t.getBoundingClientRect())
+      .sort((a, b) => a.left - b.left);
+    const pb = plot.getBoundingClientRect();
+    let overlaps = 0, outside = 0;
+    boxes.forEach((b, i) => {
+      if (i && b.left < boxes[i - 1].right) overlaps++;
+      if (b.left < pb.left - 1 || b.right > pb.right + 1) outside++;
+    });
+    return { n: boxes.length, overlaps, outside };
+  });
+  ck('the chart carries at least one date label', !dateLabels.err && dateLabels.n >= 1);
+  ck('no two date labels overlap', dateLabels.overlaps === 0);
+  ck('no date label spills outside the plot', dateLabels.outside === 0);
+  if (dateLabels.overlaps || dateLabels.outside) {
+    console.log(`     ${dateLabels.n} labels, ${dateLabels.overlaps} overlapping, ${
+      dateLabels.outside} outside`);
+  }
+
   // Back to the width the rest of this suite and its screenshots expect.
   await page.setViewportSize({ width: 430, height: 900 });
   await page.waitForTimeout(150);
