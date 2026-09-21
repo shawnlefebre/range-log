@@ -6143,6 +6143,52 @@ describe('what an exported backup says about itself', () => {
   });
 });
 
+// ── CHANGELOG ───────────────────────────────────────────────────────
+// It records releases rather than pushes: patches accumulate under Unreleased, and cutting a
+// minor turns that heading into the release. Both halves of that are easy to forget at exactly
+// the moment there is a release to cut, so they are checked rather than remembered.
+
+describe('the changelog keeps up with the version', () => {
+  const CHANGELOG = path.join(__dirname, '..', 'CHANGELOG.md');
+  const text = () => fs.readFileSync(CHANGELOG, 'utf8');
+  const appVersion = () => {
+    const m = fs.readFileSync(JS_PATH, 'utf8').match(/const APP_VERSION = '([^']+)'/);
+    assert.ok(m, 'APP_VERSION not found in app.js');
+    return m[1];
+  };
+
+  test('it exists and leads with the newest release', () => {
+    const headings = [...text().matchAll(/^## (\S+)/gm)].map(m => m[1]);
+    assert.ok(headings.length > 1, 'expected several release headings');
+    const versions = headings.filter(h => /^\d+\.\d+$/.test(h)).map(h => h.split('.').map(Number));
+    assert.ok(versions.length > 1, 'expected version headings of the form ## X.Y');
+    for (let i = 1; i < versions.length; i++) {
+      const [aMaj, aMin] = versions[i - 1], [bMaj, bMin] = versions[i];
+      assert.ok(aMaj > bMaj || (aMaj === bMaj && aMin > bMin),
+        `releases must read newest first: ${versions[i - 1].join('.')} before ${versions[i].join('.')}`);
+    }
+  });
+
+  test('a released version has its own entry; a patch has somewhere to have landed', () => {
+    const v = appVersion();
+    const body = text();
+    if (/^\d+\.\d+$/.test(v)) {
+      assert.match(body, new RegExp(`^## ${v.replace('.', '\\.')}\\b`, 'm'),
+        `APP_VERSION is ${v}, so the changelog needs a "## ${v}" heading`);
+    } else {
+      assert.match(body, /^## Unreleased$/m,
+        `APP_VERSION is the patch ${v}, so its work belongs under an "## Unreleased" heading`);
+    }
+  });
+
+  test('every release heading carries a date', () => {
+    [...text().matchAll(/^## (\d+\.\d+)(.*)$/gm)].forEach(([, v, rest]) => {
+      assert.match(rest, /\(\d{4}-\d{2}-\d{2}\)\s*$/,
+        `release ${v} should end its heading with a (YYYY-MM-DD) date`);
+    });
+  });
+});
+
 describe('app version', () => {
   const readAll = () => ({
     html: fs.readFileSync(APP_PATH, 'utf8'),

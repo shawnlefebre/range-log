@@ -63,6 +63,8 @@ a new version is ready. Tap it to reload. No banner means you're up to date.
 - **Setup → Data → Import JSON backup** restores one, or moves your data to another device
 - **Setup → Danger Zone → Delete All Data** wipes everything, and asks you to type DELETE first because there's no undo
 
+[CHANGELOG.md](CHANGELOG.md) lists what each release added, newest first.
+
 **The Dashboard says when something isn't in a file yet.** A banner appears once anything has
 changed since your last backup and clears the moment you take one, with the button that takes it
 right there. It tracks **records and target photos separately**, because they're backed up by
