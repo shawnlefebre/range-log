@@ -7,7 +7,7 @@
 // Pages convention). If you're testing a differently-named copy locally,
 // either rename it or edit APP_PATH below.
 
-const { test, describe, before } = require('node:test');
+const { test, describe, before, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
 const fs = require('fs');
@@ -38,6 +38,24 @@ function buildDocument(mutateJs) {
   return withJs;
 }
 
+// Every window this suite opens, so each can be closed again. pretendToBeVisual starts a
+// requestAnimationFrame loop, and a live timer holds the window — and the whole document
+// behind it — beyond the test that made it. Several hundred of those exhaust the heap: CI
+// aborted at 4GB after 54 of them while the same suite passed locally, where the ceiling is
+// higher. Reproduced with --max-old-space-size=700.
+const openWindows = [];
+let windowMark = 0;
+
+// Only what this test opened. A couple of describes build one window in a `before` and share
+// it across their cases; those are already in the list when the mark is taken, so they
+// survive to the end of their suite.
+beforeEach(() => { windowMark = openWindows.length; });
+afterEach(() => {
+  while (openWindows.length > windowMark) {
+    try { openWindows.pop().window.close(); } catch { /* already torn down */ }
+  }
+});
+
 function loadApp(mutateJs) {
   const dom = new JSDOM(buildDocument(mutateJs), {
     runScripts: 'dangerously',
@@ -46,6 +64,7 @@ function loadApp(mutateJs) {
   });
   dom.window.alert = () => {};
   dom.window.confirm = () => true;
+  openWindows.push(dom);
   return dom;
 }
 
