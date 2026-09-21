@@ -148,10 +148,63 @@ filter bar, and gained the group analysis the group feature had always pointed a
 
 - **Groups link to range sessions**, and sessions gain a scorecard of what was shot.
 
-## 6.1 — first tracked release (2026-08-16)
+## 6.1 — group analysis, made usable (2026-08-16)
 
-The initial build: range sessions, firearms with round counts and cleaning history, zeros, ammo
-purchases with cost per round, stats, and **target group analysis** — mark the scale, the point
-of aim and each impact on a photo, and get group size, mean radius and point of impact back.
-Pan and zoom on the plot, per-firearm notes, and the split into `index.html` + `app.css` +
-`app.js`.
+- **Pan and zoom on the group plot**, with a Reset view to match the photo.
+- Marking advances automatically after the scale and aim points, instead of waiting to be told.
+- Group results lead with MOA, and a distance is required — without one the figure means
+  nothing.
+- Distance can be given in feet, for indoor ranges.
+
+## 6.0 — target group analysis (2026-08-16)
+
+- **Target group analysis**: photograph a target, mark the scale, the point of aim and each
+  impact, and get group size, mean radius, width, height and point of impact back. The feature
+  everything in 7.x has been built on.
+- The app split into `index.html` + `app.css` + `app.js`, which is still its shape.
+
+## 5.3 — (2026-08-14)
+
+- Fixed the Edit Cleaning and Edit Zero modals rendering invisibly behind the Details view.
+
+## 5.2 — (2026-08-13)
+
+- **Per-firearm notes**, for torque specs and maintenance reminders.
+
+## 5.1 — (2026-08-08)
+
+- Fixed bar charts clamping tall bars to the same height, which made the largest months
+  indistinguishable.
+
+## 5.0 — stats, and a test suite (2026-08-04)
+
+- **Stats**: rounds fired and spend over time, charted.
+- **The regression suite starts here.** Everything since has been built against it.
+
+## 4.6 — (2026-08-02)
+
+- Rounds since the last quick clean, alongside rounds since the last deep clean.
+
+## 4.5 — (2026-07-30)
+
+- **Firearm type icons** — rifle, pistol, revolver, shotgun.
+
+## 4.4 — (2026-07-15)
+
+- Zeros record the optic and the ammo they were shot with, not just the distance.
+
+## 4.3 — (2026-06-30)
+
+- Ammo caliber became a dropdown rather than free text.
+
+## 4.2 — the first version the app recorded (2026-06-30)
+
+The earliest release the repo can name, because `APP_VERSION` did not exist before it. By this
+point the app already had range sessions, firearms with round counts and cleaning levels, zeros,
+reorderable firearms, ammo logging with sellers, and cost per round.
+
+---
+
+**Before 4.2** there is no version to attribute work to — the app did not track its own version
+until 2026-06-30, and the earliest commits predate it. The features are in `git log` from
+2026-04-18 onward; the version numbers are simply not recorded anywhere.
