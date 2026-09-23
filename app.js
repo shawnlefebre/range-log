@@ -4164,6 +4164,8 @@ function resetGroupScopeIfGunChanged(gunId) {
   if (groupScopeGunId === gunId) return;
   groupScopeGunId = gunId;
   groupScope = { ammo: new Set(), distance: new Set(), tag: new Set(), shots: new Set() };
+  // A date read off one firearm's strip means nothing on another's.
+  foulPick = null;
 }
 
 // True when the group satisfies every dimension except the one named — the basis for facet
@@ -4680,9 +4682,16 @@ let trendScrollLeft = 0;
 // dirty interval left to compare against. Rather than guess a threshold and hide them
 // silently, it's a switch.
 let showTrendCleans = true;
+// A date picked off the fouling strip. View state like the zoom — the marker and the figures
+// are drawn by the render rather than patched into the SVG after it, so they cannot disagree
+// with the shape they are describing.
+let foulPick = null;
 
 function toggleTrendCleans() {
   showTrendCleans = !showTrendCleans;
+  // The strip goes with the layer, and a reading of something no longer on screen is worse
+  // than no reading.
+  if (!showTrendCleans) foulPick = null;
   renderGroupsStats();
 }
 
@@ -4906,6 +4915,11 @@ function renderGroupTrend(gun, groups) {
   // and the smallest the browser suite will accept. The caption takes the top band, the step
   // shape the rest.
   const SH = 48;
+  // One computation behind both the dot and the words beneath, so they cannot disagree. It
+  // is deliberately the fouling at the end of the day's *shooting*, not the level the strip
+  // closes at: clean after a trip and the strip drops to zero that day, while the rounds the
+  // day actually ran on are the ones just before the drop.
+  const fPick = (showTrendCleans && foulPick) ? fouling(gun, foulPick) : null;
   let stripSvg = '';
   if (showTrendCleans) {
     const fs = foulingSeries(gun);
@@ -4915,6 +4929,20 @@ function renderGroupTrend(gun, groups) {
     const pts2 = [];
     fs.steps.forEach(p2 => pts2.push(`${x(dateMs(p2.date))},${sy(p2.level)}`));
     if (pts2.length) pts2.push(`${W},${sy(fs.level)}`);
+
+    // Solid, where the clean and re-zero rules are dashed: those are things that happened,
+    // this is where you put your finger. Dropped if the picked date has scrolled out of the
+    // drawn range, which a zoom change can do.
+    let pickMark = '';
+    if (fPick) {
+      const fx = x(dateMs(foulPick));
+      if (fx >= 0 && fx <= W) {
+        pickMark = `<line class="trend-foul-pick" x1="${fx}" y1="12" x2="${fx}" y2="${SH - 2}"
+            stroke="${DIM}" stroke-width="1" opacity="0.6"/>
+          <circle cx="${fx}" cy="${sy(fPick.end)}" r="2.6" fill="${CLEANC}"
+            stroke="var(--surface)" stroke-width="1"/>`;
+      }
+    }
     stripSvg = `
       <svg class="trend-strip" viewBox="0 0 ${W} ${SH}" width="${W}" height="${SH}" role="img"
            aria-label="Rounds since the last deep clean, over the same dates">
@@ -4924,9 +4952,27 @@ function renderGroupTrend(gun, groups) {
                 font-size="9">${thresh}</text>` : ''}
         ${pts2.length ? `<polyline class="trend-foul" fill="none" stroke="${CLEANC}"
           stroke-width="1.5" stroke-linejoin="miter" points="${pts2.join(' ')}"/>` : ''}
+        ${pickMark}
         <text x="1" y="10" fill="${DIM}" font-family="IBM Plex Mono"
               font-size="9">rounds since clean</text>
       </svg>`;
+  }
+
+  // Says the same figures the range day does, because it comes from the same function —
+  // the chart and the day view agree by construction rather than by coincidence.
+  let foulReadout = '';
+  {
+    const f = fPick;
+    if (f) {
+      const when = trendDayLabel(foulPick);
+      foulReadout = !f.everCleaned
+        ? `${when} · <b>${f.end}</b> rounds fired — no deep clean logged`
+        : f.floor
+          ? `${when} · <b>${f.end}+</b> rounds, counted from the start of your log`
+          : f.day
+            ? `${when} · <b>${f.start} → ${f.end}</b> rounds since clean`
+            : `${when} · <b>${f.end}</b> rounds since clean`;
+    }
   }
 
   el.innerHTML = `
@@ -4941,6 +4987,8 @@ function renderGroupTrend(gun, groups) {
           ${stripSvg}
         </div>
       </div>
+      ${showTrendCleans ? `<div class="trend-foul-readout">${foulReadout
+        || '<span class="dim">Tap the strip for the count on a date.</span>'}</div>` : ''}
       <div class="trend-ctrl">
         ${TREND_ZOOMS.map(o => `<button type="button" class="${o.key === trendZoom ? 'on' : ''}"
           onclick="setTrendZoom('${o.key}')">${o.label}</button>`).join('')}
@@ -5216,6 +5264,12 @@ function trendTapAt(sc, clientX, clientY) {
   const scale = box.width / Number(svg.getAttribute('width'));
   const px = (clientX - box.left) / scale;
   const py = (clientY - box.top) / scale;
+
+  // Below the plot is the fouling strip. It is a step function continuous in x — every date
+  // on it has a level — so a tap there resolves to a date rather than to the nearest mark,
+  // and there is nothing to miss.
+  if (py > Number(svg.getAttribute('height'))) { foulTapAt(sc, px); return; }
+
   let best = null, bestD = 26;
   svg.querySelectorAll('.trend-point').forEach(c => {
     const d = Math.hypot(Number(c.getAttribute('cx')) - px, Number(c.getAttribute('cy')) - py);
@@ -5227,6 +5281,21 @@ function trendTapAt(sc, clientX, clientY) {
   const date = best && best.dataset.date;
   const gunId = document.getElementById('stats-firearm').value;
   if (date && gunId) openGroupDay(gunId, date);
+}
+
+// Reads the scale the plot was drawn at off the container, the same figures the pan readout
+// uses, rather than deriving it again — deriving it separately is how a readout comes to
+// disagree with its own chart.
+function foulTapAt(sc, px) {
+  if (!showTrendCleans) return;
+  const pxPerDay = Number(sc.dataset.pxperday);
+  const pad = Number(sc.dataset.pad);
+  const t0 = Number(sc.dataset.t0);
+  if (!isFinite(pxPerDay) || pxPerDay <= 0) return;
+  const d = isoDay(t0 + ((px - pad) / pxPerDay) * 86400000);
+  // Tapping the same day again puts it away, so the marker is never stuck on.
+  foulPick = foulPick === d ? null : d;
+  renderGroupsStats();
 }
 
 function updateTrendReadout(sc) {
@@ -8351,7 +8420,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.10.4';
+const APP_VERSION = '7.10.5';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

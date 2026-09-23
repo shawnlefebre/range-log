@@ -2315,6 +2315,19 @@
      without a line between them the step shape reads as another series on the MOA scale. */
   .trend-strip { border-top: 1px solid var(--surface3); margin-top: 2px; }
 
+  /* The strip's own readout, kept apart from the pan readout in .trend-ctrl: that one says
+     which dates are on screen, this one says what you tapped, and sharing a line would have
+     each wipe the other. */
+  .trend-foul-readout {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    margin-top: 7px;
+    min-height: 1.2em;
+    font-variant-numeric: tabular-nums;
+  }
+  .trend-foul-readout b { color: var(--mark-cal); font-weight: 600; }
+
   .trend-ctrl { display: flex; gap: 5px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
   /* The metric toggle is the same kind of choice as the trend zoom, so it is the same chip.
      It sits above what it relabels rather than below, hence the flipped margin. */

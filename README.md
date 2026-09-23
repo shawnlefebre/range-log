@@ -279,7 +279,13 @@ quick clean resets nothing, so marking it would suggest it did.
 Beneath the plot, a strip carries **rounds since clean** over the same dates: a step that climbs
 with each range day and drops to zero at each clean, so group size and the state of the bore read
 on one vertical. It's drawn as steps rather than a line through the events, because sloping
-between them would show rounds fired on days nothing was. The **Cleans** switch beside the zoom
+between them would show rounds fired on days nothing was. **Tap the strip** and it names the
+count on that date — a day you shot reads as the span it ran on (`0 → 227`), the same figures
+the range day view gives, because both come from the same function rather than agreeing by
+coincidence. The vertical step on a shooting day makes a single number ambiguous, so it answers
+with both ends instead of whichever side your finger landed. Tap again to put it away.
+
+The **Cleans** switch beside the zoom
 controls turns the whole layer off — clean after every trip and the marks are one rule per range
 day, which is noise, and uninformative besides, since no dirty interval is left to compare
 against.

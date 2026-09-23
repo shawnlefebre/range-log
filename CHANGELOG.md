@@ -33,6 +33,9 @@ changes. It's noted below wherever it did.
   shape that climbs with each range day and drops at each clean — so group size and the state
   of the bore read on one vertical. A **Cleans** switch beside the zoom controls turns the whole
   layer off, since marks tell you nothing if you clean after every trip.
+  **Tap the strip** for the count on any date — it's a step function continuous in x, so every
+  date on it has a value and there is nothing to miss. A day you shot reads as the span it ran
+  on, which is also what the range day view reports, because both come from the same function.
 
 ## 7.10 — how far you go between cleans, and when you last backed up (2026-09-20)
 

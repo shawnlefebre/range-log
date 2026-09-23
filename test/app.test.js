@@ -2196,6 +2196,88 @@ describe('cleaning marks on the group trend', () => {
       'reset first, then the day’s rounds land on a fresh bore');
   });
 
+  // ── READING A COUNT OFF THE STRIP ─────────────────────────────────
+  // Continuous in x, so a tap resolves to a date rather than to a nearest point — there is
+  // nothing to miss, and no finger-sized hit target needed.
+
+  const readout = win => flat(win.document.querySelector('#stats-groups-trend .trend-foul-readout'));
+  const pick = win => win.document.querySelector('#stats-groups-trend .trend-foul-pick');
+  // Straight at foulTapAt with a plot x, which is what trendTapAt hands it once it has
+  // decided the tap landed below the plot.
+  const tapDate = (win, date) => win.eval(`(function(){
+    const sc = document.querySelector('#stats-groups-trend .trend-scroll');
+    const pxPerDay = Number(sc.dataset.pxperday), pad = Number(sc.dataset.pad);
+    const t0 = Number(sc.dataset.t0);
+    foulTapAt(sc, pad + ((dateMs(${JSON.stringify(date)}) - t0) / 86400000) * pxPerDay);
+  })()`);
+
+  test('nothing picked yet says what the strip is for', async () => {
+    const win = await app(DEEP, SESSIONS);
+    assert.match(readout(win), /Tap the strip/);
+    assert.ok(!pick(win), 'and draws no marker');
+  });
+
+  test('a day you shot reads as the span, both ends of it', async () => {
+    // The vertical step makes a single figure ambiguous — your finger lands on one side or
+    // the other of it. The span answers with both rather than whichever you hit.
+    // Needs a clean earlier than the tapped day, or the count is a floor and says so instead.
+    const win = await app(
+      [{ id: 'cm', date: '2026-06-01', type: 'deep', notes: '', when: 'after' }].concat(DEEP),
+      SESSIONS);
+    tapDate(win, '2026-06-27');
+    assert.match(readout(win), /Jun 27 · 100 → 202 rounds since clean/);
+    assert.ok(pick(win), 'with a marker where the finger went');
+  });
+
+  test('a day you cleaned after shooting reads the rounds it ran, not the reset', async () => {
+    // The strip closes that day at zero, because you cleaned. The figures are the ones just
+    // before the drop — the fouling the day was actually shot on — and the dot sits there
+    // too, so the mark and the words say the same thing.
+    const win = await app(
+      [{ id: 'cm', date: '2026-06-01', type: 'deep', notes: '', when: 'after' }].concat(DEEP),
+      SESSIONS);
+    tapDate(win, '2026-06-27');
+    assert.match(readout(win), /100 → 202/, 'not 0, which is where the strip ends that day');
+  });
+
+  test('a quiet day reads as one figure', async () => {
+    const win = await app(DEEP, SESSIONS);
+    tapDate(win, '2026-07-20');
+    assert.match(readout(win), /Jul 20 · 270 rounds since clean/);
+    assert.ok(!/→/.test(readout(win)), 'nothing was fired, so there is no span');
+  });
+
+  test('the figures match what the range day says for the same date', async () => {
+    // Both come from fouling(), so they agree by construction. If that ever stops being
+    // true, the chart and the day view are telling the user two different stories.
+    const win = await app(DEEP, SESSIONS);
+    tapDate(win, '2026-08-19');
+    win.openGroupDay('g1', '2026-08-19');
+    const day = flat(win.document.getElementById('day-context'));
+    assert.match(readout(win), /227 → 287/);
+    assert.match(day, /227\s*→\s*287/);
+  });
+
+  test('tapping the same day again puts it away', async () => {
+    const win = await app(DEEP, SESSIONS);
+    tapDate(win, '2026-06-27');
+    assert.ok(pick(win));
+    tapDate(win, '2026-06-27');
+    assert.ok(!pick(win), 'a marker you cannot dismiss is stuck on');
+    assert.match(readout(win), /Tap the strip/);
+  });
+
+  test('turning the layer off takes the reading with it', async () => {
+    const win = await app(DEEP, SESSIONS);
+    tapDate(win, '2026-06-27');
+    win.toggleTrendCleans();
+    assert.ok(!pick(win));
+    assert.ok(!win.document.querySelector('#stats-groups-trend .trend-foul-readout'),
+      'a figure about a strip that is not on screen is worse than none');
+    win.toggleTrendCleans();
+    assert.match(readout(win), /Tap the strip/, 'and it comes back unpicked');
+  });
+
   test('every step is a hold and a jump, never a slope between days', async () => {
     // A line through the events would draw rounds fired on days nothing was.
     const win = await app(DEEP, SESSIONS);
