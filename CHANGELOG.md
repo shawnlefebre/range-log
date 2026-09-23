@@ -22,6 +22,10 @@ changes. It's noted below wherever it did.
   and defaults to *after*. The choice shows up when you review a cleaning that turns out to
   share a date with a session, so a late-logged trip can be corrected. **Schema v17** — every
   existing cleaning is stamped *after*, which is what the app assumed before, so no figure moves.
+- **Barrel fouling** on the range day view and on a single group: how many rounds were on the
+  barrel since its last deep clean, as a span — what it carried into the day and what it carried
+  out — because rounds are logged a day at a time and the groups sit somewhere inside that.
+  Says when the figure is only a floor, and when nothing has been cleaned at all.
 
 ## 7.10 — how far you go between cleans, and when you last backed up (2026-09-20)
 

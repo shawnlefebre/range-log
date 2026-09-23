@@ -1954,6 +1954,108 @@ describe('which side of the day a cleaning happened on', () => {
   });
 });
 
+// ── HOW DIRTY THE BARREL WAS ────────────────────────────────────────
+// Rounds are logged a whole day at a time, so fouling is known exactly at the start of a
+// range day and at the end of it, and nowhere in between. The span is the honest width of
+// that; a single figure would be picking one end and calling it the answer.
+
+describe('barrel fouling on a range day', () => {
+  const CLEAN = '2026-08-13', BIG = '2026-08-14', DAY = '2026-08-19';
+
+  async function app(opts = {}) {
+    const win = await ready(loadApp());
+    const cleanings = opts.cleanings !== undefined ? opts.cleanings
+      : [{ id: 'c0', date: CLEAN, type: 'deep', notes: '', when: 'after' }];
+    win.eval(`data = { schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      locations: [{ id: 'l1', name: 'North Range' }], sellers: [], ammo: [],
+      firearms: [{ id: 'g1', name: 'Plinker', type: 'rifle', calibers: ['.22 LR'],
+        opticUnit: 'moa', cleanThreshold: 300, totalRounds: 287, notes: '',
+        zeros: [], dope: [], groups: [], cleanings: ${JSON.stringify(cleanings)} }],
+      sessions: ${JSON.stringify(opts.sessions !== undefined ? opts.sessions : [
+        { id: 's0', date: BIG, locationId: 'l1', notes: '', rounds: { g1: 227 } },
+        { id: 's1', date: DAY, locationId: 'l1', notes: '', rounds: { g1: 60 } }])} };`);
+    return win;
+  }
+  const line = (win, date = DAY) =>
+    flat(win.eval(`(function(){ const d = document.createElement('div');
+      d.innerHTML = foulingLine(data.firearms[0], ${JSON.stringify(date)});
+      return d; })()`));
+
+  test('a day with rounds logged reads as a span, both ends exact', async () => {
+    const win = await app();
+    assert.match(line(win), /227\s*→\s*287 rounds since the deep clean on Aug 13, 2026/);
+  });
+
+  test('a day with nothing logged says which end the figure is', async () => {
+    // No session for this firearm means no upper bound. Showing the one number bare would
+    // read as the whole day.
+    const win = await app({ sessions: [
+      { id: 's0', date: BIG, locationId: 'l1', notes: '', rounds: { g1: 227 } }] });
+    const t = line(win);
+    assert.match(t, /227 rounds since the deep clean/);
+    assert.match(t, /at the start of the day/);
+    assert.ok(!/→/.test(t), 'there is no second end to show');
+  });
+
+  test('a detail strip is named as one, not called a deep clean', async () => {
+    const win = await app({ cleanings: [
+      { id: 'c0', date: CLEAN, type: 'detail', notes: '', when: 'after' }] });
+    assert.match(line(win), /since the detail strip on/);
+  });
+
+  test('a quick clean does not govern — only what resets the counter does', async () => {
+    const win = await app({ cleanings: [
+      { id: 'c0', date: CLEAN, type: 'deep', notes: '', when: 'after' },
+      { id: 'c1', date: '2026-08-18', type: 'quick', notes: '', when: 'after' }] });
+    assert.match(line(win), /227\s*→\s*287/, 'the quick clean on the 18th changes nothing');
+  });
+
+  test('nothing cleaned before this day is a floor, and says so', async () => {
+    const win = await app({ cleanings: [
+      { id: 'c0', date: '2026-09-01', type: 'deep', notes: '', when: 'after' }] });
+    const t = line(win);
+    assert.match(t, /287\+ rounds/, 'the + is the whole claim');
+    assert.match(t, /since your records begin/);
+  });
+
+  test('never cleaned at all is a different thing to say', async () => {
+    const win = await app({ cleanings: [] });
+    assert.match(line(win), /No deep clean logged/);
+  });
+
+  // ── THE SAME-DAY CLEAN ────────────────────────────────────────────
+  // Which side of the day's shooting the clean happened on decides whether the day ran on a
+  // fresh bore or a fouled one. Getting it backwards is a 287-round error here.
+
+  test('a clean logged after that day\u2019s shooting did not govern it', async () => {
+    const win = await app({ cleanings: [
+      { id: 'c0', date: CLEAN, type: 'deep', notes: '', when: 'after' },
+      { id: 'c1', date: DAY, type: 'deep', notes: '', when: 'after' }] });
+    assert.match(line(win), /227\s*→\s*287 rounds since the deep clean on Aug 13, 2026/,
+      'the day ran on the 13th’s fouling; the clean came at the end of it');
+  });
+
+  test('a clean logged before it means the day started fresh', async () => {
+    const win = await app({ cleanings: [
+      { id: 'c0', date: CLEAN, type: 'deep', notes: '', when: 'after' },
+      { id: 'c1', date: DAY, type: 'deep', notes: '', when: 'before' }] });
+    assert.match(line(win), /0\s*→\s*60 rounds since the deep clean on Aug 19, 2026/);
+  });
+
+  test('the line is on the range day view', async () => {
+    const win = await app();
+    win.eval(`data.firearms[0].groups = [{ id: 'gr1', date: '${DAY}', sessionId: 's1',
+      distance: 50, distanceUnit: 'yd', ammo: 'CCI SV', tags: [], bulletDia: 0.224,
+      calMode: 'linear', calInches: 1, calPts: [{x:0.4,y:0.5},{x:0.5,y:0.5}],
+      poa: { x: 0.5, y: 0.5 },
+      impacts: [{x:0.50,y:0.50},{x:0.51,y:0.51},{x:0.49,y:0.50}], photoId: null }];`);
+    win.openGroupDay('g1', DAY);
+    const ctx = flat(win.document.getElementById('day-context'));
+    assert.match(ctx, /Barrel/);
+    assert.match(ctx, /227\s*→\s*287/);
+  });
+});
+
 describe('accuracy by firearm', () => {
   // Ring of shots at a fixed radius: mean radius comes out as exactly that radius, so the
   // expected MOA is computable by hand rather than read back off the implementation.

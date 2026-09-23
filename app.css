@@ -1863,6 +1863,42 @@
     border-left: 2px solid var(--surface3);
     padding-left: 9px;
   }
+  /* BARREL FOULING — how dirty the bore was on a given day. Slate, not the accent and not
+     the clean-status ramp: a past day's fouling is context you cannot act on, so it must
+     read as reference rather than as a figure of merit or a thing needing attention.
+     --mark-cal is already the palette's name for exactly that role. */
+  .foul {
+    font-family: var(--font-mono);
+    margin-top: 9px;
+    padding-top: 9px;
+    border-top: 1px solid var(--surface3);
+  }
+  /* On its own — no session block to sit inside — it needs the surface the block would
+     have given it. */
+  .foul.standalone {
+    background: var(--surface2);
+    border-top: 0;
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    margin: 0 0 10px;
+  }
+  .foul-label {
+    font-size: 0.56rem;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .foul-line {
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .foul-line b { color: var(--mark-cal); font-weight: 600; }
+  .foul-arrow { color: var(--text-dim); padding: 0 1px; }
+  .foul-dim { color: var(--text-dim); }
+
   /* The note carries an action, unlike every other caveat, so the button needs to clear the
      text rather than sit inline with it. */
   .day-caveat .chip-btn { margin-top: 7px; }

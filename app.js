@@ -1100,6 +1100,66 @@ function cleaningIntervals(gun) {
   return out;
 }
 
+// The deep clean that governs a given day — the one the day's shooting happened after. A
+// clean dated that same day counts only if it happened before the shooting; one logged after
+// it belongs to the day's end, so the day still ran on the previous clean's fouling.
+function governingClean(gun, dateISO) {
+  const resets = (gun.cleanings || [])
+    .filter(c => (CLEANING_TYPES[c.type] || {}).resetsDeep)
+    .filter(c => c.date < dateISO || (c.date === dateISO && c.when === 'before'))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  return resets.length ? resets[resets.length - 1] : null;
+}
+
+// How fouled the barrel was on a given day. Rounds are logged per session — a whole day at a
+// time — so this is known exactly at two moments and nowhere in between: what the barrel
+// carried into the day, and what it carried out. The groups fired that day sit somewhere
+// inside that span, and the span is the honest width of what the log knows.
+function fouling(gun, dateISO) {
+  if (!gun || !dateISO) return null;
+  const clean = governingClean(gun, dateISO);
+  const day = roundsOnDate(gun, dateISO);
+  const end = roundsBetween(gun, clean, { date: dateISO, when: 'after' });
+  return {
+    clean,
+    start: Math.max(0, end - day),
+    end,
+    day,
+    // Nothing cleaned before this day, so the count runs from the start of your records
+    // rather than from a clean — a floor, not a measurement. Distinct from never having
+    // cleaned at all, which is a different thing to say.
+    floor: !clean,
+    everCleaned: (gun.cleanings || []).some(c => (CLEANING_TYPES[c.type] || {}).resetsDeep),
+  };
+}
+
+// One line, two placements: the range day and a single group. Slate rather than the accent,
+// and deliberately not the clean-status ramp — a past day's fouling is context you cannot act
+// on, so it must not read as a thing needing attention.
+function foulingLine(gun, dateISO, standalone) {
+  const f = fouling(gun, dateISO);
+  if (!f) return '';
+  let body;
+  if (!f.everCleaned) {
+    body = '<span class="foul-dim">No deep clean logged for this firearm</span>';
+  } else if (f.floor) {
+    body = `<b>${f.end}+</b> rounds <span class="foul-dim">since your records begin — no
+      earlier clean logged</span>`;
+  } else {
+    const kind = f.clean.type === 'detail' ? 'detail strip' : 'deep clean';
+    const since = `rounds since the ${kind} on ${fmtDate(f.clean.date)}`;
+    // No rounds logged for this firearm that day leaves the span with no upper end. Saying
+    // which end the figure is beats quietly showing it as though it were the whole day.
+    body = f.day
+      ? `<b>${f.start}</b> <span class="foul-arrow">→</span> <b>${f.end}</b> ${since}`
+      : `<b>${f.end}</b> ${since}<span class="foul-dim">, at the start of the day</span>`;
+  }
+  return `<div class="foul${standalone ? ' standalone' : ''}">
+      <div class="foul-label">Barrel</div>
+      <div class="foul-line">${body}</div>
+    </div>`;
+}
+
 // Rounds since the last deep clean — the figure the threshold is measured against.
 function computeRoundsSinceClean(gun) {
   return roundsSinceClean(gun, lastDeepClean(gun));
@@ -4881,11 +4941,13 @@ function renderGroupDay() {
          ${loc ? `<div class="day-loc">${esc(loc.name)}</div>` : ''}
          ${session.notes ? `<div class="day-note">${esc(session.notes)}</div>` : ''}
          ${figures}
+         ${foulingLine(gun, dayViewDate)}
        </div>
        ${roundsLogged ? `<div class="day-caveat"><b>Rounds logged</b> is what you recorded for
           this firearm that day; <b>shots measured</b> is what is in the groups below.</div>` : ''}`
     : `<div class="day-nosession">No session logged for this day · ${shots} shot${
-         shots === 1 ? '' : 's'} measured · median ${median} MOA spread</div>`);
+         shots === 1 ? '' : 's'} measured · median ${median} MOA spread</div>
+       ${foulingLine(gun, dayViewDate, true)}`);
 
   const best = measured.length ? Math.min(...measured) : null;
   document.getElementById('day-groups').innerHTML = rows.length
@@ -7247,6 +7309,8 @@ function gRenderResults() {
         <div class="group-offset-sub">${offsetSub(Math.abs(m.cx))}</div>
       </div>
     </div>
+    ${foulingLine(data.firearms.find(g => g.id === G.gunId),
+                  document.getElementById('group-date').value, true)}
     <div class="group-plot-head">
       <span>Group plot — drag to pan, pinch to zoom</span>
       <button type="button" class="btn-mini" id="group-plot-reset">Reset view</button>
@@ -8149,7 +8213,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.10.2';
+const APP_VERSION = '7.10.3';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
