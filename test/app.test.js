@@ -2056,6 +2056,157 @@ describe('barrel fouling on a range day', () => {
   });
 });
 
+// ── CLEANING ON THE TREND CHART ─────────────────────────────────────
+// The x-axis is already real time and a cleaning is a date, so a clean is a vertical rule —
+// the same shape the chart already draws for a re-zero. The strip beneath carries the round
+// count the marks deliberately leave off.
+
+describe('cleaning marks on the group trend', () => {
+  const GD = ['2026-06-20', '2026-06-27', '2026-08-14', '2026-08-19'];
+
+  function grp(id, date, off) {
+    return { id, date, sessionId: null, distance: 50, distanceUnit: 'yd', ammo: 'CCI SV',
+      tags: [], bulletDia: 0.224, calMode: 'linear', calInches: 1,
+      calPts: [{ x: 0.40, y: 0.50 }, { x: 0.50, y: 0.50 }], poa: { x: 0.5, y: 0.5 },
+      impacts: [{ x: 0.5, y: 0.5 }, { x: 0.5 + off, y: 0.5 }, { x: 0.5, y: 0.5 + off }],
+      photoId: null };
+  }
+
+  async function app(cleanings, sessions) {
+    const win = await ready(loadApp());
+    win.eval(`data = { schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      locations: [], sellers: [], ammo: [],
+      firearms: [{ id: 'g1', name: 'Plinker', type: 'rifle', calibers: ['.22 LR'],
+        opticUnit: 'moa', cleanThreshold: 300, totalRounds: 500, notes: '',
+        zeros: [], dope: [],
+        groups: ${JSON.stringify(GD.map((d, i) => grp('gr' + i, d, 0.010 + i * 0.004)))},
+        cleanings: ${JSON.stringify(cleanings)} }],
+      sessions: ${JSON.stringify(sessions)} };`);
+    win.showTab('stats');
+    win.showStatsSection('groups');
+    win.document.getElementById('stats-range').value = 'all';
+    win.populateStatsFilterDropdowns();
+    win.document.getElementById('stats-firearm').value = 'g1';
+    win.showTrendCleans = true;
+    win.renderStats();
+    return win;
+  }
+
+  const SESSIONS = [
+    { id: 's0', date: '2026-06-20', locationId: null, notes: '', rounds: { g1: 100 } },
+    { id: 's1', date: '2026-06-27', locationId: null, notes: '', rounds: { g1: 102 } },
+    { id: 's2', date: '2026-08-14', locationId: null, notes: '', rounds: { g1: 227 } },
+    { id: 's3', date: '2026-08-19', locationId: null, notes: '', rounds: { g1: 60 } },
+    // Mid-interval, and no groups on it: the rounds between two cleans are not only the
+    // rounds on the days you happened to photograph a target.
+    { id: 's4', date: '2026-07-15', locationId: null, notes: '', rounds: { g1: 270 } },
+  ];
+  const DEEP = [
+    { id: 'c0', date: '2026-06-27', type: 'deep', notes: '', when: 'after' },
+    { id: 'c1', date: '2026-08-13', type: 'deep', notes: '', when: 'after' },
+  ];
+  const marks = win => [...win.document.querySelectorAll('#stats-groups-trend .trend-clean')];
+  const labels = win => [...win.document.querySelectorAll('#stats-groups-trend .trend-clean-label')]
+    .map(e => flat(e));
+  const strip = win => win.document.querySelector('#stats-groups-trend .trend-strip');
+
+  test('a deep clean inside the plotted range draws a rule', async () => {
+    const win = await app(DEEP, SESSIONS);
+    assert.strictEqual(marks(win).length, 2);
+  });
+
+  test('a quick clean draws nothing — it bounds no interval', async () => {
+    const win = await app(DEEP.concat([
+      { id: 'c2', date: '2026-07-10', type: 'quick', notes: '', when: 'after' }]), SESSIONS);
+    assert.strictEqual(marks(win).length, 2, 'marking it would suggest it reset something');
+  });
+
+  test('the label carries the rounds that interval ran', async () => {
+    const win = await app(DEEP, SESSIONS);
+    assert.ok(labels(win).some(t => /clean · 270/.test(t)),
+      'the 27 Jun to 13 Aug interval is 270 rounds');
+  });
+
+  test('the first clean closes no interval, so its label is bare', async () => {
+    const win = await app(DEEP, SESSIONS);
+    assert.ok(labels(win).some(t => t.trim() === 'clean'),
+      'a number there would be counted from the start of the log, not from a clean');
+  });
+
+  test('a clean on a day you shot sits to the side the cleaning happened on', async () => {
+    // Half a day either way, so the rule reads as before or after the point rather than
+    // through it. 27 Jun is both a range day and a clean in this fixture.
+    const at = (win, date) => Number(marks(win).find(m => m.dataset.date === date).getAttribute('x1'));
+    const afterWin = await app(DEEP, SESSIONS);
+    const beforeWin = await app(
+      [{ ...DEEP[0], when: 'before' }, DEEP[1]], SESSIONS);
+    assert.ok(at(afterWin, '2026-06-27') > at(beforeWin, '2026-06-27'),
+      'cleaned after the shooting sits right of cleaned before it');
+  });
+
+  test('a clean on a day you did not shoot sits exactly on its date', async () => {
+    // Nothing was fired on 13 Aug, so there is no shooting to be before or after.
+    const win = await app(DEEP, SESSIONS);
+    const onQuiet = Number(marks(win).find(m => m.dataset.date === '2026-08-13').getAttribute('x1'));
+    const shifted = await app(
+      [DEEP[0], { ...DEEP[1], when: 'before' }], SESSIONS);
+    const onQuiet2 = Number(marks(shifted).find(m => m.dataset.date === '2026-08-13').getAttribute('x1'));
+    assert.strictEqual(onQuiet, onQuiet2, 'the flag has nothing to move it against');
+  });
+
+  test('the strip is drawn alongside the marks', async () => {
+    const win = await app(DEEP, SESSIONS);
+    assert.ok(strip(win), 'rounds since clean, on the same x-axis');
+  });
+
+  test('the switch takes the whole cleaning layer away, and brings it back', async () => {
+    const win = await app(DEEP, SESSIONS);
+    win.toggleTrendCleans();
+    assert.strictEqual(marks(win).length, 0);
+    assert.ok(!strip(win), 'the strip is part of the same idea');
+    win.toggleTrendCleans();
+    assert.strictEqual(marks(win).length, 2);
+    assert.ok(strip(win));
+  });
+
+  // ── THE SHAPE UNDERNEATH ──────────────────────────────────────────
+
+  const series = win => JSON.parse(win.eval(
+    'JSON.stringify(foulingSeries(data.firearms[0]).steps.map(s => [s.date, s.level]))'));
+
+  test('the count climbs at a range day and drops to zero at a clean', async () => {
+    const win = await app(DEEP, SESSIONS);
+    assert.deepStrictEqual(series(win), [
+      ['2026-06-20', 0], ['2026-06-20', 100],
+      ['2026-06-27', 100], ['2026-06-27', 202],   // shot,
+      ['2026-06-27', 202], ['2026-06-27', 0],     // then cleaned
+      ['2026-07-15', 0], ['2026-07-15', 270],
+      ['2026-08-13', 270], ['2026-08-13', 0],
+      ['2026-08-14', 0], ['2026-08-14', 227],
+      ['2026-08-19', 227], ['2026-08-19', 287],
+    ]);
+  });
+
+  test('cleaning before that day\u2019s shooting resets ahead of it, not behind', async () => {
+    const win = await app([{ ...DEEP[0], when: 'before' }, DEEP[1]], SESSIONS);
+    const s = series(win);
+    const i = s.findIndex(p => p[0] === '2026-06-27');
+    assert.deepStrictEqual(s.slice(i, i + 4),
+      [['2026-06-27', 100], ['2026-06-27', 0], ['2026-06-27', 0], ['2026-06-27', 102]],
+      'reset first, then the day’s rounds land on a fresh bore');
+  });
+
+  test('every step is a hold and a jump, never a slope between days', async () => {
+    // A line through the events would draw rounds fired on days nothing was.
+    const win = await app(DEEP, SESSIONS);
+    const s = series(win);
+    for (let i = 0; i < s.length; i += 2) {
+      assert.strictEqual(s[i][0], s[i + 1][0],
+        'each pair shares a date: flat up to it, then vertical');
+    }
+  });
+});
+
 describe('accuracy by firearm', () => {
   // Ring of shots at a fixed radius: mean radius comes out as exactly that radius, so the
   // expected MOA is computable by hand rather than read back off the implementation.

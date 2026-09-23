@@ -26,6 +26,13 @@ changes. It's noted below wherever it did.
   barrel since its last deep clean, as a span — what it carried into the day and what it carried
   out — because rounds are logged a day at a time and the groups sit somewhere inside that.
   Says when the figure is only a floor, and when nothing has been cleaned at all.
+- **Cleaning on the Groups trend chart.** A deep clean draws a dashed slate rule, labeled with
+  the rounds that interval ran, on a second label row so it never collides with a re-zero. On a
+  day you shot, the rule sits half a day to whichever side of the shooting the cleaning
+  happened on. Beneath the plot, a strip carries rounds-since-clean on the same x-axis — a step
+  shape that climbs with each range day and drops at each clean — so group size and the state
+  of the bore read on one vertical. A **Cleans** switch beside the zoom controls turns the whole
+  layer off, since marks tell you nothing if you clean after every trip.
 
 ## 7.10 — how far you go between cleans, and when you last backed up (2026-09-20)
 

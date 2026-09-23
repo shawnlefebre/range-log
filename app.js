@@ -1133,6 +1133,41 @@ function fouling(gun, dateISO) {
   };
 }
 
+// Rounds on the barrel over time: the running count since the last deep clean, climbing by a
+// session's rounds on each range day and dropping to zero at each clean. Returned as a step
+// series rather than a line through the events — sloping between them would draw rounds
+// fired on days nothing was, which is the one thing the shape exists to rule out.
+function foulingSeries(gun) {
+  const evs = [];
+  (data.sessions || []).forEach(sn => {
+    const r = sn.rounds && typeof sn.rounds === 'object' ? sn.rounds[gun.id] || 0 : 0;
+    if (r) evs.push({ date: sn.date, rounds: r, clean: false });
+  });
+  (gun.cleanings || []).forEach(c => {
+    if ((CLEANING_TYPES[c.type] || {}).resetsDeep) {
+      evs.push({ date: c.date, rounds: 0, clean: true, before: c.when === 'before' });
+    }
+  });
+  evs.sort((a, b) => {
+    const d = String(a.date).localeCompare(String(b.date));
+    if (d) return d;
+    if (a.clean === b.clean) return 0;
+    // Within one date the flag decides the order: a clean done before that day's shooting
+    // resets ahead of it, one done after resets behind it.
+    return a.clean ? (a.before ? -1 : 1) : (b.before ? 1 : -1);
+  });
+
+  let level = 0, peak = 0;
+  const steps = [];
+  evs.forEach(e => {
+    steps.push({ date: e.date, level });          // hold flat up to the event
+    level = e.clean ? 0 : level + e.rounds;
+    steps.push({ date: e.date, level });          // then step
+    if (level > peak) peak = level;
+  });
+  return { steps, peak, level };
+}
+
 // One line, two placements: the range day and a single group. Slate rather than the accent,
 // and deliberately not the clean-status ramp — a past day's fouling is context you cannot act
 // on, so it must not read as a thing needing attention.
@@ -4640,6 +4675,16 @@ const TREND_ZOOMS = [
 // closing it again puts you back where you were looking.
 let trendZoom = 'fit';
 let trendScrollLeft = 0;
+// Cleaning marks are only worth having if you don't clean after every trip — clean every time
+// and it is one rule per range day, which is both noise and uninformative, since there is no
+// dirty interval left to compare against. Rather than guess a threshold and hide them
+// silently, it's a switch.
+let showTrendCleans = true;
+
+function toggleTrendCleans() {
+  showTrendCleans = !showTrendCleans;
+  renderGroupsStats();
+}
 
 function setTrendZoom(key) {
   if (!TREND_ZOOMS.some(z => z.key === key)) return;
@@ -4696,6 +4741,9 @@ function renderGroupTrend(gun, groups) {
   const y = v => H - PB - (v / ymax) * (H - PT - PB);
 
   const ACCENT = '#c8a84b', ZERO = '#1f68bc', GRIDC = '#2e2e2e', DIM = '#8a8a8a';
+  // --mark-cal: the same slate the fouling line uses, so the mark and the figure it explains
+  // read as one idea. Distinct from the re-zero blue in hue and from the gridlines in value.
+  const CLEANC = '#6b7f8c';
   const ticks = [0, ymax / 2, ymax];
 
   // The y-axis is its own element so it never scrolls — and never scales, which a CSS
@@ -4767,6 +4815,53 @@ function renderGroupTrend(gun, groups) {
                   text-anchor="${right ? 'start' : 'end'}">${text}</text>`;
   });
 
+  // Cleaning marks. The x-axis is already real time and a cleaning is a date, so this is the
+  // same shape as a re-zero: a dashed rule with a label. Only deep and detail draw — a quick
+  // clean resets nothing, so it bounds no interval and marking it would suggest it did.
+  //
+  // On a day the firearm actually fired, the rule shifts half a day to whichever side of the
+  // shooting the clean happened on, so the mark sits visibly before or after the point rather
+  // than through it. dateMs() parses to noon, so ±12h lands on midnight either side. Half a
+  // day is about 2px at Fit and reads properly once you zoom in; it confirms the label rather
+  // than replacing it.
+  const HALF_DAY = 43200000;
+  const cleanRounds = {};
+  cleaningIntervals(gun).forEach(iv => { cleanRounds[iv.date] = iv.rounds; });
+  const cs = showTrendCleans
+    ? (gun.cleanings || [])
+        .filter(c => (CLEANING_TYPES[c.type] || {}).resetsDeep)
+        .filter(c => (!start || c.date >= start) && (!end || c.date <= end)
+          && c.date >= dates[0] && c.date <= dates[dates.length - 1])
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+        .map(c => ({
+          date: c.date,
+          at: x(dateMs(c.date) + (roundsOnDate(gun, c.date)
+            ? (c.when === 'before' ? -HALF_DAY : HALF_DAY) : 0)),
+          rounds: cleanRounds[c.date],
+        }))
+    : [];
+  cs.forEach(c => { svg += `<line class="trend-clean" data-date="${c.date}"
+    x1="${c.at}" y1="${PT - 6}" x2="${c.at}" y2="${H - PB}"
+    stroke="${CLEANC}" stroke-width="1" stroke-dasharray="2 3"/>`; });
+  // A second label row, beneath the re-zeros. Two kinds of mark can be a day apart — a clean
+  // and the re-zero you shot it in for — and at Fit zoom that is a few pixels, so sharing a
+  // row would overlap them into nonsense.
+  const cclusters = [];
+  cs.forEach(c => {
+    const last = cclusters[cclusters.length - 1];
+    if (last && c.at - last[last.length - 1].at < 64) last.push(c);
+    else cclusters.push([c]);
+  });
+  cclusters.forEach(c => {
+    const at = c[0].at;
+    const text = c.length > 1 ? `${c.length} cleans`
+      : c[0].rounds != null ? `clean · ${c[0].rounds}` : 'clean';
+    const right = at + 4 + text.length * MONO_CH < W - 4;
+    svg += `<text class="trend-clean-label" x="${right ? at + 4 : at - 4}" y="${PT + 16}"
+                  fill="${CLEANC}" font-family="IBM Plex Mono" font-size="9"
+                  text-anchor="${right ? 'start' : 'end'}">${text}</text>`;
+  });
+
   // The faint vertical bar is that day's best-to-worst range — the honest width of the
   // estimate. A trend is real when the medians move further than those bars are tall.
   days.forEach(d => {
@@ -4798,6 +4893,42 @@ function renderGroupTrend(gun, groups) {
   // tap opened one — so a firearm whose groups carry no session was told nothing, while the
   // tap worked the whole time.
   const tappable = days.length > 0;
+
+  // The fouling strip: rounds since the last deep clean, on the same x-axis directly beneath
+  // the plot, so a group's height and the state of the bore at that moment are read on one
+  // vertical. It carries the round count the marks above deliberately leave off — the marks
+  // say when you cleaned, this says how dirty it had got by then.
+  //
+  // Its own scale, not the MOA one. The threshold is the reference line because it is your
+  // own statement of what dirty means for this firearm, but the peak can exceed it, so the
+  // scale takes whichever is larger rather than clipping the shape flat.
+  // Tall enough for 9px type, which is the floor everything else on these charts is set at
+  // and the smallest the browser suite will accept. The caption takes the top band, the step
+  // shape the rest.
+  const SH = 48;
+  let stripSvg = '';
+  if (showTrendCleans) {
+    const fs = foulingSeries(gun);
+    const thresh = gun.cleanThreshold > 0 ? gun.cleanThreshold : 0;
+    const vmax = Math.max(thresh, fs.peak) * 1.05 || 1;
+    const sy = v => SH - 5 - (v / vmax) * (SH - 20);
+    const pts2 = [];
+    fs.steps.forEach(p2 => pts2.push(`${x(dateMs(p2.date))},${sy(p2.level)}`));
+    if (pts2.length) pts2.push(`${W},${sy(fs.level)}`);
+    stripSvg = `
+      <svg class="trend-strip" viewBox="0 0 ${W} ${SH}" width="${W}" height="${SH}" role="img"
+           aria-label="Rounds since the last deep clean, over the same dates">
+        ${thresh ? `<line x1="0" y1="${sy(thresh)}" x2="${W - 30}" y2="${sy(thresh)}"
+          stroke="${GRIDC}" stroke-dasharray="2 3"/>
+          <text x="${W - 25}" y="${sy(thresh) + 3}" fill="${DIM}" font-family="IBM Plex Mono"
+                font-size="9">${thresh}</text>` : ''}
+        ${pts2.length ? `<polyline class="trend-foul" fill="none" stroke="${CLEANC}"
+          stroke-width="1.5" stroke-linejoin="miter" points="${pts2.join(' ')}"/>` : ''}
+        <text x="1" y="10" fill="${DIM}" font-family="IBM Plex Mono"
+              font-size="9">rounds since clean</text>
+      </svg>`;
+  }
+
   el.innerHTML = `
     <div class="stats-chart-card">
       <div class="stats-chart-title">${M.label} over time</div>
@@ -4807,16 +4938,23 @@ function renderGroupTrend(gun, groups) {
         <div class="trend-scroll" data-pxperday="${pxPerDay}" data-pad="${PAD}" data-t0="${T0}">
           <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
                aria-label="Median ${M.lower} per range day">${svg}</svg>
+          ${stripSvg}
         </div>
       </div>
       <div class="trend-ctrl">
         ${TREND_ZOOMS.map(o => `<button type="button" class="${o.key === trendZoom ? 'on' : ''}"
           onclick="setTrendZoom('${o.key}')">${o.label}</button>`).join('')}
+        <button type="button" class="trend-toggle${showTrendCleans ? ' on' : ''}"
+          onclick="toggleTrendCleans()"
+          aria-pressed="${showTrendCleans}">${showTrendCleans ? '✓ ' : ''}Cleans</button>
         <span class="trend-readout" id="trend-readout"></span>
       </div>
       <div class="stats-note">Bold line joins each range day's <b>median</b>; every group is
         plotted faintly behind it, with the vertical bar showing that day's best to worst.${
         tappable ? ' Tap a point to open that range day.' : ''}${
+        showTrendCleans ? ` Dashed slate marks a deep clean, labeled with the rounds that
+        interval ran; the strip beneath is rounds since clean over the same dates. A mark on a
+        day you shot sits on the side of the shooting the clean happened on.` : ''}${
         dates.length < 3 ? ' Too few range days for a trend yet.' : ''}</div>
     </div>`;
 
@@ -8213,7 +8351,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.10.3';
+const APP_VERSION = '7.10.4';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

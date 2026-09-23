@@ -2311,6 +2311,9 @@
   }
   /* The plot is a drag surface; taps are resolved against point positions in JS. */
   .trend-scroll svg { pointer-events: none; display: block; }
+  /* Its own track, not more of the plot: the two share an x-axis but nothing else, and
+     without a line between them the step shape reads as another series on the MOA scale. */
+  .trend-strip { border-top: 1px solid var(--surface3); margin-top: 2px; }
 
   .trend-ctrl { display: flex; gap: 5px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
   /* The metric toggle is the same kind of choice as the trend zoom, so it is the same chip.
@@ -2328,6 +2331,14 @@
   }
   .trend-ctrl button.on,
   .metric-ctrl button.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  /* A switch, not a mode pick — the zooms choose one of four, this turns a layer on and off.
+     It takes the color of the marks it governs rather than the accent, so the control and
+     what it draws are visibly the same thing. */
+  .trend-ctrl button.trend-toggle.on {
+    background: transparent;
+    border-color: var(--mark-cal);
+    color: var(--mark-cal);
+  }
   .trend-ctrl button:focus-visible,
   .metric-ctrl button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   /* The cleaning trend fits its container instead of scrolling: a handful of points a year
