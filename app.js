@@ -4696,20 +4696,44 @@ function renderGroupTrend(gun, groups) {
 // and dropping it would quietly hide groups from a day that plainly contains them.
 let dayViewGunId = null;
 let dayViewDate = null;
+// Drilling in from the trend chart carries the filters that drew the point, so the day shows
+// what you were looking at rather than everything that happened. Cleared on every open, so a
+// day never inherits the choice made on the last one.
+let dayViewShowAll = false;
 
 function openGroupDay(gunId, dateISO) {
   const gun = data.firearms.find(g => g.id === gunId);
   if (!gun || !dateISO) return;
   dayViewGunId = gunId;
   dayViewDate = dateISO;
+  dayViewShowAll = false;
   renderGroupDay();
   openModal('modal-day');
 }
 
-// Every group this firearm shot on the day, whether or not it carries a session.
-function groupsOnDay(gun, dateISO) {
+function toggleDayShowAll() {
+  dayViewShowAll = !dayViewShowAll;
+  renderGroupDay();
+}
+
+// The groups on this day the Stats filters and scope chips actually left in play — the set
+// the trend point you tapped was drawn from. Recomputed rather than captured at tap time, so
+// it cannot drift out of step with the chips the way a stored copy would.
+//
+// null means there is no filtering to inherit, which is not the same as nothing matching: it
+// is what you get when the pane is on another firearm or none at all, and it leaves the day
+// unfiltered rather than empty.
+function dayScopeIds(gun) {
+  const { gun: scopeGun, groups } = groupsInScope();
+  if (!scopeGun || scopeGun.id !== gun.id) return null;
+  return new Set(applyGroupScope(groups).map(g => g.raw.id));
+}
+
+// Every group this firearm shot on the day, whether or not it carries a session. `allowed`
+// narrows that to the filtered set; omit it for the whole day.
+function groupsOnDay(gun, dateISO, allowed) {
   return (gun.groups || [])
-    .filter(g => g.date === dateISO)
+    .filter(g => g.date === dateISO && (!allowed || allowed.has(g.id)))
     .map(g => {
       const distIn = groupDistanceInches(g);
       const m = groupMetrics(groupToInches(g));
@@ -4727,13 +4751,22 @@ function groupsOnDay(gun, dateISO) {
 function renderGroupDay() {
   const gun = data.firearms.find(g => g.id === dayViewGunId);
   if (!gun || !dayViewDate) return;
-  const rows = groupsOnDay(gun, dayViewDate);
+  // The whole day is still needed even when the list is narrowed: it gives the total to count
+  // against, and it settles the session — which is a fact about the day, not about the subset
+  // you happen to be looking at. Picking the session from the filtered set would make "Open
+  // the full session" vanish whenever the surviving groups were the ones marked without one.
+  const all = groupsOnDay(gun, dayViewDate);
+  const allowed = dayScopeIds(gun);
+  const matching = allowed ? groupsOnDay(gun, dayViewDate, allowed) : all;
+  const hidden = all.length - matching.length;
+  const rows = dayViewShowAll ? all : matching;
 
   document.getElementById('day-title').textContent = fmtDate(dayViewDate);
-  document.getElementById('day-sub').textContent =
-    `${gun.name} · ${rows.length} group${rows.length === 1 ? '' : 's'}`;
+  document.getElementById('day-sub').textContent = hidden && !dayViewShowAll
+    ? `${gun.name} · ${rows.length} of ${all.length} groups`
+    : `${gun.name} · ${rows.length} group${rows.length === 1 ? '' : 's'}`;
 
-  const sessionId = pickSessionForDay(rows);
+  const sessionId = pickSessionForDay(all);
   const session = sessionId ? (data.sessions || []).find(s => s.id === sessionId) : null;
   const loc = session && session.locationId
     ? (data.locations || []).find(l => l.id === session.locationId) : null;
@@ -4754,7 +4787,21 @@ function renderGroupDay() {
       <div class="day-fig"><b>${median}</b><span>median MOA spread</span></div>
     </div>`;
 
-  document.getElementById('day-context').innerHTML = session
+  // Every figure below this line is drawn from the rows, so when the rows are narrowed the
+  // note has to come before them rather than after — otherwise the counts read as the whole
+  // day until you get to the explanation. Renders nothing when nothing is hidden.
+  const filterNote = hidden
+    ? `<div class="day-caveat">${dayViewShowAll
+        ? `Showing the whole day. ${hidden} of these ${hidden === 1 ? 'is' : 'are'} outside the
+           filters you were viewing.`
+        : `${hidden} more group${hidden === 1 ? '' : 's'} on this day
+           ${hidden === 1 ? 'is' : 'are'} outside the filters you're viewing.`}
+        <button type="button" class="chip chip-btn" onclick="toggleDayShowAll()">${
+          dayViewShowAll ? `Back to the ${matching.length} that match` : `Show all ${all.length}`
+        }</button></div>`
+    : '';
+
+  document.getElementById('day-context').innerHTML = filterNote + (session
     ? `<div class="day-session">
          ${loc ? `<div class="day-loc">${esc(loc.name)}</div>` : ''}
          ${session.notes ? `<div class="day-note">${esc(session.notes)}</div>` : ''}
@@ -4763,7 +4810,7 @@ function renderGroupDay() {
        ${roundsLogged ? `<div class="day-caveat"><b>Rounds logged</b> is what you recorded for
           this firearm that day; <b>shots measured</b> is what is in the groups below.</div>` : ''}`
     : `<div class="day-nosession">No session logged for this day · ${shots} shot${
-         shots === 1 ? '' : 's'} measured · median ${median} MOA spread</div>`;
+         shots === 1 ? '' : 's'} measured · median ${median} MOA spread</div>`);
 
   const best = measured.length ? Math.min(...measured) : null;
   document.getElementById('day-groups').innerHTML = rows.length
@@ -4797,7 +4844,9 @@ function renderGroupDay() {
             </div>
           </div>`;
       }).join('')
-    : '<div class="empty-state" style="padding:16px;">No groups on this day.</div>';
+    : `<div class="empty-state" style="padding:16px;">${all.length
+        ? 'No groups on this day match your filters.'
+        : 'No groups on this day.'}</div>`;
 
   document.getElementById('day-buttons').innerHTML = `
     ${session ? `<button class="btn btn-secondary" onclick="openSessionFromDay('${session.id}')">
@@ -8025,7 +8074,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.10';
+const APP_VERSION = '7.10.1';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

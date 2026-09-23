@@ -889,6 +889,92 @@ describe('the range day view', () => {
     assert.ok(!win.document.querySelector('#day-buttons .btn-secondary'),
       'a button that opens nothing is worse than no button');
   });
+
+  // ── FILTERS COME WITH YOU ─────────────────────────────────────────
+  // The day view is only ever reached by tapping a point on the trend chart, and that point
+  // was plotted from the filtered groups. Showing the whole day on arrival answered a
+  // different question from the one the chart was asking.
+
+  // Set the pane up the way a tap would find it. Order matters: renderStats() is what binds
+  // the scope to a firearm, so choosing a chip before it would be wiped by the reset.
+  async function scoped(dim, value) {
+    const win = await app();
+    // The dropdown was built from the default data at load; the fixture replaced it since.
+    win.populateStatsFilterDropdowns();
+    win.document.getElementById('stats-range').value = 'all';
+    win.document.getElementById('stats-firearm').value = 'g1';
+    win.renderStats();
+    if (dim) win.toggleGroupScope(dim, value);
+    return win;
+  }
+
+  test('a day shows only the groups the filters left in play', async () => {
+    const win = await scoped('ammo', '77gr TMK');
+    win.openGroupDay('g1', DAY);
+    assert.strictEqual(rows(win).length, 2,
+      'the third group on this day is a different load and was not on the chart');
+  });
+
+  test('the header counts what is shown against the whole day', async () => {
+    const win = await scoped('ammo', '77gr TMK');
+    win.openGroupDay('g1', DAY);
+    assert.match(flat(win.document.getElementById('day-sub')), /2 of 3 groups/,
+      'a bare "2 groups" would read as a day you only shot twice on');
+  });
+
+  test('the note says how many are hidden and offers the whole day', async () => {
+    const win = await scoped('ammo', '77gr TMK');
+    win.openGroupDay('g1', DAY);
+    const ctx = flat(win.document.getElementById('day-context'));
+    assert.match(ctx, /1 more group on this day is outside the filters/);
+    assert.match(ctx, /Show all 3/);
+  });
+
+  test('showing all brings the rest back, and can be undone', async () => {
+    const win = await scoped('ammo', '77gr TMK');
+    win.openGroupDay('g1', DAY);
+    win.toggleDayShowAll();
+    assert.strictEqual(rows(win).length, 3, 'the whole day');
+    assert.match(flat(win.document.getElementById('day-context')), /Back to the 2 that match/);
+    win.toggleDayShowAll();
+    assert.strictEqual(rows(win).length, 2, 'and back again');
+  });
+
+  test('each day opens filtered, whatever the last one was left showing', async () => {
+    const win = await scoped('ammo', '77gr TMK');
+    win.openGroupDay('g1', DAY);
+    win.toggleDayShowAll();
+    win.openGroupDay('g1', DAY);
+    assert.strictEqual(rows(win).length, 2,
+      'carrying the choice between days would make the view unpredictable');
+  });
+
+  test('rounds logged stays a fact about the day, not the filtered subset', async () => {
+    const win = await scoped('ammo', '77gr TMK');
+    win.openGroupDay('g1', DAY);
+    assert.strictEqual(fig(win, 'rounds logged'), '60', 'the session recorded 60 either way');
+    assert.strictEqual(fig(win, 'shots measured'), '10',
+      'but the measured figure counts only what is listed, or it contradicts the rows');
+  });
+
+  test('the session survives a filter that leaves only unlinked groups', async () => {
+    // Eley Target is the one group marked without a session. Picking the session from the
+    // filtered set would drop the button, though the day plainly had a session.
+    const win = await scoped('ammo', 'Eley Target');
+    win.openGroupDay('g1', DAY);
+    assert.strictEqual(rows(win).length, 1);
+    assert.ok(win.document.querySelector('#day-buttons .btn-secondary'),
+      'which session this day was is not a property of the groups you filtered to');
+  });
+
+  test('no firearm picked in Stats leaves the day whole', async () => {
+    const win = await app();
+    win.document.getElementById('stats-firearm').value = '';
+    win.openGroupDay('g1', DAY);
+    assert.strictEqual(rows(win).length, 3, 'no filtering to inherit is not the same as none matching');
+    assert.ok(!/outside the filters/.test(flat(win.document.getElementById('day-context'))),
+      'and nothing to explain');
+  });
 });
 
 // ── GROUPS SCOPE ────────────────────────────────────────────────────

@@ -11,7 +11,11 @@ changes. It's noted below wherever it did.
 
 ## Unreleased
 
-_Nothing yet._
+- Drilling into a range day from the Groups trend chart now shows the groups that match
+  the filters you were viewing, rather than everything shot that day. The header counts
+  what is shown against the day's total, and a note says how many are hidden with a tap to
+  see the whole day. Rounds logged and the session stay day-level facts and are not
+  filtered.
 
 ## 7.10 — how far you go between cleans, and when you last backed up (2026-09-20)
 

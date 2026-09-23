@@ -1863,6 +1863,9 @@
     border-left: 2px solid var(--surface3);
     padding-left: 9px;
   }
+  /* The note carries an action, unlike every other caveat, so the button needs to clear the
+     text rather than sit inline with it. */
+  .day-caveat .chip-btn { margin-top: 7px; }
   .day-nosession {
     font-family: var(--font-mono);
     font-size: 0.62rem;
