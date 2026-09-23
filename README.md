@@ -8,7 +8,8 @@ your phone like a native app, with no account, no ads, and no data ever leaving 
 **Tracks:**
 - 🔫 Firearms — type, caliber(s), round counts, and clean-interval thresholds
 - 📅 Range sessions — date, location, rounds fired per firearm, notes
-- 🧼 Cleaning history — quick / deep / detail-strip, with automatic round-count resets
+- 🧼 Cleaning history — quick / deep / detail-strip, with automatic round-count resets, and
+  barrel fouling carried onto the group charts
 - 🎯 Zeros — distance, ammo, optic, and notes per firearm
 - 🎯 Target groups — photograph a target, mark the shots, get group size in inches, MOA and MRAD
 - 📐 Dope tables — come-ups per firearm and load, entered by hand, in MOA or mils
@@ -215,8 +216,14 @@ of your log rather than from a previous clean, so for a firearm you owned before
 logging it's a floor, not a measurement. That's why *n* deep cleans give *n−1* points, and the
 chart says so rather than leaving you to work it out.
 
-A range day you cleaned on counts toward the interval *ending* there, not the one starting from
-it — the app assumes you clean after shooting, the same rule "rounds since clean" already follows.
+A range day you cleaned on belongs to one interval or the other, and the app records which
+rather than assuming. Log a cleaning on a day you've already logged a session and it asks,
+defaulting to *after the day's shooting*; log one on a day with nothing fired yet and it takes
+*before* without asking, since sessions go in at the range — a day with nothing on it is a day
+you haven't shot, so you cleaned and then went out. The choice reappears whenever you open a
+cleaning that turns out to share a date with a session, so a trip logged late can still be put
+right. It matters more than it sounds: on a 102-round day it's the difference between a
+292-round interval and a 190-round one.
 
 **A stretch with no range day in it is left out**, and the note says how many. Two cleans with
 nothing fired between them is a true fact about your log and a false one about your habit —
@@ -246,12 +253,36 @@ Tapping a point opens that **range day**: location, your session note, the day's
 tightest-first with the best marked, and a way through to the full session. It's keyed on the
 date rather than the session, so a group you never linked still shows up. Two figures sit at the
 top — **rounds logged** is what you recorded for that firearm that day, **shots measured** is
-what's actually in the groups below.
+what's actually in the groups below. The day inherits whatever filters and scope chips drew the
+point you tapped, so it answers the question the chart was asking; when that hides anything, the
+header counts what's shown against the day's total and a note offers the whole day.
+
+**Barrel fouling** sits alongside, on the range day and on a single group: how many rounds were
+on the barrel since its last deep clean. It's a span — what the barrel carried into the day and
+what it carried out — because rounds are logged a day at a time, so the groups fired that day sit
+somewhere inside it and a single figure would be picking one end. Where nothing was cleaned
+before that day the count runs from the start of your log, and it says so with a `+` rather than
+passing a floor off as a measurement.
 
 **Re-zero marks are always drawn**, whatever time range you're on, because point of impact before
 and after a zero aren't the same measurement. The time range picker offers your zeros as anchors:
 **Since last zero**, and each earlier one. Groups dated the same day as a zero count as *after*
 it.
+
+**Cleaning marks** draw the same way, in slate rather than blue: the x-axis is already real time
+and a cleaning is a date. Each is labeled with the rounds that interval ran, so the round count
+rides in the label instead of cluttering the plot, and the labels take a second row so a clean
+and a re-zero a day apart don't overlap into nonsense. A mark on a day you shot sits half a day
+to whichever side of the shooting the cleaning happened on. Only deep and detail-strip draw — a
+quick clean resets nothing, so marking it would suggest it did.
+
+Beneath the plot, a strip carries **rounds since clean** over the same dates: a step that climbs
+with each range day and drops to zero at each clean, so group size and the state of the bore read
+on one vertical. It's drawn as steps rather than a line through the events, because sloping
+between them would show rounds fired on days nothing was. The **Cleans** switch beside the zoom
+controls turns the whole layer off — clean after every trip and the marks are one rule per range
+day, which is noise, and uninformative besides, since no dirty interval is left to compare
+against.
 
 **Comparing firearms.** Leave the firearm filter on **All Firearms** and the pane compares them
 instead. Each sits at its group size in MOA, averaged across its groups, with a bar showing the
