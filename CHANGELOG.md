@@ -16,6 +16,12 @@ changes. It's noted below wherever it did.
   what is shown against the day's total, and a note says how many are hidden with a tap to
   see the whole day. Rounds logged and the session stay day-level facts and are not
   filtered.
+- Cleanings record which side of the day's shooting they happened on. Logged on a day nothing
+  has been shot yet, a cleaning is recorded as *before* — clean in the morning, log the session
+  at the range later, and the rounds land on the right side of it. Logged after a trip, it asks
+  and defaults to *after*. The choice shows up when you review a cleaning that turns out to
+  share a date with a session, so a late-logged trip can be corrected. **Schema v17** — every
+  existing cleaning is stamped *after*, which is what the app assumed before, so no figure moves.
 
 ## 7.10 — how far you go between cleans, and when you last backed up (2026-09-20)
 

@@ -23,7 +23,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.10.1</span>
+    <span id="app-version">v7.10.2</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -324,7 +324,7 @@
         <button class="btn btn-danger" style="width:100%;" onclick="openDeleteAllModal()">Delete All Data</button>
       </div>
     </div>
-    <div class="schema-badge">Data schema v16 · Range Log</div>
+    <div class="schema-badge">Data schema v17 · Range Log</div>
   </section>
 </div>
 
@@ -547,7 +547,17 @@
     <input type="hidden" id="cleaning-edit-id">
     <div class="form-group">
       <label>Date</label>
-      <input type="date" id="cleaning-date">
+      <input type="date" id="cleaning-date" onchange="renderCleaningWhen()">
+    </div>
+    <!-- Only meaningful on a day the firearm actually fired, so it appears and hides with
+         that fact rather than sitting there asking about shooting that never happened. -->
+    <div class="form-group" id="cleaning-when-field" style="display:none;">
+      <label>This was</label>
+      <select id="cleaning-when">
+        <option value="after" selected>After the day's shooting</option>
+        <option value="before">Before the day's shooting</option>
+      </select>
+      <div class="group-hint" id="cleaning-when-note"></div>
     </div>
     <div class="form-group">
       <label>Cleaning type</label>

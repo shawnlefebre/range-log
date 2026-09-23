@@ -130,6 +130,28 @@ describe('schema migration', () => {
     assert.strictEqual(migrated.firearms[0].notes, '', 'notes should default to empty string, not crash');
   });
 
+  test('v16 cleanings are stamped "after", the rule that was assumed before v17', () => {
+    // The whole point of the default: a file migrated to v17 must report exactly the same
+    // interval it reported at v16. Stamping 'before' instead would silently restate every
+    // figure the user has already read.
+    const v16 = {
+      schemaVersion: 16, isDemo: false,
+      firearms: [{ id: 'g1', name: 'Rifle', type: 'rifle', calibers: ['.223 Rem'],
+        cleanThreshold: 300, totalRounds: 0, notes: '', zeros: [], dope: [], groups: [],
+        cleanings: [{ id: 'c0', date: '2026-01-01', type: 'deep', notes: '' },
+                    { id: 'c1', date: '2026-03-01', type: 'deep', notes: '' }] }],
+      locations: [], sellers: [], ammo: [],
+      sessions: [{ id: 's0', date: '2026-03-01', locationId: null, notes: '', rounds: { g1: 90 } }],
+    };
+    const migrated = win.migrateData(JSON.parse(JSON.stringify(v16)));
+    assert.strictEqual(migrated.schemaVersion, CURRENT);
+    assert.deepStrictEqual(migrated.firearms[0].cleanings.map(c => c.when), ['after', 'after']);
+    win.eval('data = ' + JSON.stringify(migrated) + ';');
+    assert.deepStrictEqual(
+      JSON.parse(win.eval('JSON.stringify(cleaningIntervals(data.firearms[0]).map(i => i.rounds))')),
+      [90], 'the session on the closing clean still belongs to the interval it closes');
+  });
+
   test('v6 data (pre-isDemo) migrates and stays non-demo', () => {
     const v6 = {
       schemaVersion: 6,
@@ -1430,7 +1452,8 @@ describe('rounds between cleans', () => {
           opticUnit: 'moa', cleanThreshold: ${threshold}, totalRounds: 0, notes: '',
           zeros: [], dope: [], groups: [],
           cleanings: ${JSON.stringify(cleanings.map((c, i) => ({
-            id: `c${i}`, date: c.date, type: c.type, notes: '' })))} }],
+            id: `c${i}`, date: c.date, type: c.type, notes: '',
+            when: c.when || 'after' })))} }],
         sessions: ${JSON.stringify(sessions.map((s, i) => ({
           id: `s${i}`, date: s.date, locationId: null, notes: '',
           rounds: { g1: s.rounds } })))} };`);
@@ -1459,6 +1482,54 @@ describe('rounds between cleans', () => {
       [{ date: '2026-02-01', rounds: 120 }, { date: '2026-02-15', rounds: 80 },
        { date: '2026-04-01', rounds: 300 }]);
     assert.deepStrictEqual(ivs(win), [200, 300]);
+  });
+
+  // ── WHICH SIDE OF THE DAY ──────────────────────────────────────────
+  // A clean on a day the firearm fired belongs on one side of that shooting or the other,
+  // and which one moves real figures: on the user's own rifle it is the difference between
+  // a 292-round interval and a 190-round one.
+
+  test('a clean logged after the day\u2019s shooting claims that day\u2019s rounds', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep', when: 'after' },
+       { date: '2026-05-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 120 }, { date: '2026-03-01', rounds: 100 },
+       { date: '2026-04-01', rounds: 300 }]);
+    assert.deepStrictEqual(ivs(win), [220, 300], 'the 100 closes the first interval');
+  });
+
+  test('a clean logged before it hands that day to the next interval', async () => {
+    const win = await app(
+      [{ date: '2026-01-01', type: 'deep' }, { date: '2026-03-01', type: 'deep', when: 'before' },
+       { date: '2026-05-01', type: 'deep' }],
+      [{ date: '2026-02-01', rounds: 120 }, { date: '2026-03-01', rounds: 100 },
+       { date: '2026-04-01', rounds: 300 }]);
+    assert.deepStrictEqual(ivs(win), [120, 400], 'the 100 opens the second interval instead');
+  });
+
+  test('a session on a boundary is claimed once, whichever side it falls', async () => {
+    // The failure this guards is silent either way: counted twice and every total inflates,
+    // counted by neither and rounds vanish between two adjacent intervals.
+    const sessions = [{ date: '2026-02-01', rounds: 120 }, { date: '2026-03-01', rounds: 100 },
+                      { date: '2026-04-01', rounds: 300 }];
+    const cleans = w => [{ date: '2026-01-01', type: 'deep' },
+                         { date: '2026-03-01', type: 'deep', when: w },
+                         { date: '2026-05-01', type: 'deep' }];
+    const after = ivs(await app(cleans('after'), sessions));
+    const before = ivs(await app(cleans('before'), sessions));
+    const sum = a => a.reduce((x, y) => x + y, 0);
+    assert.strictEqual(sum(after), sum(before), 'the same rounds, split differently');
+    assert.strictEqual(sum(after), 520, 'and every round between the outer cleans is in there');
+  });
+
+  test('rounds since the last clean follow the same rule', async () => {
+    const shot = [{ date: '2026-05-01', rounds: 75 }];
+    const afterWin = await app([{ date: '2026-05-01', type: 'deep', when: 'after' }], shot);
+    assert.strictEqual(Number(afterWin.eval('computeRoundsSinceClean(data.firearms[0])')), 0,
+      'cleaned after shooting leaves the barrel fresh');
+    const beforeWin = await app([{ date: '2026-05-01', type: 'deep', when: 'before' }], shot);
+    assert.strictEqual(Number(beforeWin.eval('computeRoundsSinceClean(data.firearms[0])')), 75,
+      'cleaned before shooting means the day is already on it');
   });
 
   test('the first deep clean closes nothing, so n cleans give n-1 points', async () => {
@@ -1763,6 +1834,123 @@ describe('rounds between cleans', () => {
       .map(g => cleaningIntervals(g).length))`);
     assert.ok(worst >= 3,
       `every demo firearm needs enough deep cleans to read a trend from, got ${worst}`);
+  });
+});
+
+// ── WHEN A CLEANING HAPPENED, RELATIVE TO THE SHOOTING ──────────────
+// The question is only asked on a day the firearm actually fired. On any other day it has no
+// referent, so the control hides and the record takes the answer that matches how the log is
+// kept: sessions go in at the range, so a day with nothing on it yet is a day not yet shot.
+
+describe('which side of the day a cleaning happened on', () => {
+  const SHOT = '2026-05-01';      // 75 rounds through this firearm
+  const QUIET = '2026-05-02';     // nothing fired
+
+  async function app() {
+    const win = await ready(loadApp());
+    win.eval(`data = { schemaVersion: buildDefaultData().schemaVersion, isDemo: false,
+      locations: [], sellers: [], ammo: [],
+      firearms: [{ id: 'g1', name: 'Rifle', type: 'rifle', calibers: ['.223 Rem'],
+        opticUnit: 'moa', cleanThreshold: 300, totalRounds: 75, notes: '',
+        zeros: [], dope: [], groups: [],
+        cleanings: [{ id: 'c0', date: '${SHOT}', type: 'deep', notes: '', when: 'after' },
+                    { id: 'c1', date: '${QUIET}', type: 'quick', notes: '', when: 'before' }] }],
+      sessions: [{ id: 's0', date: '${SHOT}', locationId: null, notes: '',
+                   rounds: { g1: 75 } }] };`);
+    return win;
+  }
+
+  const shown = win => win.document.getElementById('cleaning-when-field').style.display !== 'none';
+  const setDate = (win, d) => {
+    win.document.getElementById('cleaning-date').value = d;
+    win.renderCleaningWhen();
+  };
+  const cleanings = win => JSON.parse(win.eval('JSON.stringify(data.firearms[0].cleanings)'));
+  const newest = win => cleanings(win).find(c => c.id !== 'c0' && c.id !== 'c1');
+
+  test('nothing fired that day means nothing to ask about', async () => {
+    const win = await app();
+    win.openLogCleaning('g1');
+    setDate(win, QUIET);
+    assert.ok(!shown(win), 'before or after what?');
+  });
+
+  test('rounds that day bring the question up, and say how many', async () => {
+    const win = await app();
+    win.openLogCleaning('g1');
+    setDate(win, SHOT);
+    assert.ok(shown(win));
+    assert.match(flat(win.document.getElementById('cleaning-when-note')), /75 rounds/,
+      'the count is what makes the question answerable');
+  });
+
+  test('changing the date turns the question on and off', async () => {
+    // A control left over from the previous date would be answering about the wrong day.
+    const win = await app();
+    win.openLogCleaning('g1');
+    setDate(win, SHOT);
+    assert.ok(shown(win));
+    setDate(win, QUIET);
+    assert.ok(!shown(win));
+    setDate(win, SHOT);
+    assert.ok(shown(win));
+  });
+
+  test('a clean logged on a day with nothing shot yet records "before"', async () => {
+    // The one that has to just work: clean in the morning, log the session at the range
+    // later, and the rounds land on the right side without going back to fix it.
+    const win = await app();
+    win.openLogCleaning('g1');
+    setDate(win, QUIET);
+    win.saveCleaning();
+    assert.strictEqual(newest(win).when, 'before');
+  });
+
+  test('a clean logged after a trip defaults to "after"', async () => {
+    const win = await app();
+    win.openLogCleaning('g1');
+    setDate(win, SHOT);
+    win.saveCleaning();
+    assert.strictEqual(newest(win).when, 'after');
+  });
+
+  test('and can be told otherwise', async () => {
+    const win = await app();
+    win.openLogCleaning('g1');
+    setDate(win, SHOT);
+    win.document.getElementById('cleaning-when').value = 'before';
+    win.saveCleaning();
+    assert.strictEqual(newest(win).when, 'before');
+  });
+
+  test('reviewing a clean shows what was recorded, not the default', async () => {
+    const win = await app();
+    win.eval("data.firearms[0].cleanings[0].when = 'before';");
+    win.openLogCleaning('g1', 'c0');
+    assert.ok(shown(win), 'a session on that date is what brings it up');
+    assert.strictEqual(win.document.getElementById('cleaning-when').value, 'before');
+  });
+
+  test('editing a clean on a quiet day leaves its answer alone', async () => {
+    // The control is hidden, so there is nothing to read a value from — and overwriting with
+    // the visible default would quietly restate a choice the user made earlier.
+    const win = await app();
+    win.openLogCleaning('g1', 'c1');
+    assert.ok(!shown(win));
+    win.document.getElementById('cleaning-notes').value = 'bore snake only';
+    win.saveCleaning();
+    const c = cleanings(win).find(x => x.id === 'c1');
+    assert.strictEqual(c.when, 'before', 'untouched');
+    assert.strictEqual(c.notes, 'bore snake only', 'while the edit still landed');
+  });
+
+  test('the recorded answer drives the figure, not just the form', async () => {
+    const win = await app();
+    win.openLogCleaning('g1', 'c0');
+    win.document.getElementById('cleaning-when').value = 'before';
+    win.saveCleaning();
+    assert.strictEqual(Number(win.eval('computeRoundsSinceClean(data.firearms[0])')), 75,
+      'cleaning before the day means the day is already on the barrel');
   });
 });
 

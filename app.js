@@ -40,7 +40,12 @@
 //      so a restored backup without its bundle loses them silently. Timestamps rather than a
 //      counter of unsaved changes, which would be a stored number free to drift; these are
 //      records of when a thing happened, and the comparison between them is computed.
-const SCHEMA_VERSION = 16;
+// v17: cleaning.when added — 'before' | 'after', which side of that day's shooting the
+//      cleaning happened on. Only meaningful when the firearm actually fired that day;
+//      inert otherwise, and stored anyway so it is there if a session is logged later.
+//      Every pre-existing cleaning is stamped 'after', which is the rule the app applied
+//      globally before this existed, so no figure moves across the migration.
+const SCHEMA_VERSION = 17;
 
 // The sentinel value for the "type your own" entry in every picker that offers one —
 // calibers, ammo, optics, tags. These once used two different sentinels, so forms that look
@@ -247,6 +252,9 @@ function generateDemoData() {
         date: toISO(d.getFullYear(), d.getMonth(), d.getDate()),
         type: (ci % 2 === 0) ? 'deep' : 'quick',
         notes: '',
+        // Matches what the v17 migration stamps on real records, so demo data and migrated
+        // data read the same rather than exercising a path a real file never takes.
+        when: 'after',
       });
     });
   });
@@ -727,6 +735,16 @@ function migrateData(d) {
     d.schemaVersion = 16;
   }
 
+  // v16 -> v17: which side of the day's shooting a cleaning happened on. 'after' for every
+  // existing entry, because that is what roundsBetween() assumed for all of them — migrating
+  // to anything else would silently restate intervals the user has already read.
+  if (d.schemaVersion === 16) {
+    d.firearms.forEach(gun => {
+      (gun.cleanings || []).forEach(c => { if (!c.when) c.when = 'after'; });
+    });
+    d.schemaVersion = 17;
+  }
+
   // Defensive: ensure every gun has cleanings + zeros + calibers arrays, and ammo + sellers exist
   d.firearms.forEach(gun => {
     if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
@@ -997,37 +1015,65 @@ function totalRoundsAll() { return data.firearms.reduce((s,g) => s + (g.totalRou
 function totalSessions() { return data.sessions.length; }
 
 // Last deep clean = most recent cleaning whose type resets deep counter (deep or detail)
-function lastDeepCleanDate(gun) {
+function lastDeepClean(gun) {
   const resets = (gun.cleanings || []).filter(c => CLEANING_TYPES[c.type]?.resetsDeep);
   if (!resets.length) return null;
-  return resets.reduce((latest, c) => c.date > latest ? c.date : latest, resets[0].date);
+  return resets.reduce((latest, c) => c.date > latest.date ? c : latest, resets[0]);
+}
+function lastDeepCleanDate(gun) {
+  const c = lastDeepClean(gun);
+  return c ? c.date : null;
 }
 
 // Last cleaning of ANY kind (quick, deep, or detail) — a deep/detail clean also
 // satisfies "at least a quick clean was done," so this is just the most recent entry overall.
-function lastAnyCleanDate(gun) {
+function lastAnyClean(gun) {
   const all = gun.cleanings || [];
   if (!all.length) return null;
-  return all.reduce((latest, c) => c.date > latest ? c.date : latest, all[0].date);
+  return all.reduce((latest, c) => c.date > latest.date ? c : latest, all[0]);
+}
+function lastAnyCleanDate(gun) {
+  const c = lastAnyClean(gun);
+  return c ? c.date : null;
 }
 
-// Shared: sum session rounds for this gun in (after, through]. Open at the bottom, closed at
-// the top — both ends follow the same rule, that you clean after shooting, so a session on a
-// cleaning date belongs to the interval ending at that clean rather than the one starting
-// from it. null at either end means unbounded there.
-function roundsBetween(gun, after, through) {
+// Rounds this firearm fired on one date. What makes "before or after the shooting" a real
+// question rather than an empty one — and the same test decides whether to ask it.
+function roundsOnDate(gun, dateISO) {
+  if (!gun || !dateISO) return 0;
+  return data.sessions.reduce((sum, s) =>
+    sum + (s.date === dateISO && s.rounds ? (s.rounds[gun.id] || 0) : 0), 0);
+}
+
+// Whether a cleaning claims the rounds fired on its own date. Cleaning after shooting — the
+// default, and what the app assumed globally before v17 — puts that day behind the clean;
+// cleaning before shooting puts it ahead. Anything unset reads as 'after', so a record that
+// somehow escaped the migration still behaves the way it used to.
+function cleanTakesOwnDay(c) { return !c || c.when !== 'before'; }
+
+// Shared: sum session rounds for this gun between two cleanings, either of which may be null
+// for "unbounded that way". Which side of a clean its own day's rounds fall on is recorded
+// per cleaning rather than assumed, so the boundary tests read the flag.
+//
+// The two ends are deliberately complementary: a session dated on a boundary is claimed by
+// exactly one of the intervals that meet there — never both, which would double-count it,
+// and never neither, which would lose it between two adjacent intervals.
+function roundsBetween(gun, from, to) {
+  const fromDate = from && from.date, toDate = to && to.date;
+  const fromOwns = cleanTakesOwnDay(from);   // 'after': its day is behind it, not ours
+  const toOwns = cleanTakesOwnDay(to);       // 'after': its day is behind it, so ours
   return data.sessions.reduce((sum, s) => {
-    if (after && s.date <= after) return sum;
-    if (through && s.date > through) return sum;
+    if (fromDate && (fromOwns ? s.date <= fromDate : s.date < fromDate)) return sum;
+    if (toDate && (toOwns ? s.date > toDate : s.date >= toDate)) return sum;
     const r = s.rounds && typeof s.rounds === 'object' ? s.rounds[gun.id] || 0 : 0;
     return sum + r;
   }, 0);
 }
 
-// Sum session rounds for this gun dated strictly after `sinceDate`.
-// Same-day sessions don't count (assumes you cleaned after shooting). null sinceDate = count all.
-function roundsSinceDate(gun, sinceDate) {
-  return roundsBetween(gun, sinceDate, null);
+// Sum session rounds for this gun since a cleaning. A null cleaning counts everything, which
+// is what "never cleaned" should mean.
+function roundsSinceClean(gun, cleaning) {
+  return roundsBetween(gun, cleaning, null);
 }
 
 // Every *completed* cleaning interval for a firearm: the rounds fired between one clean that
@@ -1048,21 +1094,20 @@ function cleaningIntervals(gun) {
       date: resets[i].date,
       from: resets[i - 1].date,
       type: resets[i].type,
-      rounds: roundsBetween(gun, resets[i - 1].date, resets[i].date),
+      rounds: roundsBetween(gun, resets[i - 1], resets[i]),
     });
   }
   return out;
 }
 
-// Rounds since clean = sum of session rounds for this gun where session.date > lastDeepCleanDate
-// Same-day sessions don't count (assumes you cleaned after shooting)
+// Rounds since the last deep clean — the figure the threshold is measured against.
 function computeRoundsSinceClean(gun) {
-  return roundsSinceDate(gun, lastDeepCleanDate(gun));
+  return roundsSinceClean(gun, lastDeepClean(gun));
 }
 
 // Rounds since the last cleaning of any kind (quick, deep, or detail)
 function computeRoundsSinceQuickClean(gun) {
-  return roundsSinceDate(gun, lastAnyCleanDate(gun));
+  return roundsSinceClean(gun, lastAnyClean(gun));
 }
 
 function cleanStatus(gun) {
@@ -1730,17 +1775,36 @@ function openLogCleaning(gunId, cleaningId) {
       document.getElementById('cleaning-date').value = c.date;
       document.getElementById('cleaning-type').value = c.type;
       document.getElementById('cleaning-notes').value = c.notes || '';
+      document.getElementById('cleaning-when').value = c.when === 'before' ? 'before' : 'after';
     }
   } else {
     document.getElementById('cleaning-date').value = today();
     document.getElementById('cleaning-type').value = 'deep';
     document.getElementById('cleaning-notes').value = '';
+    // What the control shows if the day turns out to have shooting on it. The other case —
+    // a day with nothing logged yet — never shows the control and is settled in saveCleaning.
+    document.getElementById('cleaning-when').value = 'after';
   }
+  renderCleaningWhen();
   if (document.getElementById('modal-history').classList.contains('open')) {
     restoreHistoryGunId = gunId;
     closeModal('modal-history');
   }
   openModal('modal-cleaning');
+}
+
+// Show the before/after control only on a day this firearm actually fired. Re-run whenever
+// the date changes, since changing the date is exactly what turns the question on or off —
+// and a control left over from the previous date would be answering about the wrong day.
+function renderCleaningWhen() {
+  const field = document.getElementById('cleaning-when-field');
+  if (!field) return;
+  const gun = data.firearms.find(g => g.id === document.getElementById('cleaning-gun-id').value);
+  const rounds = roundsOnDate(gun, document.getElementById('cleaning-date').value);
+  field.style.display = rounds ? '' : 'none';
+  document.getElementById('cleaning-when-note').textContent = rounds
+    ? `${rounds} round${rounds === 1 ? '' : 's'} logged through this firearm that day.`
+    : '';
 }
 
 function saveCleaning() {
@@ -1755,11 +1819,22 @@ function saveCleaning() {
   if (!gun) return;
   if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
 
+  // Asked only when there was shooting that day. Otherwise a new cleaning is recorded as
+  // 'before': you log the session at the range, so a day with no rounds on it yet is a day
+  // you have not shot — you cleaned and then went out. Storing that now rather than leaving
+  // it unset means a session logged afterwards lands on the right side of the clean without
+  // you having to come back to it. Editing keeps what is stored rather than restamping it.
+  const asked = document.getElementById('cleaning-when-field').style.display !== 'none';
+  const picked = document.getElementById('cleaning-when').value === 'before' ? 'before' : 'after';
+
   if (editId) {
     const c = gun.cleanings.find(c => c.id === editId);
-    if (c) { c.date = date; c.type = type; c.notes = notes; }
+    if (c) {
+      c.date = date; c.type = type; c.notes = notes;
+      c.when = asked ? picked : (c.when || 'after');
+    }
   } else {
-    gun.cleanings.push({ id: uid(), date, type, notes });
+    gun.cleanings.push({ id: uid(), date, type, notes, when: asked ? picked : 'before' });
   }
   save(data);
   closeModal('modal-cleaning');
@@ -8074,7 +8149,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.10.1';
+const APP_VERSION = '7.10.2';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
