@@ -11,6 +11,10 @@ changes. It's noted below wherever it did.
 
 ## Unreleased
 
+_Nothing yet._
+
+## 7.11 — how dirty the barrel was when you shot that group (2026-10-02)
+
 - Drilling into a range day from the Groups trend chart now shows the groups that match
   the filters you were viewing, rather than everything shot that day. The header counts
   what is shown against the day's total, and a note says how many are hidden with a tap to
