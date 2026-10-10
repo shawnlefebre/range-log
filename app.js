@@ -7041,19 +7041,28 @@ function gBindStage() {
     const r = gCanvas().getBoundingClientRect();
     return { x: (a.x + b.x) / 2 - r.left, y: (a.y + b.y) / 2 - r.top };
   };
+  const armPinch = () => {
+    const [a, b] = [...pointers.values()];
+    const mid = midInCanvas(a, b);
+    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), scale: G.view.scale, norm: gScreenToNorm(mid) };
+  };
 
   // iOS scrolls the page from a touch that began here unless we swallow it outright.
   stage.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
   stage.addEventListener('pointerdown', e => {
     if (!G || !G.img) return;
-    stage.setPointerCapture(e.pointerId);
+    // A primary pointerdown means nothing else is touching the screen, so anything still in the
+    // map is a ghost from a release we never saw — iOS drops the pointerup when a touch ends off
+    // the element or capture is lost mid-gesture. Left behind, one finger reads as two and a
+    // drag zooms wildly, two fingers read as three and nothing moves at all, until a reload
+    // rebuilds the map. Clearing on a fresh gesture keeps it self-healing instead.
+    if (e.isPrimary) { pointers.clear(); pinch = null; }
+    // Throws if the pointer is already gone; losing capture is survivable, dropping the rest
+    // of this handler is not — the finger would never make it into the map.
+    try { stage.setPointerCapture(e.pointerId); } catch (_) {}
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.size === 2) {
-      const [a, b] = [...pointers.values()];
-      const mid = midInCanvas(a, b);
-      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), scale: G.view.scale, norm: gScreenToNorm(mid) };
-    }
+    if (pointers.size === 2) armPinch();
   });
 
   stage.addEventListener('pointermove', e => {
@@ -7065,7 +7074,8 @@ function gBindStage() {
       G.view.ox += e.clientX - prev.x;
       G.view.oy += e.clientY - prev.y;
       gDrawCanvas();
-    } else if (pointers.size === 2 && pinch) {
+    } else if (pointers.size === 2) {
+      if (!pinch) { armPinch(); return; }
       const [a, b] = [...pointers.values()];
       const dd = Math.hypot(a.x - b.x, a.y - b.y);
       const base = gBaseScale();
@@ -7078,12 +7088,14 @@ function gBindStage() {
     }
   });
 
+  const releaseStage = e => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = null;
+  };
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
-    stage.addEventListener(ev, e => {
-      pointers.delete(e.pointerId);
-      if (pointers.size < 2) pinch = null;
-    })
-  );
+    stage.addEventListener(ev, releaseStage));
+  // Window too: a finger lifted outside the stage never delivers pointerup to it.
+  ['pointerup', 'pointercancel'].forEach(ev => window.addEventListener(ev, releaseStage));
 
   stage.addEventListener('wheel', e => {
     if (!G || !G.img) return;
@@ -7581,19 +7593,23 @@ function gBindPlotGestures() {
     };
   };
 
+  const armPinch = () => {
+    const [a, b] = [...pts.values()];
+    pinch = {
+      d: Math.hypot(a.x - b.x, a.y - b.y),
+      w: gPlotVB.w,
+      u: toUser((a.x + b.x) / 2, (a.y + b.y) / 2),
+    };
+  };
+
   svg.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
   svg.addEventListener('pointerdown', e => {
-    svg.setPointerCapture(e.pointerId);
+    // See gBindStage: purge ghosts left by a pointerup we never received.
+    if (e.isPrimary) { pts.clear(); pinch = null; }
+    try { svg.setPointerCapture(e.pointerId); } catch (_) {}
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pts.size === 2) {
-      const [a, b] = [...pts.values()];
-      pinch = {
-        d: Math.hypot(a.x - b.x, a.y - b.y),
-        w: gPlotVB.w,
-        u: toUser((a.x + b.x) / 2, (a.y + b.y) / 2),
-      };
-    }
+    if (pts.size === 2) armPinch();
   });
 
   svg.addEventListener('pointermove', e => {
@@ -7606,7 +7622,8 @@ function gBindPlotGestures() {
       gPlotVB.x -= (e.clientX - prev.x) / r.width * gPlotVB.w;
       gPlotVB.y -= (e.clientY - prev.y) / r.height * gPlotVB.h;
       gApplyPlotView();
-    } else if (pts.size === 2 && pinch) {
+    } else if (pts.size === 2) {
+      if (!pinch) { armPinch(); return; }
       const [a, b] = [...pts.values()];
       const dd = Math.hypot(a.x - b.x, a.y - b.y);
       const w = gClampPlotW(pinch.w * (pinch.d / dd));
@@ -7618,12 +7635,13 @@ function gBindPlotGestures() {
     }
   });
 
+  const releasePlot = e => {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+  };
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
-    svg.addEventListener(ev, e => {
-      pts.delete(e.pointerId);
-      if (pts.size < 2) pinch = null;
-    })
-  );
+    svg.addEventListener(ev, releasePlot));
+  ['pointerup', 'pointercancel'].forEach(ev => window.addEventListener(ev, releasePlot));
 
   svg.addEventListener('wheel', e => {
     e.preventDefault();
@@ -8420,7 +8438,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.11';
+const APP_VERSION = '7.11.1';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

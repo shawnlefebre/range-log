@@ -27,6 +27,7 @@ const SUITES = [
   ['multigroup-check', 'several groups on one photo, shared calibration and photo'],
   ['photo-share-check', 'shared photo reference counting, camera icon, restoring a lost photo'],
   ['impact-remove-check', 'removing one impact: crosshair targeting, undo, zoom precision'],
+  ['pinch-ghost-check', 'photo pan and zoom survive a dropped pointerup'],
   ['dope-check', 'dope tables: unit conversion, view mode, persistence, card cap'],
   ['zero-check', 'zeros: tap to view read-only, edit, add without inheriting view mode'],
   ['ammo-view-check', 'ammo purchases: tap to view, edit, card buttons stay independent'],

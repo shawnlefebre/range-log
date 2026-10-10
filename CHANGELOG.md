@@ -11,7 +11,13 @@ changes. It's noted below wherever it did.
 
 ## Unreleased
 
-_Nothing yet._
+- Fixed pan and zoom on the group photo getting stuck. A finger whose release the page never
+  heard about — a touch ending off the photo, or capture lost mid-gesture — stayed on the books
+  as if it were still down, so one finger was read as a pinch and dragging zoomed erratically,
+  while a real two-finger pinch was read as three fingers and did nothing. It persisted until
+  the app was reloaded. A new gesture now clears any finger left behind, releases are heard
+  even when they land outside the photo, and a pinch re-arms when a third finger lifts. The
+  group plot had the same handling and got the same fix.
 
 ## 7.11 — how dirty the barrel was when you shot that group (2026-10-02)
 
