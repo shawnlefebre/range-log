@@ -161,7 +161,8 @@ diameter as you mark, so it sits over the hole like a lid. For which figure to t
 - **A mistyped reference is caught.** Nothing else could: the correction will happily rectify any four corners onto whatever rectangle you name, so a 5-inch side entered as 6 gives measurements that look perfectly reasonable and are quietly wrong. The marked corners are checked against the dimensions entered, and a mismatch is called out under the fields while you're marking and beside the group in its list afterwards, so a reference mistyped months ago still surfaces. It compares the *shape*, so it can't see an error that's proportional on both sides — 6 × 7.2 entered for a 5 × 6 card — and 2-point scale has a single number with nothing to check it against
 - **The date** defaults to when the photo was taken, not when you logged it
 - **Bullet diameter** comes from the ammo you select
-- **Several groups on one target.** Mark the scale once, then point of aim and impacts for each group. Each saves separately but they share one stored photo, and groups you've already marked stay visible on it, dimmed
+- **Several groups on one target.** Mark the scale once, then point of aim and impacts for each group. Each saves separately but they share one stored photo, and groups you've already marked stay visible on it, dimmed. The **ammo** is set per group, so several loads tried on one sheet stay distinguishable; the date, the distance and the session belong to the target and are corrected for every group at once
+- **A scale reference per group, when you want one.** Each group inherits the reference marked before it, and correcting that reference fixes every group still sharing it. For a cluster where the measurement is doubtful — the far edge of a sheet that isn't lying flat — *Re-mark for this group* gives it a reference of its own, marked beside it; the old one stays on screen dashed while you place the new one. The list says which groups share a reference and which carry their own, and *Use shared* puts one back
 - **Fixing one bad mark.** Move the crosshair over an impact and it highlights, with a **Remove** control naming which one. Setting a point stays the primary action, so you can still add a hole right beside an existing one. Undo reverses whichever you did last
 - **Tags** label a group however you like — prone, bench, bipod, windy — from tags you've used before or a new one. Matching ignores case, so *Prone* reuses *prone* instead of splitting your comparisons later
 - **Groups link to a range session**, which is what gives each session its scorecard
@@ -463,7 +464,18 @@ because the spread *between* groups is where fliers show up.
 **When to use 4-corner scaling.** Rotation doesn't change group size — distances between holes
 don't care how the camera was held — but it does skew the elevation and windage split, which are
 measured against the image's own axes. If the photo wasn't square-on and you care about offsets,
-mark four corners of a known rectangle.
+mark four corners of a known rectangle. Mark one that **spans** the groups you care about: the
+correction is fitted to the quad you mark, and a small one in a corner extrapolates poorly to the
+far side of the sheet.
+
+**When a reference per group is worth it.** 4-corner scaling corrects a flat target photographed
+from an angle exactly, however the camera was held. What it cannot correct is a target that isn't
+flat — the correction assumes the sheet is a plane, and a curled or wrinkled one isn't. Lens
+distortion is outside it too, for the same reason: neither is a projective transform. Both bite
+hardest at the edges of the frame, which is where the fourth group on a busy target tends to sit.
+If a cluster is far from the reference and the paper wasn't flat there, mark that group its own
+reference beside it. On a sheet that *was* flat, one reference spanning the groups is both less
+work and no less accurate.
 
 ### Reading the bar charts
 

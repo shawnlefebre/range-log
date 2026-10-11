@@ -589,6 +589,39 @@
   }
 
   /* GROUPS MARKED ON ONE PHOTO */
+  /* Scope headers in the group form. A target photo can carry groups that disagree about
+     their scale and their load, so the form says which of the two a field belongs to
+     before you edit it. Rule colors come from the marking palette rather than the status
+     colors — neither scope is a state. */
+  .form-scope { margin-bottom: 18px; }
+  .form-scope-head {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+    font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 1.1px;
+    text-transform: uppercase; color: var(--text-muted);
+  }
+  .form-scope-head::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .form-scope-rule { width: 3px; height: 13px; border-radius: 2px; flex: none; }
+  .form-scope-head.target .form-scope-rule { background: var(--mark-cal); }
+  .form-scope-head.group .form-scope-rule { background: var(--accent); }
+
+  /* Whether this group shares the photo's scale reference or carries its own, and the way
+     between the two. Left edge repeats the scope colors: slate shared, gold its own. */
+  .scale-state {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-left: 3px solid var(--mark-cal); border-radius: 4px; padding: 8px 10px;
+  }
+  .scale-state.own { border-left-color: var(--accent); }
+  .scale-state-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .scale-state b {
+    font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500; color: var(--text);
+  }
+  .scale-state em {
+    font-style: normal; font-family: var(--font-mono); font-size: 0.62rem;
+    line-height: 1.45; color: var(--text-dim);
+  }
+  .scale-state .btn-mini { flex: none; }
+
   .marked { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
   .marked-head {
     display: flex; justify-content: space-between; align-items: baseline;
@@ -606,7 +639,15 @@
   .marked-row.current .marked-n {
     background: none; color: var(--accent); border: 1px solid var(--accent);
   }
-  .marked-meta { font-family: var(--font-mono); font-size: 0.62rem; color: var(--text-muted); }
+  .marked-meta {
+    font-family: var(--font-mono); font-size: 0.62rem; line-height: 1.5;
+    color: var(--text-muted); min-width: 0;
+  }
+  /* Which reference measured this group, and which load — both only became worth saying
+     once groups on one photo were allowed to differ. */
+  .marked-meta .scale-own { color: var(--accent); }
+  .marked-meta .scale-shared { color: var(--mark-cal); }
+  .marked-meta .marked-load { color: var(--text); overflow-wrap: anywhere; }
   .marked-size {
     font-family: var(--font-mono); font-size: 0.78rem; font-weight: 600;
     color: var(--accent); font-variant-numeric: tabular-nums;

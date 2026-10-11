@@ -7396,6 +7396,169 @@ describe('dope tables', () => {
   });
 });
 
+// ── SCALE SCOPE ─────────────────────────────────────────────────────
+
+// A target photo can carry groups measured against different references: a cluster sitting
+// where the paper is curled gets its own, since no global transform can rectify a surface
+// that isn't a plane. Which records an edit reaches is a set intersection — the groups still
+// sharing the reference this one had before the edit — and that is exactly the kind of logic
+// that looks right and silently reaches one record too many.
+describe('a scale reference shared across one photo', () => {
+  const PTS = [{ x: 0.40, y: 0.50 }, { x: 0.41, y: 0.50 }];
+
+  const mkGroup = (id, over = {}) => ({
+    id, date: '2026-05-01', sessionId: null, distance: 100, distanceUnit: 'yd',
+    ammo: '55gr FMJ', tags: [], bulletDia: 0.224,
+    calMode: 'linear', calInches: 1, calInchesH: null,
+    calPts: PTS.map(pt => ({ ...pt })),
+    poa: { x: 0.5, y: 0.5 },
+    impacts: [{ x: 0.5, y: 0.49 }, { x: 0.51, y: 0.5 }],
+    photoId: 'photo1', ...over,
+  });
+
+  // Puts the window in the state marking leaves behind: a photo loaded, several groups
+  // written from it, and the form holding the reference they share. `data` and `G` are
+  // let-scoped in the app, so they are reached through win.eval rather than as properties.
+  function stage(win, groups) {
+    win.eval('data = migrateData(JSON.parse(JSON.stringify(buildDefaultData())));');
+    win.eval(`data.firearms[0].groups = ${JSON.stringify(groups)};`);
+    win.eval(`G = {
+      gunId: data.firearms[0].id, editId: null, step: 3,
+      img: {}, imgW: 1000, imgH: 800,
+      photoBlob: null, photoId: 'photo1',
+      view: { scale: 1, ox: 0, oy: 0 },
+      calPts: ${JSON.stringify(groups[0].calPts)},
+      poa: null, impacts: [], actions: [],
+      saved: ${JSON.stringify(groups.map(g => g.id))},
+      scaleBase: gScaleOf(data.firearms[0].groups[0]),
+      scaleInherited: null,
+    };`);
+    const set = (id, v) => { win.document.getElementById(id).value = v; };
+    set('group-gun-id', win.eval('data.firearms[0].id'));
+    set('group-cal-mode', 'linear');
+    set('group-cal-w', '1');
+    set('group-cal-h', '1');
+    set('group-distance', '100');
+    set('group-distance-unit', 'yd');
+    set('group-date', '2026-05-01');
+  }
+
+  // Spread on the way out: arrays from the jsdom realm have a different prototype, so
+  // deepStrictEqual against a plain array fails even when the contents match.
+  const field = (win, name) => [...win.eval(`data.firearms[0].groups.map(g => g.${name})`)];
+  const groupAt = (win, i) => win.eval(`data.firearms[0].groups[${i}]`);
+
+  let win;
+  before(async () => { win = await ready(loadApp()); });
+
+  test('two groups marked against the same reference count as sharing it', () => {
+    stage(win, [mkGroup('a'), mkGroup('b')]);
+    assert.ok(win.gScaleEqual(win.gScaleOf(groupAt(win, 0)), win.gScaleOf(groupAt(win, 1))),
+      'identical references must compare equal, or a correction would reach neither');
+  });
+
+  test('a reference re-marked by hand does not match the one it replaced', () => {
+    // The whole scheme rests on this: breaking a group out re-marks the points rather than
+    // copying them, because a copy could not be told apart from the shared reference.
+    const moved = mkGroup('c', { calPts: [{ x: 0.40, y: 0.50 }, { x: 0.4103, y: 0.50 }] });
+    assert.ok(!win.gScaleEqual(win.gScaleOf(mkGroup('a')), win.gScaleOf(moved)),
+      'a point placed a hair away is a different reference');
+  });
+
+  test('an unmarked reference never joins a cohort', () => {
+    // Two groups with no points are not "sharing" anything, and a correction must not
+    // treat them as a set to write across.
+    const bare = win.gScaleOf(mkGroup('d', { calPts: [] }));
+    assert.ok(!win.gScaleEqual(bare, bare), 'an empty reference matches nothing, itself included');
+  });
+
+  test('correcting the reference length reaches every group sharing it', () => {
+    stage(win, [mkGroup('a'), mkGroup('b'), mkGroup('c')]);
+    win.document.getElementById('group-cal-w').value = '2';
+    win.gSyncScaleToCohort();
+    assert.deepStrictEqual(field(win, 'calInches'), [2, 2, 2],
+      'a mistyped reference has to be correctable in one place');
+  });
+
+  test('a group broken onto its own reference is left out of the correction', () => {
+    stage(win, [
+      mkGroup('a'), mkGroup('b'),
+      mkGroup('c', { calPts: [{ x: 0.60, y: 0.70 }, { x: 0.6102, y: 0.70 }], calInches: 1 }),
+    ]);
+    win.document.getElementById('group-cal-w').value = '3';
+    win.gSyncScaleToCohort();
+    assert.deepStrictEqual(field(win, 'calInches'), [3, 3, 1],
+      'the group measured against its own reference must keep it');
+    assert.deepStrictEqual([...win.eval('data.firearms[0].groups[2].calPts.map(p => p.x)')],
+      [0.60, 0.6102],
+      'and must keep its own marked points');
+  });
+
+  test('successive keystrokes keep correcting the same groups', () => {
+    // scaleBase moves forward with each edit. If it didn't, typing "12" over "1" would stop
+    // matching after the first keystroke and strand the rest of the cohort on 1.
+    stage(win, [mkGroup('a'), mkGroup('b')]);
+    const input = win.document.getElementById('group-cal-w');
+    input.value = '1';   win.gSyncScaleToCohort();
+    input.value = '12';  win.gSyncScaleToCohort();
+    input.value = '125'; win.gSyncScaleToCohort();
+    assert.deepStrictEqual(field(win, 'calInches'), [125, 125],
+      'every group sharing the reference should land on the final figure');
+  });
+
+  test('editing a detached group touches nothing else', () => {
+    stage(win, [mkGroup('a'), mkGroup('b')]);
+    win.eval("G.editId = 'b'; G.scaleBase = null;");   // what breaking out leaves behind
+    win.document.getElementById('group-cal-w').value = '7';
+    win.gSyncScaleToCohort();
+    assert.deepStrictEqual(field(win, 'calInches'), [1, 7],
+      'only the group in front of you takes the edit');
+  });
+
+  test('the ammo is the group\'s own, not the target\'s', () => {
+    stage(win, [mkGroup('a'), mkGroup('b')]);
+    win.eval("G.editId = 'b';");
+    const sel = win.document.getElementById('group-ammo-select');
+    sel.innerHTML = '<option value="77gr SMK">77gr SMK</option>';
+    sel.value = '77gr SMK';
+    win.gSyncGroupOnly();
+    assert.deepStrictEqual(field(win, 'ammo'), ['55gr FMJ', '77gr SMK'],
+      'the other group keeps its own load');
+  });
+
+  test('the distance is still the target\'s, and still reaches every group', () => {
+    // The one thing that does not vary across a sheet: same paper, same firing line.
+    stage(win, [mkGroup('a'), mkGroup('b'), mkGroup('c')]);
+    win.document.getElementById('group-distance').value = '200';
+    win.gSyncSharedToSaved();
+    assert.deepStrictEqual(field(win, 'distance'), [200, 200, 200],
+      'a corrected distance must reach every group off this photo');
+  });
+
+  test('a shared correction no longer overwrites a group\'s own load or reference', () => {
+    stage(win, [
+      mkGroup('a'),
+      mkGroup('b', { ammo: '77gr SMK', calInches: 5,
+                     calPts: [{ x: 0.60, y: 0.70 }, { x: 0.6502, y: 0.70 }] }),
+    ]);
+    win.document.getElementById('group-distance').value = '300';
+    win.gSyncSharedToSaved();
+    assert.deepStrictEqual(field(win, 'ammo'), ['55gr FMJ', '77gr SMK'],
+      'the load must survive a distance edit');
+    assert.deepStrictEqual(field(win, 'calInches'), [1, 5], 'so must the reference');
+  });
+
+  test('the reference the rest of the photo uses is the one a group rejoins', () => {
+    stage(win, [
+      mkGroup('a'), mkGroup('b'),
+      mkGroup('c', { calInches: 9, calPts: [{ x: 0.1, y: 0.2 }, { x: 0.11, y: 0.2 }] }),
+    ]);
+    win.eval("G.editId = 'c';");
+    const sc = win.gCohortScale();
+    assert.strictEqual(sc.calInches, 1, 'the majority reference wins, not the odd one out');
+  });
+});
+
 // ── BASIC SMOKE TEST: every tab renders without throwing ────────────
 
 describe('smoke test', () => {

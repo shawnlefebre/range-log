@@ -6410,10 +6410,16 @@ function groupBlank(gunId) {
     calPts: [], poa: null, impacts: [],
     // Undo reverses the last thing done at the impacts step, add or remove alike.
     actions: [],
-    // A target usually carries several groups. Scale is marked once for the photo, then
-    // aim and impacts repeat per group. `saved` holds the ones already written, so they
-    // can be drawn dimmed and listed while the next one is marked.
+    // A target usually carries several groups. The scale is marked once and inherited by
+    // each one after it, then aim and impacts repeat per group. `saved` holds the ones
+    // already written, so they can be drawn dimmed and listed while the next is marked.
     saved: [],
+    // The scale this group held before the edit in progress. It identifies the groups that
+    // still share that reference, which is who a correction reaches. Null means this group
+    // is on its own — a correction here touches nothing else.
+    scaleBase: null,
+    // The reference being replaced, kept only to draw faint while the new one is marked.
+    scaleInherited: null,
   };
 }
 
@@ -6836,6 +6842,34 @@ function gDrawCanvas() {
   };
 
   const perspective = document.getElementById('group-cal-mode').value === 'perspective';
+
+  // The reference being replaced, drawn faint while the new one is marked. Re-marking
+  // beside a cluster is easier with the old marks still visible — they show which feature
+  // was measured, and how far the new reference sits from it.
+  if (G.scaleInherited && G.scaleInherited.length && G.calPts.length < gNeededCalPoints()) {
+    const old = G.scaleInherited.map(gNormToScreen);
+    ctx.save();
+    ctx.globalAlpha = 0.28;
+    ctx.setLineDash([4, 4]);
+    if (old.length > 1) {
+      halo(() => {
+        ctx.beginPath();
+        ctx.moveTo(old[0].x, old[0].y);
+        for (let i = 1; i < old.length; i++) ctx.lineTo(old[i].x, old[i].y);
+        if (old.length === 4) ctx.closePath();
+        ctx.stroke();
+      }, gVar('--mark-cal'), 1.5);
+    }
+    ctx.setLineDash([]);
+    old.forEach(p => halo(() => {
+      ctx.beginPath();
+      ctx.moveTo(p.x - 5, p.y); ctx.lineTo(p.x + 5, p.y);
+      ctx.moveTo(p.x, p.y - 5); ctx.lineTo(p.x, p.y + 5);
+      ctx.stroke();
+    }, gVar('--mark-cal'), 1.5));
+    ctx.restore();
+  }
+
   if (G.calPts.length) {
     const outline = perspective && G.calPts.length === 4
       ? orderedQuad(G.calPts, parseFloat(document.getElementById('group-cal-w').value),
@@ -6976,17 +7010,25 @@ function gBindStage() {
   // These fields feed straight into the measurements — distance drives MOA and MRAD,
   // the reference length drives the scale, bullet diameter sizes the impact rings — so
   // editing one has to recompute immediately rather than leave stale numbers on screen.
-  ['group-distance', 'group-distance-unit', 'group-cal-w', 'group-cal-h', 'group-bullet']
-    .forEach(id => {
-      const field = document.getElementById(id);
-      if (field.dataset.bound) return;
-      field.dataset.bound = '1';
-      field.addEventListener('input', () => {
-        if (!G) return;
-        gSyncSharedToSaved();
-        gRefresh();
-      });
+  // Which records an edit reaches depends on the field's scope: the distance belongs to
+  // the target, the reference to whichever groups share it, the diameter to this group.
+  const scoped = {
+    'group-distance': gSyncSharedToSaved,
+    'group-distance-unit': gSyncSharedToSaved,
+    'group-cal-w': gSyncScaleToCohort,
+    'group-cal-h': gSyncScaleToCohort,
+    'group-bullet': gSyncGroupOnly,
+  };
+  Object.keys(scoped).forEach(id => {
+    const field = document.getElementById(id);
+    if (field.dataset.bound) return;
+    field.dataset.bound = '1';
+    field.addEventListener('input', () => {
+      if (!G) return;
+      scoped[id]();
+      gRefresh();
     });
+  });
 
   // Changing the date changes which session is the obvious match, so re-run the suggestion
   // — but only while the group is still unlinked, so it never overrides a deliberate pick.
@@ -7195,6 +7237,7 @@ function gRefresh() {
     G.readOnly ? 'Close' : finished ? 'Done' : 'Cancel';
 
   gRenderMarked();
+  gRenderScaleState();
   gRenderScaleCheck();
 
   gDrawCanvas();
@@ -7213,12 +7256,89 @@ function gRenderScaleCheck() {
     : '';
 }
 
+/* ---- scale scope ----
+   Inches-per-pixel is only truly valid where it was measured. A sheet photographed
+   off-axis is handled exactly by the 4-corner homography, but a sheet that is *curled*
+   is not a plane at all, and no single global transform can rectify one — nor can any of
+   them absorb lens distortion, which isn't projective either. So a group whose cluster
+   sits where the paper misbehaves can carry its own reference, marked beside it.
+
+   The common case stays one reference per photo: each group inherits the last one's, and
+   a correction reaches every group still sharing it. Membership is compared rather than
+   flagged, which is why breaking out *re-marks* the points instead of copying them — a
+   copy would be indistinguishable from the shared reference and would be swept up by the
+   next correction. Points placed by hand never land twice in the same spot. */
+
+function gNumEq(a, b) {
+  if (a == null && b == null) return true;
+  return Number.isFinite(+a) && Number.isFinite(+b) && Math.abs(+a - +b) < 1e-9;
+}
+
+function gScaleOf(rec) {
+  return {
+    calMode: rec.calMode || 'linear',
+    calInches: Number(rec.calInches),
+    calInchesH: rec.calInchesH == null ? null : Number(rec.calInchesH),
+    calPts: (rec.calPts || []).map(p => ({ x: p.x, y: p.y })),
+  };
+}
+
+function gFormScale() {
+  return {
+    calMode: document.getElementById('group-cal-mode').value,
+    calInches: parseFloat(document.getElementById('group-cal-w').value),
+    calInchesH: parseFloat(document.getElementById('group-cal-h').value) || null,
+    calPts: G.calPts.map(p => ({ x: p.x, y: p.y })),
+  };
+}
+
+function gScaleEqual(a, b) {
+  if (!a || !b) return false;
+  if ((a.calMode || 'linear') !== (b.calMode || 'linear')) return false;
+  if (!gNumEq(a.calInches, b.calInches)) return false;
+  if ((a.calMode || 'linear') === 'perspective' && !gNumEq(a.calInchesH, b.calInchesH)) return false;
+  const pa = a.calPts || [], pb = b.calPts || [];
+  if (pa.length !== pb.length || !pa.length) return false;
+  return pa.every((p, i) => Math.abs(p.x - pb[i].x) < 1e-9 && Math.abs(p.y - pb[i].y) < 1e-9);
+}
+
+// The groups a shared field spans: everything written from this photo. Keyed on photoId as
+// well as this session's saves, so reopening one group weeks later still finds its
+// siblings — and so a target marked without keeping the photo still works off `saved`.
+function gTargetSiblings() {
+  if (!G) return [];
+  const gun = data.firearms.find(x => x.id === G.gunId);
+  return ((gun && gun.groups) || []).filter(r =>
+    G.saved.includes(r.id) || (G.photoId && r.photoId === G.photoId));
+}
+
+// How many other groups on this photo are measured against the same reference.
+function gScaleSharers() {
+  const mine = gFormScale();
+  return gTargetSiblings().filter(r => r.id !== G.editId && gScaleEqual(gScaleOf(r), mine));
+}
+
+// The reference most of the other groups use — what "the target's scale" means to a group
+// that wants back on it. Ties go to the earliest marked, which is the one marked first.
+function gCohortScale() {
+  const others = gTargetSiblings().filter(r => r.id !== G.editId);
+  let best = null, bestN = 0;
+  others.forEach(r => {
+    const sc = gScaleOf(r);
+    if (!(sc.calInches > 0) || !sc.calPts.length) return;
+    const n = others.filter(o => gScaleEqual(gScaleOf(o), sc)).length;
+    if (n > bestN) { best = sc; bestN = n; }
+  });
+  return best;
+}
+
 // Starts the next group on the same photo: the scale, the photo and every shared field
 // stay put, only the aim point and impacts reset. This is the whole point of the feature —
 // four groups on one target shouldn't mean four passes at the same setup.
-// Shared fields describe the target, not one group on it. If the distance or ammo is
-// corrected after some groups are already written, those groups have to follow — four
-// groups off one photo disagreeing about the distance they were shot at is nonsense.
+// Shared fields describe the target, not one group on it: the day, the session and the
+// distance to it. If one is corrected after some groups are already written, those groups
+// have to follow — four groups off one photo disagreeing about the distance they were shot
+// at is nonsense. The scale and the load are *not* here; they vary across one sheet.
 function gSyncSharedToSaved() {
   if (!G || !G.saved.length) return;
   const gun = data.firearms.find(x => x.id === G.gunId);
@@ -7228,15 +7348,9 @@ function gSyncSharedToSaved() {
     sessionId: document.getElementById('group-session').value || null,
     distance: parseFloat(document.getElementById('group-distance').value),
     distanceUnit: document.getElementById('group-distance-unit').value,
-    ammo: getSelectedAmmo('group-ammo-select', 'group-ammo-custom'),
     tags: [...groupModalTags],
-    bulletDia: parseFloat(document.getElementById('group-bullet').value) || null,
-    calMode: document.getElementById('group-cal-mode').value,
-    calInches: parseFloat(document.getElementById('group-cal-w').value),
-    calInchesH: parseFloat(document.getElementById('group-cal-h').value) || null,
-    calPts: G.calPts.map(p => ({ x: p.x, y: p.y })),
   };
-  if (!(shared.distance > 0) || !(shared.calInches > 0)) return;
+  if (!(shared.distance > 0)) return;
   let touched = false;
   (gun.groups || []).forEach(rec => {
     if (G.saved.includes(rec.id)) { Object.assign(rec, shared); touched = true; }
@@ -7244,11 +7358,85 @@ function gSyncSharedToSaved() {
   if (touched) { save(data); renderGunHistory(G.gunId); }
 }
 
+// A scale correction reaches every group still sharing the reference this one had before
+// the edit, and nothing else. `scaleBase` is what that set is matched against, so it moves
+// forward with each keystroke — otherwise typing "12" over "1" would stop matching halfway
+// through and leave the rest of the cohort on the old figure.
+function gSyncScaleToCohort() {
+  if (!G || G.readOnly) return;
+  const next = gFormScale();
+  if (!(next.calInches > 0)) return;
+  const base = G.scaleBase;
+  let touched = false;
+  gTargetSiblings().forEach(rec => {
+    const self = rec.id === G.editId;
+    if (!self && !(base && gScaleEqual(gScaleOf(rec), base))) return;
+    rec.calMode = next.calMode;
+    rec.calInches = next.calInches;
+    rec.calInchesH = next.calInchesH;
+    rec.calPts = next.calPts.map(p => ({ ...p }));
+    touched = true;
+  });
+  if (base) G.scaleBase = next;
+  if (touched) { save(data); renderGunHistory(G.gunId); }
+}
+
+// Fields that describe the group rather than the target it sits on, written only to the
+// record in front of you. Ammo is why this split exists — several loads tried on one sheet
+// — and bullet diameter comes from the ammo, so it has to travel with it.
+function gSyncGroupOnly() {
+  if (!G || G.readOnly || !G.editId) return;
+  const gun = data.firearms.find(x => x.id === G.gunId);
+  const rec = gun && (gun.groups || []).find(x => x.id === G.editId);
+  if (!rec) return;
+  rec.ammo = getSelectedAmmo('group-ammo-select', 'group-ammo-custom');
+  rec.bulletDia = parseFloat(document.getElementById('group-bullet').value) || null;
+  save(data);
+  renderGunHistory(G.gunId);
+}
+
+// Re-marks this group's reference beside its own cluster. The points are cleared rather
+// than copied: an identical copy could not be told apart from the shared reference, so the
+// next correction would sweep it back up. Clearing `scaleBase` is what detaches it — until
+// the group is written again, edits here reach nothing else.
+function groupScaleBreakOut() {
+  if (!G || G.readOnly || !G.img) return;
+  G.scaleInherited = G.calPts.map(p => ({ ...p }));
+  G.scaleBase = null;
+  G.calPts = [];
+  G.step = 0;
+  gRefresh();
+}
+
+// Back onto the reference the rest of the photo uses.
+function groupScaleRejoin() {
+  if (!G || G.readOnly) return;
+  const sc = gCohortScale();
+  if (!sc) return;
+  document.getElementById('group-cal-mode').value = sc.calMode;
+  document.getElementById('group-cal-w').value = sc.calInches;
+  if (sc.calInchesH) document.getElementById('group-cal-h').value = sc.calInchesH;
+  const persp = sc.calMode === 'perspective';
+  document.getElementById('group-cal-h-field').style.display = persp ? '' : 'none';
+  document.getElementById('group-cal-row').classList.toggle('single', !persp);
+  document.getElementById('group-cal-w-label').textContent =
+    persp ? 'Rectangle width (in)' : 'Known distance (in)';
+  G.calPts = sc.calPts.map(p => ({ ...p }));
+  G.scaleInherited = null;
+  G.scaleBase = sc;
+  if (G.step === 0 && G.calPts.length === gNeededCalPoints()) G.step = 1;
+  gSyncScaleToCohort();
+  gRefresh();
+}
+
 function groupMarkAnother() {
   if (!G) return;
   G.poa = null;
   G.impacts = [];
   G.editId = null;
+  // The scale carries over, so `scaleBase` stays as it is: this group starts out sharing
+  // the reference, and a correction made here still reaches the ones it shares it with.
+  G.scaleInherited = null;
   G.step = 1;
   gRefresh();
 }
@@ -7308,6 +7496,10 @@ function handleGroupCalModeChange() {
   document.getElementById('group-cal-w-label').textContent =
     persp ? 'Rectangle width (in)' : 'Known distance (in)';
   if (G) {
+    // Changing the method means re-marking, which makes this group's reference its own.
+    // Detaching first is what stops the re-mark from being written over every sibling.
+    if (G.calPts.length) G.scaleInherited = G.calPts.map(p => ({ ...p }));
+    G.scaleBase = null;
     G.calPts = [];
     if (G.step > 0) G.step = 0;
     gRefresh();
@@ -7387,7 +7579,48 @@ function handleGroupAmmoChange() {
   const gun = data.firearms.find(x => x.id === document.getElementById('group-gun-id').value);
   const dia = gun && guessBulletDiameter(gun, getSelectedAmmo('group-ammo-select', 'group-ammo-custom'));
   if (dia) document.getElementById('group-bullet').value = dia;
-  if (G) gRefresh();
+  if (G) { gSyncGroupOnly(); gRefresh(); }
+}
+
+// Whether this group is measured against the reference the rest of the photo uses, and the
+// way out of it. Only shown once a photo carries more than one group — with a single group
+// there is no distinction to draw, and the scale fields speak for themselves.
+function gRenderScaleState() {
+  const box = document.getElementById('group-scale-state');
+  if (!box) return;
+  if (!G || !G.img || G.readOnly) { box.innerHTML = ''; return; }
+
+  const siblings = gTargetSiblings().filter(r => r.id !== G.editId);
+  if (!siblings.length) { box.innerHTML = ''; return; }
+
+  const remarking = !!G.scaleInherited && G.calPts.length < gNeededCalPoints();
+  const sharers = gScaleSharers().length;
+  const shared = sharers > 0;
+  const n = gNeededCalPoints();
+
+  if (remarking) {
+    box.innerHTML = `
+      <div class="scale-state own">
+        <div class="scale-state-main">
+          <b>Marking a reference for this group</b>
+          <em>${G.calPts.length} of ${n} placed — the old one is dashed on the photo</em>
+        </div>
+        <button type="button" class="btn-mini" onclick="groupScaleRejoin()">Cancel</button>
+      </div>`;
+    return;
+  }
+
+  box.innerHTML = `
+    <div class="scale-state${shared ? '' : ' own'}">
+      <div class="scale-state-main">
+        <b>${shared ? 'Shared reference' : 'Its own reference'}</b>
+        <em>${shared
+          ? `measured once for ${sharers + 1} groups — editing it corrects all of them`
+          : 'measured for this group alone'}</em>
+      </div>
+      <button type="button" class="btn-mini" onclick="${shared ? 'groupScaleBreakOut()' : 'groupScaleRejoin()'}">${
+        shared ? 'Re-mark for this group' : 'Use shared'}</button>
+    </div>`;
 }
 
 // The set of groups marked on this photo, so you can watch it build and spot a cluster
@@ -7397,16 +7630,26 @@ function gRenderMarked() {
   if (!G || !G.saved.length) { box.innerHTML = ''; return; }
 
   const gun = data.firearms.find(x => x.id === G.gunId);
+  const byId = id => (gun ? gun.groups || [] : []).find(x => x.id === id);
   const rows = G.saved.map((id, i) => {
-    const rec = (gun ? gun.groups || [] : []).find(x => x.id === id);
+    const rec = byId(id);
     if (!rec) return '';
     const size = groupSizeInches(rec);
     const moa = size != null ? toMOA(size, groupDistanceInches(rec)) : null;
     const current = rec.id === G.editId && G.step < 3;
+    // Which reference a group was measured against, and which load — invisible until
+    // groups on one photo were allowed to differ, and a silent difference in either is
+    // exactly what would make two sizes incomparable without saying so.
+    const own = !G.saved.some(other =>
+      other !== id && gScaleEqual(gScaleOf(rec), gScaleOf(byId(other) || {})));
+    const bits = [`${(rec.impacts || []).length} shots`];
+    if (current) bits.push('marking');
     return `
       <div class="marked-row${current ? ' current' : ''}">
         <span class="marked-n">${i + 1}</span>
-        <span class="marked-meta">${(rec.impacts || []).length} shots${current ? ' — marking' : ''}</span>
+        <span class="marked-meta">${bits.join(' — ')} &middot;
+          <span class="${own ? 'scale-own' : 'scale-shared'}">${own ? 'own scale' : 'shared scale'}</span>
+          ${rec.ammo ? `<br><span class="marked-load">${esc(rec.ammo)}</span>` : ''}</span>
         <span class="marked-size">${moa != null ? gFmt(moa) + ' MOA' : '—'}</span>
       </div>`;
   }).join('');
@@ -7744,6 +7987,7 @@ async function openLogGroup(gunId, groupId, readOnly) {
     // back past, and reversing into a previous group's edits would be nonsense.
     G.actions = [];
     G.photoId = existing.photoId || null;
+    G.scaleBase = gScaleOf(existing);
     G.step = 3;
     if (!document.getElementById('group-bullet').value) {
       const dia = guessBulletDiameter(gun, existing.ammo);
@@ -7969,6 +8213,10 @@ async function groupFinishCurrent() {
   G.photoId = record.photoId;
   G.saved.push(record.id);
   G.editId = record.id;
+  // Whatever it was written with is now what a correction here is matched against — so a
+  // group that was broken out keeps its own reference, and one that inherited still shares.
+  G.scaleBase = gScaleOf(record);
+  G.scaleInherited = null;
   G.step = 3;
   renderGunHistory(G.gunId);
   gRefresh();
@@ -8438,7 +8686,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.11.1';
+const APP_VERSION = '7.11.2';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

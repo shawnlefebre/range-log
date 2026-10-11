@@ -11,6 +11,17 @@ changes. It's noted below wherever it did.
 
 ## Unreleased
 
+- A target photo can now carry groups measured against **different scale references**. Each group
+  inherits the reference marked before it, and correcting that reference still fixes every group
+  sharing it — but a cluster whose measurement is doubtful, typically at the edge of a sheet that
+  wasn't lying flat, can be re-marked with a reference of its own beside it. The one being replaced
+  stays on the photo dashed while the new one is placed. 4-corner scaling corrects a flat target
+  photographed from an angle exactly; a curled one isn't a plane, which is what this is for.
+- **Ammo is now set per group** rather than per photo, so several loads tried on one target stay
+  distinguishable. Bullet diameter follows the ammo. The date, distance, session and tags still
+  belong to the target and are corrected for every group on it at once.
+- The group setup form is split into **This target** and **This group**, so the scope of a field is
+  on screen while you edit it, and the list of groups on a photo says which share a reference.
 - Fixed pan and zoom on the group photo getting stuck. A finger whose release the page never
   heard about — a touch ending off the photo, or capture lost mid-gesture — stayed on the books
   as if it were still down, so one finger was read as a pinch and dragging zoomed erratically,

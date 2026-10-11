@@ -23,7 +23,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.11.1</span>
+    <span id="app-version">v7.11.2</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -747,27 +747,29 @@
     <input type="file" id="group-restore-file" accept="image/*" style="display:none;"
            onchange="handleGroupRestoreFile(this)">
 
+    <!-- The form is split by scope, because a target photo can carry groups that disagree.
+         Everything under "This target" is one fact about the sheet and is corrected for every
+         group on it at once; everything under "This group" belongs to the one cluster in
+         front of you. The rule colors follow the marking palette — slate for shared
+         reference, gold for your shots. -->
+    <div class="form-scope">
+      <div class="form-scope-head target"><span class="form-scope-rule"></span>This target</div>
+
     <div class="form-group">
       <label>Date shot</label>
       <input type="date" id="group-date">
       <div class="group-hint" id="group-date-note"></div>
     </div>
 
-    <div class="form-row-2">
-      <div class="form-group">
-        <label>Distance <span class="req">required</span></label>
-        <div style="display:flex;gap:8px;">
-          <input type="number" id="group-distance" placeholder="e.g. 50" min="1" style="flex:1;">
-          <select id="group-distance-unit" style="width:90px;">
-            <option value="yd" selected>yards</option>
-            <option value="ft">feet</option>
-            <option value="m">meters</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Bullet diameter (in)</label>
-        <input type="number" id="group-bullet" min="0.1" max="1" step="0.001" placeholder="e.g. 0.224">
+    <div class="form-group">
+      <label>Distance <span class="req">required</span></label>
+      <div style="display:flex;gap:8px;">
+        <input type="number" id="group-distance" placeholder="e.g. 50" min="1" style="flex:1;">
+        <select id="group-distance-unit" style="width:90px;">
+          <option value="yd" selected>yards</option>
+          <option value="ft">feet</option>
+          <option value="m">meters</option>
+        </select>
       </div>
     </div>
 
@@ -777,14 +779,6 @@
         <option value="">&mdash; Not linked to a session &mdash;</option>
       </select>
       <div class="group-hint" id="group-session-hint"></div>
-    </div>
-
-    <div class="form-group">
-      <label>Ammo</label>
-      <select id="group-ammo-select" onchange="handleGroupAmmoChange()">
-        <option value="">&mdash; Select ammo &mdash;</option>
-      </select>
-      <input type="text" id="group-ammo-custom" placeholder="Type custom ammo" style="margin-top:6px;display:none;">
     </div>
 
     <div class="form-group">
@@ -798,6 +792,23 @@
       </div>
       <input type="text" id="group-tag-custom" placeholder="Type a new tag, e.g. prone" style="margin-top:6px;display:none;">
       <div class="group-hint">However you want to slice groups later &mdash; position, rest, conditions.</div>
+    </div>
+    </div><!-- /This target -->
+
+    <div class="form-scope">
+      <div class="form-scope-head group"><span class="form-scope-rule"></span>This group</div>
+
+    <div class="form-group">
+      <label>Ammo</label>
+      <select id="group-ammo-select" onchange="handleGroupAmmoChange()">
+        <option value="">&mdash; Select ammo &mdash;</option>
+      </select>
+      <input type="text" id="group-ammo-custom" placeholder="Type custom ammo" style="margin-top:6px;display:none;">
+    </div>
+
+    <div class="form-group">
+      <label>Bullet diameter (in)</label>
+      <input type="number" id="group-bullet" min="0.1" max="1" step="0.001" placeholder="e.g. 0.224">
     </div>
 
     <div class="form-group">
@@ -817,7 +828,9 @@
         <input type="number" id="group-cal-h" value="1" min="0.1" step="0.1">
       </div>
     </div>
+    <div id="group-scale-state"></div>
     <div id="group-cal-warn"></div>
+    </div><!-- /This group -->
 
     <div id="group-stage-wrap" style="display:none;">
       <div class="group-steps" id="group-steps"></div>
