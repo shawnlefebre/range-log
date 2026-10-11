@@ -4,6 +4,7 @@
   "description": "Dev tooling and regression tests for the Range Log PWA. The app itself (index.html, app.css, app.js, sw.js) has zero runtime dependencies and needs nothing from here to run.",
   "private": true,
   "scripts": {
+    "serve": "node tools/serve.js",
     "test": "node --test test/app.test.js",
     "test:browser": "node test/browser/run.js"
   },
