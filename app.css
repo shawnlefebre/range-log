@@ -1568,6 +1568,15 @@
   /* ── Dope tables ──────────────────────────────────────────────────
      Come-ups entered by hand from whatever solver the shooter trusts. The card
      shows the numbers at a glance; tapping it opens the full table. */
+  /* A fixed unit beside a number input, sized to match the input it sits next to. Used
+     where the unit is chosen elsewhere and only shown here, so it must not look tappable. */
+  .unit-suffix {
+    display: flex; align-items: center; justify-content: center;
+    min-width: 54px; padding: 0 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);
+  }
+
   .dope-card {
     background: var(--surface2);
     border-radius: var(--radius);

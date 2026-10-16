@@ -11,6 +11,11 @@ changes. It's noted below wherever it did.
 
 ## Unreleased
 
+- Dope tables could always be kept in yards **or meters**, but the control said otherwise: the
+  unit sat beside the zero distance and read as though it only labeled the zero, when it governs
+  every distance in the table. It is now its own field, *Distances in*, next to the come-up unit,
+  and the zero carries the chosen unit beside it. Switching it relabels rather than converts —
+  unlike the come-up unit, which is an angle and converts exactly.
 - A target photo can now carry groups measured against **different scale references**. Each group
   inherits the reference marked before it, and correcting that reference still fixes every group
   sharing it — but a cluster whose measurement is doubtful, typically at the edge of a sheet that

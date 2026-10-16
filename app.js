@@ -2492,10 +2492,21 @@ function getSelectedDopeAmmo() {
   return getSelectedAmmo('dope-ammo-select', 'dope-ammo-custom');
 }
 
+// The distance unit governs every distance in the table, so changing it relabels the
+// column header and the zero together. It deliberately does not convert the numbers the
+// way the come-up unit does: a come-up is an angle and converts exactly, while a dope
+// table's distances are the ones you actually have dope for. Turning 100, 200, 300 into
+// 91.4, 182.9, 274.3 would be arithmetically right and useless at the bench.
+function handleDopeDistanceUnitChange() {
+  renderDopeEntries();
+}
+
 function renderDopeEntries() {
   const wrap = document.getElementById('dope-entries');
   if (!wrap) return;
   const du = document.getElementById('dope-distance-unit').value || 'yd';
+  const zeroUnit = document.getElementById('dope-zero-unit');
+  if (zeroUnit) zeroUnit.textContent = du;
   const cls = dopeReadOnly ? ' view' : '';
   const dis = dopeReadOnly ? ' disabled' : '';
   let html = `<div class="entry-head${cls}"><span>Distance (${du})</span>` +
@@ -8686,7 +8697,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.11.2';
+const APP_VERSION = '7.11.3';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

@@ -110,6 +110,67 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   ck('deleting a table leaves the groups alone',
     await page.locator('#history-groups-list .group-row').count() === groupsBefore);
 
+  // A table in meters. This worked from the start and had no cover, which is how the
+  // control ended up labeled so that nobody could find it — the distance unit sat as a
+  // sidecar on "Zeroed at" and read as though it only applied to the zero.
+  await page.click('button.btn-mini:has-text("+ Add Table")');
+  await page.waitForTimeout(400);
+  const ammoOpts = await page.evaluate(() =>
+    [...document.querySelectorAll('#dope-ammo-select option')].map(o => o.value).filter(Boolean));
+  await page.selectOption('#dope-ammo-select', ammoOpts[0]);
+  await page.fill('#dope-zero-distance', '100');
+
+  ck('a new table starts in yards', await page.inputValue('#dope-distance-unit') === 'yd');
+  ck('the zero carries the unit beside it',
+    (await page.locator('#dope-zero-unit').textContent()).trim() === 'yd');
+
+  await page.selectOption('#dope-distance-unit', 'm');
+  await page.waitForTimeout(250);
+  ck('switching to meters relabels the distance column',
+    (await page.locator('#dope-entries .entry-head span').first().textContent()).includes('(m)'));
+  ck('and relabels the zero with it',
+    (await page.locator('#dope-zero-unit').textContent()).trim() === 'm');
+
+  const dRow = page.locator('#dope-entries .entry-row input');
+  await dRow.nth(0).fill('300'); await dRow.nth(0).dispatchEvent('change');
+  await dRow.nth(1).fill('4.2'); await dRow.nth(1).dispatchEvent('change');
+  // Switching the unit must relabel, never convert: a come-up is an angle and converts
+  // exactly, but the distances are the ones you actually have dope for. Turning 300 into
+  // 274.3 would be arithmetically right and useless at the bench.
+  await page.selectOption('#dope-distance-unit', 'yd');
+  await page.waitForTimeout(200);
+  await page.selectOption('#dope-distance-unit', 'm');
+  await page.waitForTimeout(200);
+  ck('switching the unit relabels rather than converting the distances',
+    await dRow.nth(0).inputValue() === '300');
+
+  await page.click('#dope-buttons button:has-text("Save")');
+  await page.waitForTimeout(500);
+  const stored = await page.evaluate(() => {
+    const t = data.firearms.find(g => (g.dope || []).length).dope.slice(-1)[0];
+    return { du: t.distanceUnit, dist: t.entries[0].distance, zero: t.zeroDistance };
+  });
+  ck('a meters table stores its unit', stored.du === 'm');
+  ck('and stores the distance as typed', stored.dist === 300 && stored.zero === 100);
+  ck('the card reads the table back in meters', await page.evaluate(() => {
+    const t = [...document.querySelectorAll('#history-dope-list .dope-card')].pop();
+    const s = t.textContent.replace(/\s+/g, ' ');
+    return /zero 100 m/.test(s) && /300 M/.test(s);
+  }));
+
+  // Reopening is where a unit most easily gets lost, since the field is populated from the
+  // record and then re-rendered.
+  await page.locator('#history-dope-list .dope-card').last().click({ position:{x:60,y:20} });
+  await page.waitForTimeout(400);
+  ck('reopening a meters table comes back in meters',
+    await page.inputValue('#dope-distance-unit') === 'm' &&
+    (await page.locator('#dope-zero-unit').textContent()).trim() === 'm');
+  ck('the distance unit is inert in view mode',
+    await page.evaluate(() => document.getElementById('dope-distance-unit').disabled));
+  await page.locator('#modal-dope .modal').screenshot({ path: path.join(ARTIFACTS,'dope-meters.png') });
+  await page.click('#dope-buttons button:has-text("Close")');
+  await page.waitForTimeout(300);
+
   let bad=0;
   checks.forEach(([n,ok])=>{ if(!ok) bad++; console.log(`${ok?'ok  ':'FAIL'} ${n}`); });
   if (errs.length) { bad++; console.log('ERRORS '+[...new Set(errs)].join(' | ')); }

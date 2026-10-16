@@ -23,7 +23,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.11.2</span>
+    <span id="app-version">v7.11.3</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -696,15 +696,23 @@
           <option value="mrad">MRAD (mils)</option>
         </select>
       </div>
+      <!-- The two units a table is read in, side by side. The distance unit used to sit as a
+           sidecar on "Zeroed at", which read as though it only labeled the zero — it governs
+           every distance in the table, so it needs a label that says so. -->
       <div class="form-group">
-        <label>Zeroed at</label>
-        <div style="display:flex;gap:8px;">
-          <input type="number" id="dope-zero-distance" step="1" min="0" style="flex:1;" placeholder="100">
-          <select id="dope-distance-unit" style="width:84px;" onchange="renderDopeEntries()">
-            <option value="yd">yards</option>
-            <option value="m">meters</option>
-          </select>
-        </div>
+        <label>Distances in</label>
+        <select id="dope-distance-unit" onchange="handleDopeDistanceUnitChange()">
+          <option value="yd">yards</option>
+          <option value="m">meters</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Zeroed at</label>
+      <div style="display:flex;gap:8px;align-items:stretch;">
+        <input type="number" id="dope-zero-distance" step="1" min="0" style="flex:1;" placeholder="100">
+        <span class="unit-suffix" id="dope-zero-unit">yd</span>
       </div>
     </div>
 

@@ -404,7 +404,7 @@ trust; this stores them and lets you correct them once you've actually shot the 
 group data never adjusts your table.
 
 - **The unit is per table, and switching it converts the numbers** — 6.0 MOA becomes 1.75 mil, not 6.0 mil. New tables start in the firearm's turret unit
-- **The distance unit is set once** at the top, so each row is just two numbers
+- **Distances are in yards or meters**, chosen once per table under *Distances in*, so each row is just two numbers. Unlike the come-up unit, switching it **relabels rather than converts**: a come-up is an angle and converts exactly, but a table's distances are the ones you actually have dope for, and turning 100, 200, 300 into 91.4, 182.9, 274.3 would be arithmetically right and useless at the bench
 - **Conditions are a note to yourself**, not a model. Dope drifts with altitude and temperature, and recording that these came from 900 ft at 70°F is what stops you trusting them somewhere they don't apply
 - **The card shows six distances**, then a count of the rest
 
