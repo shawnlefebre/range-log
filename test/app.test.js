@@ -152,6 +152,43 @@ describe('schema migration', () => {
       [90], 'the session on the closing clean still belongs to the interval it closes');
   });
 
+  test('v17 dope tables take their zero unit from the one field that used to serve both', () => {
+    // Before v18 a single distanceUnit labeled the zero and the rows alike. Carrying it
+    // across is what keeps a table meaning what it meant: a zero read in the other unit
+    // would misreport what the rifle is actually zeroed at, which is the one number on the
+    // card you would act on without checking.
+    const v17 = {
+      schemaVersion: 17, isDemo: false, locations: [], sellers: [], ammo: [], sessions: [],
+      firearms: [{ id: 'g1', name: 'Rifle', type: 'rifle', calibers: ['.223 Rem'],
+        cleanThreshold: 300, totalRounds: 0, notes: '', zeros: [], groups: [], cleanings: [],
+        dope: [
+          { id: 'd1', ammo: '77gr', unit: 'mrad', zeroDistance: 100, distanceUnit: 'm',
+            conditions: '', entries: [{ distance: 300, come: 1.5 }] },
+          { id: 'd2', ammo: '55gr', unit: 'moa', zeroDistance: 50, distanceUnit: 'yd',
+            conditions: '', entries: [{ distance: 200, come: 4 }] },
+        ] }],
+    };
+    const dope = win.migrateData(JSON.parse(JSON.stringify(v17))).firearms[0].dope;
+    assert.strictEqual(dope[0].zeroUnit, 'm', 'a meters table keeps a meters zero');
+    assert.strictEqual(dope[1].zeroUnit, 'yd', 'a yards table keeps a yards zero');
+    assert.strictEqual(dope[0].distanceUnit, 'm', 'the row unit is untouched');
+  });
+
+  test('a dope table that arrives without a zero unit still gets one', () => {
+    // The defensive pass, for a table that reaches current-version data malformed — a hand
+    // edited backup, say. Without it the zero would render as undefined on the card.
+    const broken = {
+      schemaVersion: win.buildDefaultData().schemaVersion, isDemo: false,
+      locations: [], sellers: [], ammo: [], sessions: [],
+      firearms: [{ id: 'g1', name: 'Rifle', type: 'rifle', calibers: ['.223 Rem'],
+        cleanThreshold: 300, totalRounds: 0, notes: '', zeros: [], groups: [], cleanings: [],
+        dope: [{ id: 'd1', ammo: '77gr', unit: 'moa', zeroDistance: 100, distanceUnit: 'm',
+                 conditions: '', entries: [] }] }],
+    };
+    const dope = win.migrateData(JSON.parse(JSON.stringify(broken))).firearms[0].dope;
+    assert.strictEqual(dope[0].zeroUnit, 'm');
+  });
+
   test('v6 data (pre-isDemo) migrates and stays non-demo', () => {
     const v6 = {
       schemaVersion: 6,

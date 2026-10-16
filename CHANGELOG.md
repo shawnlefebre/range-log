@@ -11,6 +11,11 @@ changes. It's noted below wherever it did.
 
 ## Unreleased
 
+- **A dope table's zero now carries its own unit**, independent of the distances in the rows —
+  zeroed at 100 yd with the come-ups listed in meters, or the reverse. A rifle is zeroed once but
+  gets shot at ranges marked in both, and neither unit can be derived from the other. Existing
+  tables take the zero unit from the single field that used to label both, so nothing changes
+  meaning. *(Schema v18.)*
 - Dope tables could always be kept in yards **or meters**, but the control said otherwise: the
   unit sat beside the zero distance and read as though it only labeled the zero, when it governs
   every distance in the table. It is now its own field, *Distances in*, next to the come-up unit,

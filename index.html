@@ -23,7 +23,7 @@
 <div id="app">
   <header>
     <h1>RANGE LOG</h1>
-    <span id="app-version">v7.11.3</span>
+    <span id="app-version">v7.11.4</span>
   </header>
   <nav>
     <button class="active" onclick="showTab('dashboard')">Home</button>
@@ -324,7 +324,7 @@
         <button class="btn btn-danger" style="width:100%;" onclick="openDeleteAllModal()">Delete All Data</button>
       </div>
     </div>
-    <div class="schema-badge">Data schema v17 · Range Log</div>
+    <div class="schema-badge">Data schema v18 · Range Log</div>
   </section>
 </div>
 
@@ -708,11 +708,17 @@
       </div>
     </div>
 
+    <!-- The zero carries its own unit. A rifle is zeroed once, but gets shot at ranges
+         marked in yards and in meters, so the zero and the rows are often in different
+         units and neither can be derived from the other. -->
     <div class="form-group">
       <label>Zeroed at</label>
-      <div style="display:flex;gap:8px;align-items:stretch;">
+      <div style="display:flex;gap:8px;">
         <input type="number" id="dope-zero-distance" step="1" min="0" style="flex:1;" placeholder="100">
-        <span class="unit-suffix" id="dope-zero-unit">yd</span>
+        <select id="dope-zero-unit" style="width:96px;" onchange="renderDopeEntries()">
+          <option value="yd">yards</option>
+          <option value="m">meters</option>
+        </select>
       </div>
     </div>
 

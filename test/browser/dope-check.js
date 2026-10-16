@@ -121,15 +121,17 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   await page.fill('#dope-zero-distance', '100');
 
   ck('a new table starts in yards', await page.inputValue('#dope-distance-unit') === 'yd');
-  ck('the zero carries the unit beside it',
-    (await page.locator('#dope-zero-unit').textContent()).trim() === 'yd');
+  ck('the zero carries its own unit beside it',
+    await page.inputValue('#dope-zero-unit') === 'yd');
 
   await page.selectOption('#dope-distance-unit', 'm');
   await page.waitForTimeout(250);
   ck('switching to meters relabels the distance column',
     (await page.locator('#dope-entries .entry-head span').first().textContent()).includes('(m)'));
-  ck('and relabels the zero with it',
-    (await page.locator('#dope-zero-unit').textContent()).trim() === 'm');
+  // The zero is a fact about the rifle, not about the rows, so changing the row unit must
+   // leave it alone — the whole point of the two being separate.
+  ck('changing the row unit leaves the zero unit alone',
+    await page.inputValue('#dope-zero-unit') === 'yd');
 
   const dRow = page.locator('#dope-entries .entry-row input');
   await dRow.nth(0).fill('300'); await dRow.nth(0).dispatchEvent('change');
@@ -148,14 +150,16 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   await page.waitForTimeout(500);
   const stored = await page.evaluate(() => {
     const t = data.firearms.find(g => (g.dope || []).length).dope.slice(-1)[0];
-    return { du: t.distanceUnit, dist: t.entries[0].distance, zero: t.zeroDistance };
+    return { du: t.distanceUnit, zu: t.zeroUnit, dist: t.entries[0].distance, zero: t.zeroDistance };
   });
   ck('a meters table stores its unit', stored.du === 'm');
+  ck('and stores the zero\'s unit separately', stored.zu === 'yd');
   ck('and stores the distance as typed', stored.dist === 300 && stored.zero === 100);
   ck('the card reads the table back in meters', await page.evaluate(() => {
     const t = [...document.querySelectorAll('#history-dope-list .dope-card')].pop();
     const s = t.textContent.replace(/\s+/g, ' ');
-    return /zero 100 m/.test(s) && /300 M/.test(s);
+    // Zeroed at 100 yards, come-ups listed in meters — the card must say both.
+    return /zero 100 yd/.test(s) && /300 M/.test(s);
   }));
 
   // Reopening is where a unit most easily gets lost, since the field is populated from the
@@ -163,8 +167,9 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   await page.locator('#history-dope-list .dope-card').last().click({ position:{x:60,y:20} });
   await page.waitForTimeout(400);
   ck('reopening a meters table comes back in meters',
-    await page.inputValue('#dope-distance-unit') === 'm' &&
-    (await page.locator('#dope-zero-unit').textContent()).trim() === 'm');
+    await page.inputValue('#dope-distance-unit') === 'm');
+  ck('and remembers the zero was in yards',
+    await page.inputValue('#dope-zero-unit') === 'yd');
   ck('the distance unit is inert in view mode',
     await page.evaluate(() => document.getElementById('dope-distance-unit').disabled));
   await page.locator('#modal-dope .modal').screenshot({ path: path.join(ARTIFACTS,'dope-meters.png') });

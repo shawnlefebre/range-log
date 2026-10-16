@@ -45,7 +45,12 @@
 //      inert otherwise, and stored anyway so it is there if a session is logged later.
 //      Every pre-existing cleaning is stamped 'after', which is the rule the app applied
 //      globally before this existed, so no figure moves across the migration.
-const SCHEMA_VERSION = 17;
+// v18: dope.zeroUnit added — 'yd' | 'm', the unit of the table's zero distance, which is
+//      now independent of distanceUnit (the unit of the rows). A rifle zeroed once gets
+//      shot at ranges marked in both, so the zero can be 100 yd while the come-ups are
+//      listed in meters. Existing tables take zeroUnit from distanceUnit, which is exactly
+//      what the single field meant, so no table changes meaning across the migration.
+const SCHEMA_VERSION = 18;
 
 // The sentinel value for the "type your own" entry in every picker that offers one —
 // calibers, ammo, optics, tags. These once used two different sentinels, so forms that look
@@ -422,6 +427,7 @@ function generateDemoData() {
     ammo: 'Example Ammo Co 55gr FMJ',
     unit: 'mrad',
     zeroDistance: 100,
+    zeroUnit: 'yd',
     distanceUnit: 'yd',
     conditions: 'trued at 900 ft, 70\u00b0F',
     entries: [
@@ -745,10 +751,20 @@ function migrateData(d) {
     d.schemaVersion = 17;
   }
 
+  // v17 -> v18: the zero gets its own unit. One field used to label both the zero and the
+  // rows, so carrying it across keeps every existing table reading exactly as it did.
+  if (d.schemaVersion === 17) {
+    d.firearms.forEach(gun => {
+      (gun.dope || []).forEach(t => { if (!t.zeroUnit) t.zeroUnit = t.distanceUnit || 'yd'; });
+    });
+    d.schemaVersion = 18;
+  }
+
   // Defensive: ensure every gun has cleanings + zeros + calibers arrays, and ammo + sellers exist
   d.firearms.forEach(gun => {
     if (!Array.isArray(gun.cleanings)) gun.cleanings = [];
     if (!Array.isArray(gun.zeros)) gun.zeros = [];
+    (gun.dope || []).forEach(t => { if (!t.zeroUnit) t.zeroUnit = t.distanceUnit || 'yd'; });
     if (!Array.isArray(gun.groups)) gun.groups = [];
     gun.groups.forEach(g => {
       if (g.sessionId === undefined) g.sessionId = null;
@@ -2452,9 +2468,13 @@ function renderDopeCards(gunId) {
   paintHistorySection('dope', tables.map(t => {
     const unit = t.unit === 'mrad' ? 'mrad' : 'moa';
     const du = t.distanceUnit || 'yd';
+    // The zero has its own unit, so the card has to read it from the zero rather than from
+    // the rows — a table zeroed at 100 yd and listed in meters says both, and saying "100 m"
+    // there would misreport what the rifle is actually zeroed at.
+    const zu = t.zeroUnit || du;
     const entries = [...(t.entries || [])].sort((a, b) => (a.distance || 0) - (b.distance || 0));
     const meta = [unit.toUpperCase()];
-    if (t.zeroDistance) meta.push(`zero ${t.zeroDistance} ${du}`);
+    if (t.zeroDistance) meta.push(`zero ${t.zeroDistance} ${zu}`);
     meta.push(`${entries.length} distance${entries.length === 1 ? '' : 's'}`);
     const shown = entries.slice(0, CAP).map(e => `
       <div class="dope-row">
@@ -2505,8 +2525,6 @@ function renderDopeEntries() {
   const wrap = document.getElementById('dope-entries');
   if (!wrap) return;
   const du = document.getElementById('dope-distance-unit').value || 'yd';
-  const zeroUnit = document.getElementById('dope-zero-unit');
-  if (zeroUnit) zeroUnit.textContent = du;
   const cls = dopeReadOnly ? ' view' : '';
   const dis = dopeReadOnly ? ' disabled' : '';
   let html = `<div class="entry-head${cls}"><span>Distance (${du})</span>` +
@@ -2561,7 +2579,7 @@ function dopeApplyMode() {
     modal: 'modal-dope', buttons: 'dope-buttons', readOnly: dopeReadOnly,
     enterEdit: 'dopeEnterEdit', save: 'saveDope',
     fields: ['dope-ammo-select', 'dope-ammo-custom', 'dope-unit', 'dope-zero-distance',
-             'dope-distance-unit', 'dope-conditions'],
+             'dope-distance-unit', 'dope-zero-unit', 'dope-conditions'],
   });
 }
 
@@ -2579,6 +2597,7 @@ function openDope(gunId, dopeId, readOnly) {
     document.getElementById('dope-unit').value = dopeUnit;
     document.getElementById('dope-zero-distance').value = t.zeroDistance || '';
     document.getElementById('dope-distance-unit').value = t.distanceUnit || 'yd';
+    document.getElementById('dope-zero-unit').value = t.zeroUnit || t.distanceUnit || 'yd';
     document.getElementById('dope-conditions').value = t.conditions || '';
     dopeRows = (t.entries || [])
       .map(e => ({ distance: e.distance, come: e.come }))
@@ -2591,6 +2610,7 @@ function openDope(gunId, dopeId, readOnly) {
     document.getElementById('dope-unit').value = dopeUnit;
     document.getElementById('dope-zero-distance').value = '';
     document.getElementById('dope-distance-unit').value = 'yd';
+    document.getElementById('dope-zero-unit').value = 'yd';
     document.getElementById('dope-conditions').value = '';
     dopeRows = [{ distance: null, come: null }];
   }
@@ -2643,6 +2663,7 @@ function saveDope() {
     unit: dopeUnit,
     zeroDistance: parseFloat(document.getElementById('dope-zero-distance').value) || null,
     distanceUnit: document.getElementById('dope-distance-unit').value,
+    zeroUnit: document.getElementById('dope-zero-unit').value,
     conditions: document.getElementById('dope-conditions').value.trim(),
     entries,
   };
@@ -8697,7 +8718,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.11.3';
+const APP_VERSION = '7.11.4';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
