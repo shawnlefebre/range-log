@@ -1096,7 +1096,7 @@ describe('groups scope narrows the pane', () => {
     .find(c => flat(c).startsWith(text));
   const click = (win, el) => win.eval(el.getAttribute('onclick'));
   const dots = win => win.document.getElementById('stats-groups-poi')
-    .querySelectorAll('circle[r="4"]').length;
+    .querySelectorAll('circle.poi-dot').length;
 
   test('a row appears per dimension that can actually narrow', async () => {
     const win = await app();
@@ -2798,18 +2798,48 @@ describe('Compare and Point of Impact agree on colors', () => {
       'and the two still agree with each other');
   });
 
-  test('both charts stop coloring past four, rather than one of them cycling', async () => {
-    // Five loads: Compare used to reuse the palette, so rows 1 and 5 shared a color while
-    // POI had already dropped to a single one. Two charts, two different lies.
-    const five = ['L1', 'L2', 'L3', 'L4', 'L5'].flatMap((a, i) => [
-      grp(`${a}x`, `2026-05-0${i + 1}`, a, 0.2 * i, 0.1 * i, i + 1),
-      grp(`${a}y`, `2026-05-1${i}`, a, 0.2 * i, 0.1 * i, i + 1),
-    ]);
-    const win = await app(five);
+  // n loads, ranked L1 best to Ln worst, each with two groups at its own offset.
+  const loads = n => Array.from({ length: n }, (_, i) => `L${i + 1}`).flatMap((a, i) => [
+    grp(`${a}x`, `2026-05-${String(i + 1).padStart(2, '0')}`, a, 0.2 * i, 0.1 * i, i + 1),
+    grp(`${a}y`, `2026-06-${String(i + 1).padStart(2, '0')}`, a, 0.2 * i, 0.1 * i, i + 1),
+  ]);
+  const ringed = (win, sel) => [...win.document.querySelectorAll(sel)]
+    .filter(e => e.classList.contains('ring')).length;
+
+  test('five to eight loads: the palette repeats as rings, and the two charts agree', async () => {
+    // Five loads used to drop both charts to one color, losing the per-load crosses. Now
+    // rows five on reuse the four colors as hollow rings: shape carries what color cannot.
+    const win = await app(loads(6));
+    const cmp = compareColors(win), poi = poiColors(win);
+    assert.strictEqual(cmp.length, 6);
+    assert.strictEqual(poi.length, 6, 'each load is named in the legend');
+    assert.strictEqual(new Set(cmp.map(c => c.color)).size, 4, 'four colors between six rows');
+    assert.strictEqual(cmp[4].color, cmp[0].color, 'row five reuses the first color');
+    assert.strictEqual(ringed(win, '#stats-groups-compare .cmp-tick'), 2,
+      'the two rows past four are drawn as rings');
+    assert.ok(win.document.querySelectorAll('#stats-groups-compare .cmp-row')[4]
+      .querySelector('.cmp-tick').classList.contains('ring'), 'and it is rows five and six');
+    assert.strictEqual(ringed(win, '#stats-groups-poi .poi-legend i'), 2,
+      'the legend marks the same two as rings');
+    assert.strictEqual(ringed(win, '#stats-groups-poi circle.poi-dot'), 4,
+      'their dots on the plot are rings too, two groups each');
+    assert.strictEqual(
+      win.document.querySelectorAll('#stats-groups-poi .poi-center').length, 6,
+      'every load gets its own center cross');
+    poi.forEach(p => assert.strictEqual(p.color, cmp.find(c => c.label === p.label).color,
+      `${p.label} differs between the charts`));
+  });
+
+  test('both charts stop coloring past eight, rather than one of them cycling', async () => {
+    // Compare once reused the palette while POI had already dropped to a single color — two
+    // charts, two different lies. Past what color and shape together can separate, neither
+    // claims a mapping.
+    const win = await app(loads(9));
     const cmp = compareColors(win);
-    assert.strictEqual(cmp.length, 5);
+    assert.strictEqual(cmp.length, 9);
     assert.strictEqual(new Set(cmp.map(c => c.color)).size, 1,
-      'all one color: five series cannot be told apart, so none should claim to be');
+      'all one color: nine series cannot be told apart, so none should claim to be');
+    assert.strictEqual(ringed(win, '#stats-groups-compare .cmp-tick'), 0, 'and no rings');
     assert.strictEqual(poiColors(win).length, 0, 'and no legend promising a mapping');
   });
 
@@ -2833,7 +2863,7 @@ describe('Compare and Point of Impact agree on colors', () => {
 
 // ── POINT OF IMPACT: THE MEDIAN MARKER ──────────────────────────────
 // The cross is the answer to "where is this rifle actually hitting". It used to be drawn
-// only when the dots were colored by bucket, which needs 2–4 buckets — so a rifle shot
+// only when the dots were colored by bucket, which needs 2–8 buckets — so a rifle shot
 // with a single load got no marker at all, while the note underneath still described a
 // median it never plotted. That is the commonest case, not an edge one.
 
@@ -2884,7 +2914,7 @@ describe('point of impact plots its median however the dots are colored', () => 
       group('c', '2026-05-03', '77gr TMK', 0.6, 0.5),
     ]);
     const el = poi(win);
-    assert.strictEqual(el.querySelectorAll('circle[r="4"]').length, 3, 'three groups, three dots');
+    assert.strictEqual(el.querySelectorAll('circle.poi-dot').length, 3, 'three groups, three dots');
     assert.strictEqual(el.querySelectorAll('.poi-center').length, 1,
       'a single-load rifle must still show where it is hitting');
   });
@@ -2898,7 +2928,7 @@ describe('point of impact plots its median however the dots are colored', () => 
       'the wording must not promise a per-row cross when there is one for the lot');
   });
 
-  test('two to four ammo: a cross per bucket, not one overall', async () => {
+  test('two to eight ammo: a cross per bucket, not one overall', async () => {
     const win = await appWith([
       group('a', '2026-05-01', '77gr TMK', 0.4, 0.6),
       group('b', '2026-05-02', '77gr TMK', 0.5, 0.7),
@@ -2910,14 +2940,14 @@ describe('point of impact plots its median however the dots are colored', () => 
     assert.match(flat(el), /the cross its median per row/);
   });
 
-  test('beyond four buckets everything goes one color — and still gets one cross', async () => {
-    // The palette is validated for four series; past that the code drops to a single color,
-    // which is exactly the branch that used to lose the marker.
-    const win = await appWith(['A', 'B', 'C', 'D', 'E'].flatMap((a, i) => [
-      group(`${a}1`, `2026-05-0${i + 1}`, `Load ${a}`, 0.2 * i, 0.1 * i),
-    ]));
+  test('beyond eight buckets everything goes one color — and still gets one cross', async () => {
+    // Color and shape together separate eight series; past that the code drops to a single
+    // color, which is exactly the branch that used to lose the marker.
+    const names = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
+    const win = await appWith(names.map((a, i) =>
+      group(`${a}1`, `2026-05-0${i + 1}`, `Load ${a}`, 0.2 * i, 0.1 * i)));
     const el = poi(win);
-    assert.strictEqual(el.querySelectorAll('circle[r="4"]').length, 5);
+    assert.strictEqual(el.querySelectorAll('circle.poi-dot').length, 9);
     assert.strictEqual(el.querySelectorAll('.poi-center').length, 1);
   });
 
@@ -2929,7 +2959,7 @@ describe('point of impact plots its median however the dots are colored', () => 
     ]);
     const el = poi(win);
     const cross = el.querySelector('.poi-center');
-    const dots = [...el.querySelectorAll('circle[r="4"]')];
+    const dots = [...el.querySelectorAll('circle.poi-dot')];
     // The two clustered groups plot on top of each other; the cross must be with them.
     const [cx] = cross.getAttribute('d').match(/-?[\d.]+/g).map(Number);
     const clustered = Number(dots[0].getAttribute('cx'));
@@ -4300,7 +4330,7 @@ describe('point of impact map', () => {
     assert.strictEqual(poi(win).innerHTML, '');
   });
 
-  test('color is capped at the four the palette was validated for', async () => {
+  test('color is capped at eight: four colors, each filled and as a ring', async () => {
     const win = await ready(loadApp());
     const gun = gunWithGroups(win);
 
@@ -4320,12 +4350,12 @@ describe('point of impact map', () => {
     win.groupsInScope().groups.forEach(g =>
       (g.tags.length ? g.tags : ['Untagged']).forEach(t => names.add(t)));
     const legend = poi(win).querySelectorAll('.poi-legend span').length;
-    if (names.size >= 2 && names.size <= 4) {
+    if (names.size >= 2 && names.size <= 8) {
       assert.strictEqual(legend, names.size, 'each bucket is named beside its color');
       assert.strictEqual(poi(win).querySelectorAll('.poi-center').length, names.size);
     } else {
       assert.strictEqual(legend, 0,
-        'beyond four buckets the palette cannot separate them, so it stops colouring');
+        'beyond eight buckets color and shape cannot separate them, so it stops colouring');
       assert.strictEqual(poi(win).querySelectorAll('.poi-center').length, 1,
         'dropping the color must not also drop the median');
     }

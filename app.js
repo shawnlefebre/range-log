@@ -5373,9 +5373,13 @@ function isoDay(ms) {
 // Prone vs bench is the same chart as Norma vs CCI — one dot per group, a median tick, the
 // spread as a whisker. Only the grouping changes, so it is one view with a control rather
 // than three near-identical views.
-// Validated for four series against this surface; a fifth cannot be added without failing
-// color-blind separation, which is why both charts stop coloring rather than cycling.
+// Validated for four series against this surface; a fifth color cannot be added without
+// failing color-blind separation. Rows five to eight reuse the four as hollow rings, so
+// shape carries the difference color cannot: a filled gold dot and a gold ring are two
+// loads, and each gets its own median cross (+ filled, × ring). Past eight both charts
+// stop coloring rather than cycling.
 const GROUP_SERIES = ['#ba8c01', '#1f68bc', '#cf5a93', '#007c59'];
+const GROUP_SERIES_MAX = GROUP_SERIES.length * 2;
 const GROUP_ACCENT = '#c8a84b';
 
 // One color per bucket, decided once and handed to both charts. They used to each pick their
@@ -5397,13 +5401,19 @@ function groupSeriesFor(groups, dim) {
     .sort((a, b) => a.med - b.med)
     .map(x => x.k);
 
-  const colored = order.length >= 2 && order.length <= GROUP_SERIES.length;
+  const colored = order.length >= 2 && order.length <= GROUP_SERIES_MAX;
   const map = new Map();
-  order.forEach((k, i) => map.set(k, GROUP_SERIES[i % GROUP_SERIES.length]));
+  order.forEach((k, i) => map.set(k, {
+    color: GROUP_SERIES[i % GROUP_SERIES.length],
+    ring: i >= GROUP_SERIES.length,
+  }));
+  const PLAIN = { color: GROUP_ACCENT, ring: false };
+  const styleOf = k => (colored ? (map.get(k) || PLAIN) : PLAIN);
   return {
     order,
     colored,
-    colorOf: k => (colored ? (map.get(k) || GROUP_ACCENT) : GROUP_ACCENT),
+    styleOf,
+    colorOf: k => styleOf(k).color,
   };
 }
 
@@ -5461,19 +5471,23 @@ function renderGroupCompare(groups) {
   const rowsHtml = rows.map(r => {
     // By key, not by position — the same load has to come out the same color here as it does
     // on the point-of-impact map beneath it.
-    const c = series.colorOf(r.key);
+    const { color: c, ring } = series.styleOf(r.key);
+    const rc = ring ? ' ring' : '';
     const dots = r.gs.map(g =>
-      `<span class="cmp-dot" style="left:${pct(M.of(g))}%;background:${c}"></span>`).join('');
+      `<span class="cmp-dot${rc}" style="left:${pct(M.of(g))}%;background:${c};color:${c}"></span>`).join('');
+    // The swatch is what ties a row to the plot legend below without leaning on color alone.
+    const sw = series.colored
+      ? `<i class="series-sw${rc}" style="background:${c};color:${c}"></i>` : '';
     return `
       <div class="cmp-row">
         <div class="cmp-name" title="${esc(r.key)}">
-          <span class="cmp-name-t">${esc(r.label)}</span>
+          <span class="cmp-name-t">${sw}${esc(r.label)}</span>
           <span>n=${r.gs.length}${r.days === 1 && key !== 'day' ? ' · 1 day' : ''}</span>
         </div>
         <div class="cmp-track">
           <span class="cmp-span" style="left:${pct(r.lo)}%;width:${pct(r.hi - r.lo)}%;background:${c}"></span>
           ${dots}
-          <span class="cmp-tick" style="left:${pct(r.med)}%;background:${c}"></span>
+          <span class="cmp-tick${rc}" style="left:${pct(r.med)}%;background:${c};color:${c}"></span>
         </div>
         <div class="cmp-med" style="color:${c}">${gFmt(r.med)}</div>
       </div>`;
@@ -5540,7 +5554,8 @@ function renderGroupPOI(gun, groups) {
 
   const legend = colored
     ? `<div class="poi-legend">${names.map(n =>
-        `<span><i style="background:${series.colorOf(n)}"></i>${
+        `<span><i class="series-sw${series.styleOf(n).ring ? ' ring' : ''}" style="background:${
+          series.colorOf(n)};color:${series.colorOf(n)}"></i>${
           key === 'day' ? fmtDate(n) : esc(shortLoadName(n))}</span>`).join('')}</div>`
     : '';
 
@@ -5681,27 +5696,41 @@ function poiDraw() {
             <text x="${ox + 6}" y="${PAD - 6}" fill="${DIM}" font-family="IBM Plex Mono"
                   font-size="8.5">up</text>`;
 
-  const cross = (x, y, c, sw) =>
-    `<path class="poi-center" d="M${px(x) - 7} ${py(y)}h14M${px(x)} ${py(y) - 7}v14"
-           stroke="${c}" stroke-width="${sw}" fill="none"/>`;
+  // A + for filled series and an × for ring series, so two loads sharing a color still have
+  // told-apart centers. Each is laid over a dark halo: with up to eight crosses, one landing
+  // on another load's dots has to stay readable.
+  const cross = (x, y, c, sw, ring) => {
+    const X = px(x), Y = py(y);
+    const d = ring ? `M${X - 5.5} ${Y - 5.5}l11 11M${X + 5.5} ${Y - 5.5}l-11 11`
+                   : `M${X - 7} ${Y}h14M${X} ${Y - 7}v14`;
+    return `<path d="${d}" stroke="var(--surface)" stroke-width="${sw + 2.5}" fill="none"/>
+            <path class="poi-center" d="${d}" stroke="${c}" stroke-width="${sw}" fill="none"/>`;
+  };
   P.names.forEach(n => {
-    const c = P.series.colorOf(n);
+    const { color: c, ring } = P.series.styleOf(n);
     P.buckets[n].forEach(g => {
-      out += `<circle cx="${px(g.offXMOA)}" cy="${py(g.offYMOA)}" r="4" fill="${c}"
-                      opacity="0.82" stroke="var(--surface)" stroke-width="1.2"/>`;
+      out += ring
+        ? `<circle class="poi-dot ring" cx="${px(g.offXMOA)}" cy="${py(g.offYMOA)}" r="3.6"
+                   fill="var(--surface)" stroke="${c}" stroke-width="2"/>`
+        : `<circle class="poi-dot" cx="${px(g.offXMOA)}" cy="${py(g.offYMOA)}" r="4" fill="${c}"
+                   opacity="0.82" stroke="var(--surface)" stroke-width="1.2"/>`;
     });
-    if (P.colored)
-      out += cross(statsMedian(P.buckets[n].map(g => g.offXMOA)),
-                   statsMedian(P.buckets[n].map(g => g.offYMOA)), c, 2);
   });
+  // Crosses after every dot, so no load's dots can bury another load's center.
+  if (P.colored)
+    P.names.forEach(n => {
+      const { color: c, ring } = P.series.styleOf(n);
+      out += cross(statsMedian(P.buckets[n].map(g => g.offXMOA)),
+                   statsMedian(P.buckets[n].map(g => g.offYMOA)), c, 2, ring);
+    });
   // Where the rifle is actually hitting is the whole question this plot answers, so the
   // median has to be drawn whichever way the dots are colored. Per-bucket crosses only
-  // exist in the 2–4 bucket case; every other case gets one cross for the lot. Without this
+  // exist in the 2–8 bucket case; every other case gets one cross for the lot. Without this
   // a rifle shot with a single load — the plainest reading of a zero there is — drew no
   // marker at all, while the note underneath still described a median it never showed.
   if (!P.colored)
     out += cross(statsMedian(P.usable.map(g => g.offXMOA)),
-                 statsMedian(P.usable.map(g => g.offYMOA)), GROUP_ACCENT, 2.5);
+                 statsMedian(P.usable.map(g => g.offYMOA)), GROUP_ACCENT, 2.5, false);
 
   svg.innerHTML = out;
   const chip = document.getElementById('poi-zoom');

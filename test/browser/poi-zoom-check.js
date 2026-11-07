@@ -53,7 +53,7 @@ const SVG = '#poi-svg';
   const state = () => page.evaluate(sel => {
     const svg = document.querySelector(sel);
     if (!svg) return null;
-    const dots = [...svg.querySelectorAll('circle[r="4"]')]
+    const dots = [...svg.querySelectorAll('circle.poi-dot')]
       .map(c => [Number(c.getAttribute('cx')), Number(c.getAttribute('cy'))]);
     const xs = dots.map(d => d[0]).sort((a, b) => a - b);
     return {

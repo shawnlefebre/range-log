@@ -216,7 +216,7 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
     if (!svg) return null;
     const r = svg.getBoundingClientRect();
     return { w: r.width, h: r.height,
-             dots: svg.querySelectorAll('circle[r="4"]').length,
+             dots: svg.querySelectorAll('circle.poi-dot').length,
              legend: document.querySelectorAll('#stats-groups-poi .poi-legend span').length,
              note: document.querySelector('#stats-groups-poi .stats-note').textContent.replace(/\s+/g,' ') };
   });

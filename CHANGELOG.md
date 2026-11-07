@@ -11,6 +11,9 @@ changes. It's noted below wherever it did.
 
 ## Unreleased
 
+- **Group charts keep per-load colors up to eight loads.** Past four, Compare and Point of Impact
+  used to drop to a single gold. Loads five to eight now reuse the four colors as hollow rings, with
+  an × for their center cross, so each load still has its own median on the plot.
 - **Saving a group without its photo asks first.** The "Keep the photo" box sits just under the
   marking buttons, where a missed tap unchecks it; *Keep photo* re-checks it and saves.
 - **"Re-mark for this group" is now "Create new reference for this group"**, since it gives the

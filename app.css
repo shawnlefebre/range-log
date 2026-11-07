@@ -2141,10 +2141,7 @@
     font-size: 0.64rem;
     color: var(--text-muted);
   }
-  .poi-legend i {
-    display: inline-block; width: 9px; height: 9px; border-radius: 2px;
-    margin-right: 5px; vertical-align: baseline;
-  }
+  .poi-legend i { margin-right: 5px; }
 
   /* ── Group comparison rows ────────────────────────────────────────
      Deliberately HTML rather than SVG. Text inside an SVG scales with the viewBox, so on a
@@ -2194,6 +2191,20 @@
     transform: translate(-50%, -50%); opacity: 0.9;
     box-shadow: 0 0 0 1.5px var(--surface);
   }
+  /* Rows five to eight share the four series colors and are told apart by shape: a hollow
+     ring instead of a filled dot. The inline background stays the series color (it is what
+     the color is read from); these rules swap it for the surface and draw the color as a
+     border via currentColor. */
+  .cmp-dot.ring { background: var(--surface) !important; border: 2px solid currentColor;
+    box-sizing: border-box; opacity: 1; }
+  .cmp-tick.ring { background: var(--surface) !important; border: 1.5px solid currentColor;
+    width: 5px; box-sizing: border-box; }
+  .series-sw {
+    display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+    margin-right: 5px; vertical-align: baseline; box-sizing: border-box;
+  }
+  .series-sw.ring { background: transparent !important; border: 2px solid currentColor; }
+
   .cmp-tick {
     position: absolute; top: 50%; width: 3px; height: 20px; border-radius: 1px;
     transform: translate(-50%, -50%);

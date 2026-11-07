@@ -347,9 +347,11 @@ distance out from it — spaced from how far the dots actually sit, so a tight r
 scale to read against.
 
 It's colored by whatever **Compare by** is set to, with a cross at each row's median, so the two
-charts read together. Beyond four rows it stops coloring, since the palette is validated for four
-series against the dark background and a fifth would fail colorblind separation; the whole set
-then gets one cross, so the typical point of impact is always drawn.
+charts read together. The palette is validated for four colors against the dark background, and
+a fifth would fail colorblind separation, so rows five to eight reuse those four as **hollow
+rings**, with an **×** for their median instead of a +. Each row in Compare carries the same swatch
+as the legend. Beyond eight rows it stops coloring; the whole set then gets one cross, so the
+typical point of impact is always drawn.
 
 One far-off group sets the scale and can squeeze every cross into the middle, so the plot
 **zooms**: pinch with two fingers (or ctrl-scroll / trackpad pinch on a computer), and one finger
