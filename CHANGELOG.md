@@ -11,6 +11,8 @@ changes. It's noted below wherever it did.
 
 ## Unreleased
 
+- **Saving a group without its photo asks first.** The "Keep the photo" box sits just under the
+  marking buttons, where a missed tap unchecks it; *Keep photo* re-checks it and saves.
 - **"Re-mark for this group" is now "Create new reference for this group"**, since it gives the
   current group a reference of its own and never redoes the groups already saved.
 - **The Stats point-of-impact plot zooms.** Pinch with two fingers to spread out the center

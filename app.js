@@ -8137,6 +8137,7 @@ async function openLogGroup(gunId, groupId, readOnly) {
   document.getElementById('group-cal-h').value = existing ? (existing.calInchesH || 1) : 1;
   document.getElementById('group-bullet').value = existing && existing.bulletDia ? existing.bulletDia : '';
   document.getElementById('group-keep-photo').checked = existing ? !!existing.photoId : true;
+  gHidePhotoDrop();
   groupModalTags = existing && Array.isArray(existing.tags) ? [...existing.tags] : [];
   renderGroupTagChips();
   populateAmmoDropdown(gun, existing ? existing.ammo : '', 'group-ammo-select', 'group-ammo-custom');
@@ -8299,7 +8300,7 @@ async function handleGroupFile(input) {
 
 // Validates and writes the current marking state. Returns the record, or undefined
 // when something's missing — callers decide whether to close.
-async function groupPersist() {
+async function groupPersist(retry) {
   if (!G || G.readOnly) return;
   const gun = data.firearms.find(g => g.id === G.gunId);
   if (!gun) return;
@@ -8315,6 +8316,12 @@ async function groupPersist() {
   if (G.impacts.length < 2) { alert('Please mark at least two impacts.'); return; }
 
   const keepPhoto = document.getElementById('group-keep-photo').checked;
+  // The checkbox sits just under the marking buttons, where a thumb that misses Set point
+  // lands on it, and dropping the photo can't be undone. So saving without one is asked
+  // about first — only when there is a photo on screen to lose.
+  if (!keepPhoto && G.img && !G.photoDropOk) { gAskPhotoDrop(retry); return; }
+  G.photoDropOk = false;
+  gHidePhotoDrop();
   if (!Array.isArray(gun.groups)) gun.groups = [];
   const existing = G.editId && gun.groups.find(x => x.id === G.editId);
 
@@ -8375,7 +8382,7 @@ async function groupPersist() {
 // interrupted mid-target can't lose what's already marked. The photo is stored once on
 // the first save; later groups on the same target reference the same blob.
 async function groupFinishCurrent() {
-  const record = await groupPersist();
+  const record = await groupPersist(groupFinishCurrent);
   if (!record) return;
   G.photoId = record.photoId;
   G.saved.push(record.id);
@@ -8389,8 +8396,42 @@ async function groupFinishCurrent() {
   gRefresh();
 }
 
+// Asked inline rather than in a second modal: iOS Safari doesn't reliably repaint stacked
+// overlays (see closeModal), so the group form never opens another on top of itself.
+// Keep photo is the primary button, since the usual way here is a slip, not a decision.
+let gPhotoDropRetry = null;
+function gAskPhotoDrop(retry) {
+  gPhotoDropRetry = retry;
+  const box = document.getElementById('group-photo-confirm');
+  box.innerHTML = `
+    <div class="photo-drop-confirm">
+      <div><b>Save without the photo?</b>
+        You won't be able to re-mark this group later.</div>
+      <div class="btn-row">
+        <button type="button" class="btn btn-secondary" onclick="gPhotoDropAnswer(false)">Save without photo</button>
+        <button type="button" class="btn btn-primary" onclick="gPhotoDropAnswer(true)">Keep photo</button>
+      </div>
+    </div>`;
+  box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+function gHidePhotoDrop() {
+  const box = document.getElementById('group-photo-confirm');
+  if (box) box.innerHTML = '';
+}
+
+function gPhotoDropAnswer(keep) {
+  if (!G) return;
+  if (keep) document.getElementById('group-keep-photo').checked = true;
+  else G.photoDropOk = true;
+  gHidePhotoDrop();
+  const retry = gPhotoDropRetry;
+  gPhotoDropRetry = null;
+  if (retry) retry();
+}
+
 async function saveGroup() {
-  const record = await groupPersist();
+  const record = await groupPersist(saveGroup);
   if (!record) return;
   G = null;
   closeModal('modal-group');

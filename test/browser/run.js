@@ -26,6 +26,7 @@ const SUITES = [
   ['tags-check', 'group tags: entry, case-insensitive dedup, view mode'],
   ['multigroup-check', 'several groups on one photo, shared calibration and photo'],
   ['scale-scope-check', 'a scale reference per group: breaking out, rejoining, what an edit reaches'],
+  ['keep-photo-check', 'saving a group without its photo asks first; Keep photo undoes the slip'],
   ['photo-share-check', 'shared photo reference counting, camera icon, restoring a lost photo'],
   ['impact-remove-check', 'removing one impact: crosshair targeting, undo, zoom precision'],
   ['pinch-ghost-check', 'photo pan and zoom survive a dropped pointerup'],

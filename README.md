@@ -166,7 +166,7 @@ diameter as you mark, so it sits over the hole like a lid. For which figure to t
 - **Fixing one bad mark.** Move the crosshair over an impact and it highlights, with a **Remove** control naming which one. Setting a point stays the primary action, so you can still add a hole right beside an existing one. Undo reverses whichever you did last
 - **Tags** label a group however you like — prone, bench, bipod, windy — from tags you've used before or a new one. Matching ignores case, so *Prone* reuses *prone* instead of splitting your comparisons later
 - **Groups link to a range session**, which is what gives each session its scorecard
-- **Keeping the photo is optional.** Marked points are always saved, so measurements still recompute without it — you just can't re-mark impacts. Photos never leave the device and are never in a JSON export, which keeps backups small
+- **Keeping the photo is optional.** Marked points are always saved, so measurements still recompute without it — you just can't re-mark impacts. Because the checkbox sits close to the marking buttons, saving with it unchecked asks first, and *Keep photo* puts it back. Photos never leave the device and are never in a JSON export, which keeps backups small
 - **A target photographed once is stored once.** The image is deleted only when the last group referencing it lets go
 - **If a photo goes missing** — a backup restored without its photo bundle, say — the group says so and offers to restore it. Impacts are stored relative to the image, so putting the same photo back lines the marks up exactly, and restoring repairs every group that shared that target at once
 

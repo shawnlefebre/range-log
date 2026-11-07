@@ -865,10 +865,11 @@
       </div>
       <div class="form-group" id="group-keep-photo-field">
         <label class="group-check" for="group-keep-photo">
-          <input type="checkbox" id="group-keep-photo" checked>
+          <input type="checkbox" id="group-keep-photo" checked onchange="gHidePhotoDrop()">
           <span>Keep the photo so this group can be re-marked later</span>
         </label>
       </div>
+      <div id="group-photo-confirm"></div>
     </div>
 
     <div id="group-marked"></div>

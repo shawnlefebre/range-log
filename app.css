@@ -639,6 +639,17 @@
   }
   .scale-state .btn-mini { flex: none; }
 
+  /* Asked before a group is saved without its photo. Accent edge, not --warn: it is a
+     question about a choice, not a status. */
+  .photo-drop-confirm {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent); border-radius: 4px;
+    padding: 10px 12px; margin: 4px 0 12px;
+    font-size: 0.85rem; line-height: 1.5; color: var(--text-muted);
+  }
+  .photo-drop-confirm b { color: var(--text); font-weight: 600; }
+  .photo-drop-confirm .btn-row { margin-top: 10px; }
+
   .marked { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
   .marked-head {
     display: flex; justify-content: space-between; align-items: baseline;
