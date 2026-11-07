@@ -6088,16 +6088,24 @@ describe('burn rate', () => {
   test('a caliber first fired part-way through is measured from then, not from the start',
     async () => {
       const win = await ready(loadApp());
-      const y = new Date().getFullYear();
+      // Dated back from today, not pinned to calendar months: the window runs to today, so
+      // a new caliber fixed at January and February had a window that grew all year, and by
+      // November its rate no longer beat the old one's. Local dates, never toISOString(),
+      // which reports tomorrow for part of every evening west of UTC.
+      const ago = days => {
+        const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - days);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-` +
+          `${String(d.getDate()).padStart(2, '0')}`;
+      };
       // The old caliber runs the whole span; the new one appears only at the end.
       twoCalibers(win, { sessions: [
-        { id: 's1', date: `${y - 1}-01-15`, locationId: null, rounds: { old: 600 },
+        { id: 's1', date: ago(540), locationId: null, rounds: { old: 600 },
           totalRounds: 600, notes: '' },
-        { id: 's2', date: `${y - 1}-07-15`, locationId: null, rounds: { old: 600 },
+        { id: 's2', date: ago(360), locationId: null, rounds: { old: 600 },
           totalRounds: 600, notes: '' },
-        { id: 's3', date: `${y}-01-10`, locationId: null, rounds: { old: 600, new: 600 },
+        { id: 's3', date: ago(60), locationId: null, rounds: { old: 600, new: 600 },
           totalRounds: 1200, notes: '' },
-        { id: 's4', date: `${y}-02-10`, locationId: null, rounds: { new: 600 },
+        { id: 's4', date: ago(30), locationId: null, rounds: { new: 600 },
           totalRounds: 600, notes: '' },
       ] });
       openMoney(win, 'all');
@@ -6109,7 +6117,7 @@ describe('burn rate', () => {
       assert.ok(newC.rate > oldC.rate * 1.5,
         `the newer caliber burns faster (${newC.rate}/mo vs ${oldC.rate}/mo)`);
       assert.ok(!/over 1[0-9] months|year/.test(spanOf(win, '5.56 NATO')),
-        `a caliber first fired this year cannot report a multi-year span: ${spanOf(win, '5.56 NATO')}`);
+        `a caliber first fired two months ago cannot report a multi-year span: ${spanOf(win, '5.56 NATO')}`);
     });
 
   test('a caliber held since before the window is charged for the whole window', async () => {
