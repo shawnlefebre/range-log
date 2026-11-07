@@ -11,6 +11,8 @@ changes. It's noted below wherever it did.
 
 ## Unreleased
 
+- **"Re-mark for this group" is now "Create new reference for this group"**, since it gives the
+  current group a reference of its own and never redoes the groups already saved.
 - **The Stats point-of-impact plot zooms.** Pinch with two fingers to spread out the center
   crosses when one far-off group has squeezed them together; one finger still scrolls the page.
   Dots keep their size and the rings re-step to the zoomed span. Reset view or double-tap returns

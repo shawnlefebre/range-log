@@ -70,6 +70,22 @@ const URL = process.env.RANGE_LOG_URL || 'http://localhost:8455/index.html';
   const sharedPts = await page.evaluate(() =>
     data.firearms[0].groups.find(g => g.id === G.saved[0]).calPts.map(p => p.x));
 
+  // The button label is long on a phone; it has to fit beside the text, not push past it.
+  const fits = await page.evaluate(() => {
+    const box = document.querySelector('#group-scale-state .scale-state');
+    const btn = box.querySelector('button').getBoundingClientRect();
+    const text = box.querySelector('.scale-state-main').getBoundingClientRect();
+    const b = box.getBoundingClientRect();
+    // Inside the panel, clear of the text, and the text not crushed into a word per line —
+    // which is how a long label once came out, overlapping words in a narrow column.
+    const apart = btn.top >= text.bottom - 1 || btn.left >= text.right - 1;
+    return box.scrollWidth <= box.clientWidth + 1 && btn.right <= b.right + 1 &&
+      apart && text.width >= 180;
+  });
+  ck('the break-out button fits beside or below the text without crushing it', fits);
+  await page.locator('#group-scale-state').screenshot(
+    { path: path.join(ARTIFACTS, 'scale-state-shared.png') });
+
   // Break the third group out: its points clear, and the flow goes back to the scale step.
   await page.click('#group-scale-state button');
   await page.waitForTimeout(300);

@@ -7786,7 +7786,7 @@ function gRenderScaleState() {
           : 'measured for this group alone'}</em>
       </div>
       <button type="button" class="btn-mini" onclick="${shared ? 'groupScaleBreakOut()' : 'groupScaleRejoin()'}">${
-        shared ? 'Re-mark for this group' : 'Use shared'}</button>
+        shared ? 'Create new reference for this group' : 'Use shared'}</button>
     </div>`;
 }
 

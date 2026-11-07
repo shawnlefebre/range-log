@@ -623,9 +623,13 @@
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     background: var(--surface2); border: 1px solid var(--border);
     border-left: 3px solid var(--mark-cal); border-radius: 4px; padding: 8px 10px;
+    flex-wrap: wrap;
   }
   .scale-state.own { border-left-color: var(--accent); }
-  .scale-state-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  /* The text takes the room it needs and the button wraps below it when the two don't fit
+     side by side; without that a long label squeezed the text into a one-word column. */
+  .scale-state-main { display: flex; flex-direction: column; gap: 2px; min-width: 0;
+    flex: 1 1 200px; }
   .scale-state b {
     font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500; color: var(--text);
   }
