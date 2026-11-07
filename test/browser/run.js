@@ -36,6 +36,7 @@ const SUITES = [
   ['details-cap-check', 'capped Details lists: caps, expansion, scroll panel, reset'],
   ['stats-tabs-check', 'Stats sub-tabs: pane switching, moved charts, Upkeep ranking'],
   ['textsize-check', 'text size: every step scales without clipping or overflow'],
+  ['poi-zoom-check', 'point of impact: two-finger zoom, one finger still scrolls, reset'],
   ['trend-zoom-check', 'group trend: zoom, drag-to-pan, pinned axis, tap a point for its range day'],
   ['install-check', 'manifest and icons resolve, and are the sizes they claim'],
 ];

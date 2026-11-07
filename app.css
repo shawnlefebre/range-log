@@ -524,6 +524,19 @@
     cursor: grab;
   }
   .group-plot:active { cursor: grabbing; }
+  /* Point of impact: one finger stays the page's so Stats still scrolls over it; the
+     browser's own pinch is withheld so two fingers reach the plot instead. */
+  .poi-plot {
+    width: 100%;
+    max-width: 340px;
+    height: auto;
+    display: block;
+    touch-action: pan-x pan-y;
+  }
+  /* Every redraw replaces the plot's children, and a touch keeps targeting the node it began
+     on even once that node is gone — so a pinch that started on a dot stopped after one move.
+     Children never take the touch; the svg, which survives redraws, always does. */
+  .poi-plot * { pointer-events: none; }
   /* Tappable group rows — the whole row opens a read-only view; the icons still act
      on their own via stopPropagation. */
   .cleaning-row.tappable { cursor: pointer; }

@@ -5521,14 +5521,10 @@ function renderGroupPOI(gun, groups) {
   // appear; the ones that do keep the color they were assigned.
   const series = groupSeriesFor(groups, dim);
   const names = series.order.filter(k => buckets[k]);
-  const ACCENT = GROUP_ACCENT;
   const colored = series.colored;
 
-  const W = 300, H = 300, C = W / 2, PAD = 26;
   const reach = Math.max(
     ...usable.map(g => Math.hypot(g.offXMOA, g.offYMOA)), 0.5) * 1.2;
-  const px = v => C + (v / reach) * (C - PAD);
-  const py = v => C - (v / reach) * (C - PAD);
 
   // Offsets are the figures you dial, so they read in this rifle's turret unit — the same
   // rule the group detail view follows. Group size stays MOA everywhere, since that one is
@@ -5536,58 +5532,11 @@ function renderGroupPOI(gun, groups) {
   const mil = !!gun && gun.opticUnit === 'mrad';
   const unitLabel = mil ? 'MRAD' : 'MOA';
   const disp = v => (mil ? v / MOA_PER_MRAD : v);
-  const reachDisp = disp(reach);
-  // The ring step has to come from how far the dots actually sit, not from a fixed size in
-  // either unit: a rifle whose groups all land inside one step draws no rings at all and
-  // the plot loses its scale entirely. A mil zero offset is routinely under half a mil, so
-  // the floor here has to go well below 1 — hence the third argument.
-  const ringStep = niceScale(reachDisp, 4, 0.01).step;
-  // Enough decimals for the step chosen, so a 0.2 step never labels its rings "0" and "0".
-  const ringDec = Math.max(0, -Math.floor(Math.log10(ringStep)));
 
-  const GRIDC = '#2e2e2e', AXIS = '#555', DIM = '#555';
-  let svg = '';
-  // Rings out to the edge, labeled in whichever unit the offsets are being read in.
-  for (let i = 1; i * ringStep <= reachDisp + 1e-9; i++) {
-    const frac = (i * ringStep) / reachDisp;
-    const label = (i * ringStep).toFixed(ringDec);
-    svg += `<circle cx="${C}" cy="${C}" r="${(C - PAD) * frac}" fill="none"
-                    stroke="${GRIDC}" stroke-width="1"/>
-            <text x="${C + (C - PAD) * frac - 3}" y="${C - 4}" fill="${DIM}"
-                  font-family="IBM Plex Mono" font-size="8.5" text-anchor="end">${label}</text>`;
-  }
-  svg += `<line x1="${PAD}" y1="${C}" x2="${W - PAD}" y2="${C}" stroke="${AXIS}" stroke-width="1"/>
-          <line x1="${C}" y1="${PAD}" x2="${C}" y2="${H - PAD}" stroke="${AXIS}" stroke-width="1"/>
-          <text x="${W - 4}" y="${C + 12}" fill="${DIM}" font-family="IBM Plex Mono"
-                font-size="8.5" text-anchor="end">right</text>
-          <text x="${C + 6}" y="${PAD - 6}" fill="${DIM}" font-family="IBM Plex Mono"
-                font-size="8.5">up</text>`;
-
-  names.forEach(n => {
-    const c = series.colorOf(n);
-    buckets[n].forEach(g => {
-      svg += `<circle cx="${px(g.offXMOA)}" cy="${py(g.offYMOA)}" r="4" fill="${c}"
-                      opacity="0.82" stroke="var(--surface)" stroke-width="1.2"/>`;
-    });
-    if (colored) {
-      const mx = statsMedian(buckets[n].map(g => g.offXMOA));
-      const my = statsMedian(buckets[n].map(g => g.offYMOA));
-      svg += `<path class="poi-center" d="M${px(mx) - 7} ${py(my)}h14M${px(mx)} ${py(my) - 7}v14"
-                    stroke="${c}" stroke-width="2" fill="none"/>`;
-    }
-  });
-
-  // Where the rifle is actually hitting is the whole question this plot answers, so the
-  // median has to be drawn whichever way the dots are colored. Per-bucket crosses only
-  // exist in the 2–4 bucket case; every other case gets one cross for the lot. Without this
-  // a rifle shot with a single load — the plainest reading of a zero there is — drew no
-  // marker at all, while the note underneath still described a median it never showed.
-  if (!colored) {
-    const ox = statsMedian(usable.map(g => g.offXMOA));
-    const oy = statsMedian(usable.map(g => g.offYMOA));
-    svg += `<path class="poi-center" d="M${px(ox) - 7} ${py(oy)}h14M${px(ox)} ${py(oy) - 7}v14"
-                  stroke="${ACCENT}" stroke-width="2.5" fill="none"/>`;
-  }
+  // Drawn by poiDraw() so a pinch can redraw it; a fresh render always starts at Fit, since
+  // whatever changed the scope has usually changed the scale too.
+  poiPlot = { usable, names, buckets, series, colored, reach, mil };
+  poiView = null;
 
   const legend = colored
     ? `<div class="poi-legend">${names.map(n =>
@@ -5630,9 +5579,16 @@ function renderGroupPOI(gun, groups) {
   el.innerHTML = `
     <div class="stats-chart-card">
       <div class="stats-chart-title">Point of Impact</div>
-      <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet"
-           style="max-width:340px;margin:0 auto;" role="img"
-           aria-label="Group centers relative to point of aim">${svg}</svg>
+      <div class="group-plot-head">
+        <span>Pinch to zoom</span>
+        <button type="button" class="btn-mini" id="poi-reset">Reset view</button>
+      </div>
+      <div class="group-plot-wrap">
+        <svg id="poi-svg" class="poi-plot" viewBox="0 0 ${POI_W} ${POI_W}" width="100%"
+             preserveAspectRatio="xMidYMid meet" role="img"
+             aria-label="Group centers relative to point of aim"></svg>
+        <div class="group-zoom" id="poi-zoom">1.0×</div>
+      </div>
       ${legend}
       <div class="stats-note">Each dot is one group's <b>center</b> against your aim${
         colored ? ', the cross its median per row' : ', the cross their median'}. ${
@@ -5647,6 +5603,185 @@ function renderGroupPOI(gun, groups) {
           : ''}</div>
       ${distanceNote}
     </div>`;
+  poiDraw();
+  poiBindGestures();
+}
+
+/* ---- point-of-impact zoom ----
+   One stray group sets the scale for the whole plot and squeezes every center cross into
+   the middle, so the plot zooms. Two fingers only: the Stats pane scrolls, and a plot that
+   took one-finger drags would be a dead patch in the middle of it. Zoom redraws rather
+   than moving the viewBox, so dots and labels keep their size while the distances between
+   them grow, and the rings re-step to the zoomed span instead of thinning out to one. */
+const POI_W = 300, POI_PAD = 26;
+let poiPlot = null;
+let poiView = null;   // { zoom, cx, cy } — view center in MOA; null is Fit
+
+function poiCurrentView() { return poiView || { zoom: 1, cx: 0, cy: 0 }; }
+
+// Plot units per MOA at the current zoom.
+function poiScale(v) {
+  return (POI_W / 2 - POI_PAD) / (poiPlot.reach / v.zoom);
+}
+
+function poiDraw() {
+  const svg = document.getElementById('poi-svg');
+  if (!svg || !poiPlot) return;
+  const P = poiPlot, v = poiCurrentView();
+  const W = POI_W, C = W / 2, PAD = POI_PAD;
+  const k = poiScale(v);
+  const px = x => C + (x - v.cx) * k;
+  const py = y => C - (y - v.cy) * k;
+  const ox = px(0), oy = py(0);
+  const unit = P.mil ? MOA_PER_MRAD : 1;   // MOA per display unit
+
+  const GRIDC = '#2e2e2e', AXIS = '#555', DIM = '#555';
+  let out = '';
+
+  // The ring step has to come from the span actually on screen, not from a fixed size in
+  // either unit: at Fit a rifle whose groups all land inside one step would draw no rings,
+  // and zoomed in the old step would leave a single ring and no scale. A mil zero offset is
+  // routinely under half a mil, so the floor goes well below 1 — hence the third argument.
+  const spanDisp = (P.reach / v.zoom) / unit;
+  const step = niceScale(spanDisp, 4, 0.01).step;
+  const dec = Math.max(0, -Math.floor(Math.log10(step)));
+  // Rings are centered on aim, which panning can take off screen: draw only the ones
+  // that cross the visible square.
+  const half = C / k;
+  const dxs = [v.cx - half, v.cx + half], dys = [v.cy - half, v.cy + half];
+  const far = Math.max(...dxs.flatMap(x => dys.map(y => Math.hypot(x, y))));
+  const nx = Math.max(dxs[0], Math.min(0, dxs[1])), ny = Math.max(dys[0], Math.min(0, dys[1]));
+  const near = Math.hypot(nx, ny);
+  const first = Math.max(1, Math.ceil(near / unit / step - 1e-9));
+  const last = Math.min(first + 80, Math.floor(far / unit / step + 1e-9));
+  // At Fit the rings stop at the plot's inner edge, as they always have.
+  const ringMax = poiView ? Infinity : spanDisp + 1e-9;
+  // Labels ride along the horizontal axis, held inside the frame once it pans away.
+  const rowY = Math.max(14, Math.min(W - 6, oy));
+  for (let i = first; i <= last && i * step <= ringMax; i++) {
+    const r = i * step * unit * k;
+    out += `<circle cx="${ox}" cy="${oy}" r="${r}" fill="none" stroke="${GRIDC}" stroke-width="1"/>`;
+    const dy = rowY - oy;
+    if (Math.abs(dy) >= r) continue;
+    const reachX = Math.sqrt(r * r - dy * dy);
+    const lx = ox + reachX <= W - 4 ? ox + reachX : ox - reachX;
+    if (lx < 14 || lx > W - 4) continue;
+    out += `<text x="${lx - 3}" y="${rowY - 4}" fill="${DIM}" font-family="IBM Plex Mono"
+                  font-size="8.5" text-anchor="end">${(i * step).toFixed(dec)}</text>`;
+  }
+
+  // Inset at Fit as it always was; zoomed, the rings run to the edge and the axes go with them.
+  const lo = poiView ? 0 : PAD, hi = W - lo;
+  if (oy >= lo && oy <= hi)
+    out += `<line x1="${lo}" y1="${oy}" x2="${hi}" y2="${oy}" stroke="${AXIS}" stroke-width="1"/>
+            <text x="${W - 4}" y="${oy + 12}" fill="${DIM}" font-family="IBM Plex Mono"
+                  font-size="8.5" text-anchor="end">right</text>`;
+  if (ox >= lo && ox <= hi)
+    out += `<line x1="${ox}" y1="${lo}" x2="${ox}" y2="${hi}" stroke="${AXIS}" stroke-width="1"/>
+            <text x="${ox + 6}" y="${PAD - 6}" fill="${DIM}" font-family="IBM Plex Mono"
+                  font-size="8.5">up</text>`;
+
+  const cross = (x, y, c, sw) =>
+    `<path class="poi-center" d="M${px(x) - 7} ${py(y)}h14M${px(x)} ${py(y) - 7}v14"
+           stroke="${c}" stroke-width="${sw}" fill="none"/>`;
+  P.names.forEach(n => {
+    const c = P.series.colorOf(n);
+    P.buckets[n].forEach(g => {
+      out += `<circle cx="${px(g.offXMOA)}" cy="${py(g.offYMOA)}" r="4" fill="${c}"
+                      opacity="0.82" stroke="var(--surface)" stroke-width="1.2"/>`;
+    });
+    if (P.colored)
+      out += cross(statsMedian(P.buckets[n].map(g => g.offXMOA)),
+                   statsMedian(P.buckets[n].map(g => g.offYMOA)), c, 2);
+  });
+  // Where the rifle is actually hitting is the whole question this plot answers, so the
+  // median has to be drawn whichever way the dots are colored. Per-bucket crosses only
+  // exist in the 2–4 bucket case; every other case gets one cross for the lot. Without this
+  // a rifle shot with a single load — the plainest reading of a zero there is — drew no
+  // marker at all, while the note underneath still described a median it never showed.
+  if (!P.colored)
+    out += cross(statsMedian(P.usable.map(g => g.offXMOA)),
+                 statsMedian(P.usable.map(g => g.offYMOA)), GROUP_ACCENT, 2.5);
+
+  svg.innerHTML = out;
+  const chip = document.getElementById('poi-zoom');
+  if (chip) chip.textContent = v.zoom.toFixed(1) + '×';
+}
+
+function poiResetView() { poiView = null; poiDraw(); }
+
+// Zoom to `zoom`, keeping the MOA point `u` under the plot point (sx, sy).
+function poiZoomAt(zoom, u, sx, sy) {
+  const z = Math.max(1, Math.min(zoom, 40));
+  const v = { zoom: z, cx: 0, cy: 0 };
+  const k = poiScale(v);
+  v.cx = u.x - (sx - POI_W / 2) / k;
+  v.cy = u.y + (sy - POI_W / 2) / k;
+  poiView = v;
+  poiDraw();
+}
+
+function poiBindGestures() {
+  const svg = document.getElementById('poi-svg');
+  if (!svg) return;
+  const reset = document.getElementById('poi-reset');
+  if (reset) reset.addEventListener('click', poiResetView);
+
+  const toPlot = (clientX, clientY) => {
+    const r = svg.getBoundingClientRect();
+    return { x: (clientX - r.left) / r.width * POI_W, y: (clientY - r.top) / r.height * POI_W };
+  };
+  const toMOA = p => {
+    const v = poiCurrentView(), k = poiScale(v);
+    return { x: v.cx + (p.x - POI_W / 2) / k, y: v.cy - (p.y - POI_W / 2) / k };
+  };
+
+  // Touch events rather than pointer events: one finger has to stay the page's, and a
+  // browser that has claimed a touch for scrolling cancels its pointer stream outright.
+  let pinch = null;
+  const mid = t => toPlot((t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2);
+  const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  svg.addEventListener('touchstart', e => {
+    if (e.touches.length !== 2) return;
+    e.preventDefault();
+    pinch = { d: dist(e.touches), zoom: poiCurrentView().zoom, u: toMOA(mid(e.touches)) };
+  }, { passive: false });
+  svg.addEventListener('touchmove', e => {
+    if (!pinch || e.touches.length !== 2) return;
+    e.preventDefault();
+    const m = mid(e.touches);
+    poiZoomAt(pinch.zoom * dist(e.touches) / pinch.d, pinch.u, m.x, m.y);
+  }, { passive: false });
+  const endPinch = e => { if (e.touches.length < 2) pinch = null; };
+  svg.addEventListener('touchend', endPinch);
+  svg.addEventListener('touchcancel', endPinch);
+
+  // Desktop: a trackpad pinch arrives as a ctrl-wheel, and so does ctrl+scroll on a mouse.
+  // A plain wheel is left alone so it still scrolls the page.
+  svg.addEventListener('wheel', e => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    const p = toPlot(e.clientX, e.clientY);
+    poiZoomAt(poiCurrentView().zoom * Math.exp(-e.deltaY * 0.01), toMOA(p), p.x, p.y);
+  }, { passive: false });
+
+  // A mouse drag pans once zoomed in; a mouse never scrolls the page by dragging anyway.
+  let drag = null;
+  svg.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' || !poiView) return;
+    try { svg.setPointerCapture(e.pointerId); } catch (_) {}
+    const p = toPlot(e.clientX, e.clientY);
+    drag = { id: e.pointerId, u: toMOA(p) };
+  });
+  svg.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const p = toPlot(e.clientX, e.clientY);
+    poiZoomAt(poiView.zoom, drag.u, p.x, p.y);
+  });
+  ['pointerup', 'pointercancel'].forEach(ev =>
+    svg.addEventListener(ev, () => { drag = null; }));
+
+  svg.addEventListener('dblclick', poiResetView);
 }
 
 // Rounds since the last deep clean against each firearm's own threshold, worst first.
@@ -8718,7 +8853,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.11.4';
+const APP_VERSION = '7.11.5';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');

@@ -11,6 +11,10 @@ changes. It's noted below wherever it did.
 
 ## Unreleased
 
+- **The Stats point-of-impact plot zooms.** Pinch with two fingers to spread out the center
+  crosses when one far-off group has squeezed them together; one finger still scrolls the page.
+  Dots keep their size and the rings re-step to the zoomed span. Reset view or double-tap returns
+  to the full plot.
 - **A dope table's zero now carries its own unit**, independent of the distances in the rows —
   zeroed at 100 yd with the come-ups listed in meters, or the reverse. A rifle is zeroed once but
   gets shot at ranges marked in both, and neither unit can be derived from the other. Existing

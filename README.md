@@ -351,6 +351,11 @@ charts read together. Beyond four rows it stops coloring, since the palette is v
 series against the dark background and a fifth would fail colorblind separation; the whole set
 then gets one cross, so the typical point of impact is always drawn.
 
+One far-off group sets the scale and can squeeze every cross into the middle, so the plot
+**zooms**: pinch with two fingers (or ctrl-scroll / trackpad pinch on a computer), and one finger
+still scrolls the page. The dots keep their size and the rings re-space to the zoomed span.
+**Reset view** or a double-tap returns to the whole plot.
+
 Underneath, it states in words where things sit — *"typical center is 0.6 MOA high and 0.3 MOA
 right of aim across 23 groups"*. That sentence and the rings both read in the firearm's own
 [optic adjustment unit](#reading-the-numbers).
