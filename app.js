@@ -8923,7 +8923,7 @@ refreshAvailablePhotoIds().then(() => {
 });
 
 // ── SERVICE WORKER & UPDATE CHECK ─────────────────────────────────
-const APP_VERSION = '7.11.6';
+const APP_VERSION = '7.11.7';
 
 function showUpdateBanner() {
   const banner = document.getElementById('update-banner');
