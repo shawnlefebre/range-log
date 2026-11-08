@@ -11,6 +11,10 @@ changes. It's noted below wherever it did.
 
 ## Unreleased
 
+_Nothing yet._
+
+## 7.12 — several loads, and several references, on one target (2026-11-07)
+
 - **Group charts keep per-load colors up to eight loads.** Past four, Compare and Point of Impact
   used to drop to a single gold. Loads five to eight now reuse the four colors as hollow rings, with
   an × for their center cross, so each load still has its own median on the plot.
